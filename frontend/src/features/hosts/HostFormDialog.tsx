@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Loader2, Plug, Save, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Loader2, Plug, Save, Trash2, KeyRound } from "lucide-react";
 
 import {
   Dialog,
@@ -14,9 +14,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AUTH_TYPES,
   AUTH_TYPE_LABELS,
+  hostsApi,
   type AuthType,
   type CredentialsDTO,
   type HostDTO,
@@ -37,22 +39,25 @@ const EMPTY_INPUT: HostInputDTO = {
   host: "",
   port: 22,
   username: "",
-  authType: "key",
+  authType: "password",
   keyPath: "",
 };
 
 const EMPTY_CREDS: CredentialsDTO = { password: "", keyPath: "", keyPassphrase: "", useAgent: false };
 
 /**
- * HostFormDialog — create/edit/delete + test-connect + open-terminal.
+ * HostFormDialog — create/edit/delete + test-connect + open-terminal, with
+ * optional "remember password" via the OS credential vault.
  *
- * Credentials (password / passphrase) are session-only: they live in local
- * state, are sent over the binding at action time, and are never persisted.
- * Phase 5's SecretStore will replace the manual entry with OS-keychain lookups.
+ * Credentials live in component state only; when "remember" is checked the
+ * secret is written to the OS keychain (never to SQLite). When editing a host
+ * that already has a remembered secret, the field shows a placeholder and the
+ * checkbox pre-checks; the actual value is read from the vault at connect time.
  */
 export function HostFormDialog() {
   const editing = useHostsUIStore((s) => s.editing);
   const closeEditor = useHostsUIStore((s) => s.closeEditor);
+  const openEditor = useHostsUIStore((s) => s.openEditor);
   const setView = useUIStore((s) => s.setView);
 
   const createHost = useCreateHost();
@@ -67,6 +72,12 @@ export function HostFormDialog() {
   const [input, setInput] = useState<HostInputDTO>(EMPTY_INPUT);
   const [creds, setCreds] = useState<CredentialsDTO>(EMPTY_CREDS);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [remember, setRemember] = useState(false);
+  const [hasRemembered, setHasRemembered] = useState(false);
+
+  // Guards against duplicate submits: a form Enter-key submit + button click,
+  // or a fast double-click, can both fire mutateAsync before isPending flips.
+  const submitting = useRef(false);
 
   // Sync local form state when the dialog target changes.
   useEffect(() => {
@@ -77,14 +88,28 @@ export function HostFormDialog() {
         host: existing.host,
         port: existing.port,
         username: existing.username,
-        authType: (existing.authType || "key") as AuthType,
+        authType: (existing.authType || "password") as AuthType,
         keyPath: "",
       });
+      // Check if a remembered secret already exists for this host.
+      hostsApi
+        .getRemembered(existing.id)
+        .then((info) => {
+          const remembered =
+            (input.authType === "password" && info.hasPassword) ||
+            (input.authType === "key" && info.hasPassphrase);
+          setHasRemembered(remembered);
+          setRemember(remembered);
+        })
+        .catch(() => setHasRemembered(false));
     } else {
       setInput(EMPTY_INPUT);
+      setHasRemembered(false);
+      setRemember(false);
     }
     setCreds(EMPTY_CREDS);
     setTestResult(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, existing]);
 
   const update = (patch: Partial<HostInputDTO>) =>
@@ -99,34 +124,40 @@ export function HostFormDialog() {
     useAgent: input.authType === "agent",
   });
 
-  const handleSave = async () => {
+  const persistRemembered = async (hostId: string) => {
     try {
-      if (existing) {
-        await updateHost.mutateAsync({ id: existing.id, input });
-      } else {
-        await createHost.mutateAsync(input);
+      await hostsApi.saveCredentials(hostId, buildCreds(), remember);
+    } catch {
+      /* non-fatal: vault may be unavailable; the connect still happened */
+    }
+  };
+
+  const handleSave = async () => {
+    if (submitting.current) return;
+    submitting.current = true;
+    try {
+      const saved = existing
+        ? await updateHost.mutateAsync({ id: existing.id, input })
+        : await createHost.mutateAsync(input);
+      if (remember) {
+        await persistRemembered(saved.id);
+      } else if (existing) {
+        // clearing is meaningful only on an existing host
+        await hostsApi.saveCredentials(existing.id, EMPTY_CREDS, false).catch(() => {});
       }
       closeEditor();
     } catch {
       /* mutation error surfaces via the hook's state; keep dialog open */
+    } finally {
+      submitting.current = false;
     }
   };
 
   const handleDelete = async () => {
     if (!existing) return;
-    if (!confirm(`Delete host "${existing.name}"? This cannot be undone.`)) return;
+    if (!confirm(`Delete host "${existing.name}"? This also clears any remembered password.`)) return;
     await deleteHost.mutateAsync(existing.id);
     closeEditor();
-  };
-
-  const handleTest = async () => {
-    if (!existing) {
-      // For an unsaved host, persist first so we have an id to test against.
-      const created = await createHost.mutateAsync(input);
-      await runTest(created.id);
-    } else {
-      await runTest(existing.id);
-    }
   };
 
   const runTest = async (hostId: string) => {
@@ -142,10 +173,35 @@ export function HostFormDialog() {
     }
   };
 
+  const handleTest = async () => {
+    if (submitting.current) return;
+    submitting.current = true;
+    try {
+      let hostId = existing?.id;
+      if (!hostId) {
+        // For an unsaved host, persist first so we have an id to test against.
+        // Then switch the dialog to edit mode so a later "Save" updates this
+        // host instead of creating a duplicate.
+        const created = await createHost.mutateAsync(input);
+        hostId = created.id;
+        openEditor(created);
+      }
+      await runTest(hostId);
+    } finally {
+      submitting.current = false;
+    }
+  };
+
   const handleConnect = async () => {
     if (!existing) return;
     try {
-      await openTerminal.mutateAsync({ host: { id: existing.id, name: existing.name }, creds: buildCreds() });
+      // ResolveCredentials on the backend fills in remembered secrets when the
+      // frontend sends blanks, so passing an empty password still connects.
+      await openTerminal.mutateAsync({
+        host: { id: existing.id, name: existing.name },
+        creds: buildCreds(),
+      });
+      if (remember) await persistRemembered(existing.id);
       closeEditor();
       setView("terminal");
     } catch {
@@ -160,6 +216,12 @@ export function HostFormDialog() {
     testConnection.isPending ||
     openTerminal.isPending;
 
+  // Placeholder text for the secret field depends on whether a remembered
+  // secret exists (we never reveal the stored value).
+  const secretPlaceholder = hasRemembered
+    ? "•••••••• (saved in OS vault — leave blank to reuse)"
+    : undefined;
+
   return (
     <Dialog
       open={isOpen}
@@ -172,8 +234,9 @@ export function HostFormDialog() {
           <DialogTitle>{existing ? "Edit Host" : "Add Host"}</DialogTitle>
           <DialogDescription>
             Configure a remote machine. Credentials are used only for this
-            session — they are never saved to disk (Phase 5 will add keychain
-            storage).
+            session unless you tick “Remember” — then they’re stored in the OS
+            credential vault (Windows Credential Manager / macOS Keychain /
+            Linux Secret Service), never in the database.
           </DialogDescription>
         </DialogHeader>
 
@@ -256,7 +319,7 @@ export function HostFormDialog() {
             )}
           </div>
 
-          {/* Credentials — session only, never persisted. */}
+          {/* Credentials — session only, optionally persisted to OS vault. */}
           <fieldset className="grid gap-3 rounded-[var(--radius)] border border-border bg-background/50 p-3">
             <legend className="px-1.5 text-xs text-muted-foreground">
               Credentials (this session only)
@@ -269,7 +332,7 @@ export function HostFormDialog() {
                   type="password"
                   value={creds.password}
                   onChange={(e) => updateCreds({ password: e.target.value })}
-                  placeholder="Enter password"
+                  placeholder={secretPlaceholder}
                 />
               </div>
             )}
@@ -291,6 +354,7 @@ export function HostFormDialog() {
                     type="password"
                     value={creds.keyPassphrase}
                     onChange={(e) => updateCreds({ keyPassphrase: e.target.value })}
+                    placeholder={secretPlaceholder}
                   />
                 </div>
               </>
@@ -299,6 +363,23 @@ export function HostFormDialog() {
               <p className="text-xs text-muted-foreground">
                 Uses ssh-agent via SSH_AUTH_SOCK. No credential entry needed.
               </p>
+            )}
+
+            {/* Remember toggle — stores the secret in the OS credential vault. */}
+            {input.authType !== "agent" && (
+              <label className="flex cursor-pointer items-center gap-2 pt-1 text-sm">
+                <Checkbox
+                  checked={remember}
+                  onCheckedChange={(v) => setRemember(v === true)}
+                />
+                <span className="flex items-center gap-1.5">
+                  <KeyRound className="h-3.5 w-3.5 text-muted-foreground" />
+                  {input.authType === "password" ? "Remember password" : "Remember passphrase"}
+                  {hasRemembered && (
+                    <Badge variant="success" className="ml-1 text-[10px]">saved</Badge>
+                  )}
+                </span>
+              </label>
             )}
           </fieldset>
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"sync"
 
 	"golang.org/x/crypto/ssh"
@@ -54,6 +55,7 @@ func NewPtySession(client *Client, cols, rows int, onOutput OutputHandler) (*Pty
 		_ = sess.Close()
 		return nil, fmt.Errorf("request pty: %w", err)
 	}
+	log.Printf("[PTY] RequestPty OK (rows=%d cols=%d)", rows, cols)
 
 	stdin, err := sess.StdinPipe()
 	if err != nil {
@@ -76,6 +78,7 @@ func NewPtySession(client *Client, cols, rows int, onOutput OutputHandler) (*Pty
 		_ = sess.Close()
 		return nil, fmt.Errorf("start shell: %w", err)
 	}
+	log.Printf("[PTY] Shell() started, beginning pumps")
 
 	ps := &PtySession{
 		session:  sess,
@@ -98,10 +101,14 @@ func (ps *PtySession) pump(r io.Reader) {
 	buf := make([]byte, 4096)
 	for {
 		n, err := r.Read(buf)
-		if n > 0 && ps.onOutput != nil {
-			ps.onOutput(append([]byte(nil), buf[:n]...))
+		if n > 0 {
+			log.Printf("[PTY pump] read %d bytes", n)
+			if ps.onOutput != nil {
+				ps.onOutput(append([]byte(nil), buf[:n]...))
+			}
 		}
 		if err != nil {
+			log.Printf("[PTY pump] reader returned err=%v", err)
 			return
 		}
 	}

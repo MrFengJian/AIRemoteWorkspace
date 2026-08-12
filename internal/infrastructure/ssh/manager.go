@@ -2,7 +2,9 @@ package ssh
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/google/uuid"
@@ -28,6 +30,9 @@ type managedSession struct {
 	pty    *PtySession
 	host   domain.Host
 }
+
+// ErrSessionNotFound is returned when a session id is unknown to the manager.
+var ErrSessionNotFound = errors.New("session not found")
 
 // NewManager builds a Manager. keyStore provides known_hosts verification.
 func NewManager(keyStore HostKeyStore) *Manager {
@@ -71,6 +76,7 @@ func (m *Manager) OpenSession(
 
 	// Output handler routes PTY chunks to the events sink.
 	onOutput := func(data []byte) {
+		log.Printf("[manager.onOutput] session=%s bytes=%d", sessionID, len(data))
 		if events != nil {
 			events.OnData(sessionID, data)
 		}

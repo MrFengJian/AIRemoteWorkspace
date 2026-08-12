@@ -14,12 +14,14 @@ type HostService struct {
 	repo     HostRepository
 	connect  ConnectionManager
 	keyStore HostKeyRepository
+	secrets  *SecretService
 }
 
 // NewHostService wires a HostService to its repository and connection manager.
-// The connection manager is used by TestConnection.
-func NewHostService(repo HostRepository, connect ConnectionManager, keyStore HostKeyRepository) *HostService {
-	return &HostService{repo: repo, connect: connect, keyStore: keyStore}
+// The connection manager is used by TestConnection. secrets may be nil (no
+// keychain available — "remember password" is then disabled).
+func NewHostService(repo HostRepository, connect ConnectionManager, keyStore HostKeyRepository, secrets *SecretService) *HostService {
+	return &HostService{repo: repo, connect: connect, keyStore: keyStore, secrets: secrets}
 }
 
 // List returns all stored hosts.
@@ -31,6 +33,9 @@ func (s *HostService) List() ([]domain.Host, error) {
 func (s *HostService) Get(id string) (domain.Host, error) {
 	return s.repo.Get(id)
 }
+
+// Secrets exposes the SecretService to the interface layer (for SaveCredentials).
+func (s *HostService) Secrets() *SecretService { return s.secrets }
 
 // CreateHostInput carries the user-editable fields for a new host.
 // Credentials are supplied separately (at connect time), never stored.
@@ -91,9 +96,45 @@ func (s *HostService) Update(id string, in CreateHostInput) (domain.Host, error)
 	return existing, nil
 }
 
-// Delete removes a host by id.
+// Delete removes a host by id and clears any remembered secrets for it
+// (AGENT.md §9: avoid orphaned vault entries).
 func (s *HostService) Delete(id string) error {
+	if s.secrets != nil {
+		if err := s.secrets.DeleteHostSecrets(id); err != nil {
+			// Log-worthy but not fatal: the host row is the source of truth,
+			// and a leftover vault entry is inert without it.
+			_ = err
+		}
+	}
 	return s.repo.Delete(id)
+}
+
+// ResolveCredentials returns credentials suitable for a connection attempt.
+// If the caller supplied a full secret (password/passphrase), it is used as-is.
+// Otherwise the remembered secret is loaded from the OS vault when available.
+//
+// This lets "remember password" work transparently: callers pass an empty
+// Credentials and get the remembered one back.
+func (s *HostService) ResolveCredentials(host domain.Host, provided domain.Credentials) (domain.Credentials, error) {
+	creds := provided
+	if s.secrets == nil {
+		return creds, nil
+	}
+	if creds.Password == "" && host.AuthType == domain.AuthPassword {
+		if v, err := s.secrets.GetHostSecret(host.ID, SecretPassword); err == nil {
+			creds.Password = string(v)
+		} else if !errors.Is(err, ErrSecretNotFound) {
+			return creds, fmt.Errorf("load remembered password: %w", err)
+		}
+	}
+	if creds.KeyPassphrase == "" && host.AuthType == domain.AuthKey {
+		if v, err := s.secrets.GetHostSecret(host.ID, SecretPassphrase); err == nil {
+			creds.KeyPassphrase = string(v)
+		} else if !errors.Is(err, ErrSecretNotFound) {
+			return creds, fmt.Errorf("load remembered passphrase: %w", err)
+		}
+	}
+	return creds, nil
 }
 
 // TestConnection attempts a short-lived dial + PTY open against the host with
@@ -108,16 +149,8 @@ func (s *HostService) TestConnection(ctx context.Context, host domain.Host, cred
 		return err
 	}
 	// Give the PTY a moment to establish, then close.
-	closeErr := s.connect.Close(sessionID)
-	if closeErr != nil && !errors.Is(closeErr, errSessionClosedGracefully) {
-		return closeErr
-	}
-	return nil
+	return s.connect.Close(sessionID)
 }
-
-// errSessionClosedGracefully is a light sentinel; Close on an already-exited
-// session returns nil from the manager, so this is mostly defensive.
-var errSessionClosedGracefully = fmt.Errorf("session already closed")
 
 // noopSessionEvents absorbs session lifecycle events during a connection test.
 type noopSessionEvents struct{}

@@ -10,6 +10,9 @@ import (
 	wailsapp "github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/ai-remote/workspace/internal/application"
+	"github.com/ai-remote/workspace/internal/domain"
+	"github.com/ai-remote/workspace/internal/infrastructure/secret"
+	"github.com/ai-remote/workspace/internal/infrastructure/sftp"
 	"github.com/ai-remote/workspace/internal/infrastructure/sqlite"
 	"github.com/ai-remote/workspace/internal/infrastructure/ssh"
 	"github.com/ai-remote/workspace/internal/interfaces"
@@ -46,18 +49,41 @@ func main() {
 	hostRepo := sqlite.NewHostRepo(store)
 	hostKeyRepo := sqlite.NewHostKeyRepo(store)
 
+	// OS-backed secret store (Windows Credential Manager / macOS Keychain /
+	// Linux Secret Service). CGO-free on all platforms.
+	secretSvc := application.NewSecretService(secret.Default())
+
 	// Connection manager needs a HostKeyStore; adapt the app-layer repo.
 	connManager := ssh.NewManager(ssh.FromHostKeyRepo(hostKeyRepo))
 
+	// SFTP manager dials its own (cached) connections per host, reusing the
+	// same dial logic + host-key verification as the terminal connection.
+	keyStore := ssh.FromHostKeyRepo(hostKeyRepo)
+	sftpMgr := sftp.NewManager(func(host domain.Host, creds domain.Credentials) (*ssh.Client, error) {
+		return ssh.Dial(ssh.ConnectOptions{
+			HostID:   host.ID,
+			Host:     host.Host,
+			Port:     host.Port,
+			Username: host.Username,
+		}, ssh.Auth{
+			Password:      creds.Password,
+			KeyPath:       creds.KeyPath,
+			KeyPassphrase: creds.KeyPassphrase,
+			UseAgent:      creds.UseAgent,
+		}, keyStore)
+	})
+
 	// Application services.
 	configSvc := application.NewConfigService(configRepo)
-	hostSvc := application.NewHostService(hostRepo, connManager, hostKeyRepo)
+	hostSvc := application.NewHostService(hostRepo, connManager, hostKeyRepo, secretSvc)
+	sftpSvc := application.NewSftpService(sftp.NewAppClient(sftpMgr), hostRepo, secretSvc)
 
 	// Wails-facing services (interface adapter layer).
 	systemService := interfaces.NewSystemService(appName, appVersion)
 	configService := interfaces.NewConfigService(configSvc)
 	hostService := interfaces.NewHostService(hostSvc)
 	terminalService := interfaces.NewTerminalService(hostSvc, connManager)
+	sftpService := interfaces.NewSftpService(sftpSvc)
 
 	app := wailsapp.New(wailsapp.Options{
 		Name:        appName,
@@ -67,6 +93,7 @@ func main() {
 			wailsapp.NewService(configService),
 			wailsapp.NewService(hostService),
 			wailsapp.NewService(terminalService),
+			wailsapp.NewService(sftpService),
 		},
 		Assets: wailsapp.AssetOptions{
 			Handler: wailsapp.AssetFileServerFS(assets),

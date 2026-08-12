@@ -6,10 +6,12 @@ import (
 	"errors"
 
 	"github.com/danieljoos/wincred"
+
+	"github.com/ai-remote/workspace/internal/application"
 )
 
 // defaultStore is the Windows Credential Manager backend.
-var defaultStore Store = &wincredStore{}
+var defaultStore application.SecretStore = &wincredStore{}
 
 type wincredStore struct{}
 
@@ -26,7 +28,7 @@ func (wincredStore) Get(key string) ([]byte, error) {
 	c, err := wincred.GetGenericCredential(key)
 	if err != nil {
 		if errors.Is(err, wincred.ErrElementNotFound) {
-			return nil, ErrNotFound
+			return nil, application.ErrSecretNotFound
 		}
 		return nil, err
 	}

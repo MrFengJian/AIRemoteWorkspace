@@ -3,22 +3,26 @@
 
 import * as ConfigService from "./configservice.js";
 import * as HostService from "./hostservice.js";
+import * as SftpService from "./sftpservice.js";
 import * as SystemService from "./systemservice.js";
 import * as TerminalService from "./terminalservice.js";
 export {
     ConfigService,
     HostService,
+    SftpService,
     SystemService,
     TerminalService
 };
 
 export type {
     CredentialsDTO,
+    FileEntryDTO,
     HostDTO,
     HostInputDTO,
     OpenSessionRequest,
     OpenSessionResult,
     PtySizeDTO,
+    RememberedCredentialsDTO,
     SystemInfoResult,
     TestConnectionResult
 } from "./models.js";

@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS hosts (
     host       TEXT NOT NULL,
     port       INTEGER NOT NULL DEFAULT 22,
     username   TEXT NOT NULL,
-    auth_type  TEXT NOT NULL DEFAULT 'key',
+    auth_type  TEXT NOT NULL DEFAULT 'password',
     secret_ref TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))

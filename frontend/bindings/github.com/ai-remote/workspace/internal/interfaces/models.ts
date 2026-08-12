@@ -13,6 +13,17 @@ export interface CredentialsDTO {
 }
 
 /**
+ * FileEntryDTO is the frontend-facing remote filesystem entry.
+ */
+export interface FileEntryDTO {
+    "name": string;
+    "size": number;
+    "mode": string;
+    "modTime": string;
+    "isDir": boolean;
+}
+
+/**
  * HostDTO is the frontend-facing host representation. It mirrors domain.Host
  * but exposes authType as a plain string and omits internal timestamps that
  * the UI doesn't need.
@@ -25,6 +36,7 @@ export interface HostDTO {
     "username": string;
     "authType": string;
     "keyPath"?: string;
+    "hasRememberedSecret": boolean;
 }
 
 /**
@@ -61,6 +73,16 @@ export interface OpenSessionResult {
 export interface PtySizeDTO {
     "cols": number;
     "rows": number;
+}
+
+/**
+ * RememberedCredentialsDTO tells the UI whether remembered secrets exist.
+ * The secret values are deliberately NOT returned — the vault is read at
+ * connect time on the backend, never shipped to the frontend.
+ */
+export interface RememberedCredentialsDTO {
+    "hasPassword": boolean;
+    "hasPassphrase": boolean;
 }
 
 /**

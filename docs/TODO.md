@@ -27,11 +27,11 @@
 
 ## Phase 3 — 文件管理（MVP 核心）
 
-- [ ] SFTP 客户端封装
-- [ ] 远程文件浏览器 UI
-- [ ] 文件上传
-- [ ] 文件下载
-- [ ] 文件删除 / 重命名
+- [x] SFTP 客户端封装（infrastructure/sftp.Manager，按 host 缓存连接 + 空闲 10 分钟关闭）
+- [x] 远程文件浏览器 UI（SftpView：host 选择 / 面包屑 / 目录列表 / 上下导航）
+- [x] 文件上传（file input → ArrayBuffer → SFTP 写入）
+- [x] 文件下载（SFTP 读取 → Blob 下载，50MB 上限）
+- [x] 文件删除 / 重命名（DeleteFile / RenameFile，含目录删除）
 
 ## Phase 4 — AI Agent（MVP 核心）
 
@@ -47,14 +47,15 @@
 
 ## Phase 5 — 安全增强
 
-- [ ] SecretStore 抽象层
-- [ ] Windows Credential Manager 实现
-- [ ] macOS Keychain 实现
-- [ ] Linux Secret Service 实现
-- [ ] 数据库 `secret_ref` 引用机制
-- [ ] Security Mode 切换（Convenience / Balanced / Secure）
-- [ ] Tool Permission 分类（READ / WRITE / DANGEROUS）
-- [ ] 危险操作 Approval UI
+- [x] SecretStore 抽象层（application.SecretStore 接口 + ErrSecretNotFound sentinel）
+- [x] Windows Credential Manager 实现（danieljoos/wincred，纯 syscall，无 CGO）
+- [x] macOS Keychain 实现（zalando/go-keyring，exec /usr/bin/security，无 CGO）
+- [x] Linux Secret Service 实现（zalando/go-keyring + godbus，无 CGO）
+- [x] 数据库 `secret_ref` 引用机制（HasRememberedSecret + 记住/清除流程）
+- [x] Security Mode 显示（Convenience / Balanced / Secure，当前只读展示）
+- [ ] Security Mode 强制策略切换（Convenience 自动保存 / Secure 每次输入）
+- [ ] Tool Permission 分类（READ / WRITE / DANGEROUS）— Phase 4 AI Agent 范畴
+- [ ] 危险操作 Approval UI — Phase 4 AI Agent 范畴
 
 ## Phase 6 — MCP Server
 

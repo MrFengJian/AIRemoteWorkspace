@@ -2,12 +2,16 @@ package interfaces
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
 	"fmt"
+	"log"
 	"sync"
 
 	wailsapp "github.com/wailsapp/wails/v3/pkg/application"
 
 	appsvc "github.com/ai-remote/workspace/internal/application"
+	ssh "github.com/ai-remote/workspace/internal/infrastructure/ssh"
 )
 
 // OpenSessionRequest carries what the frontend needs to start a terminal.
@@ -55,13 +59,15 @@ func NewTerminalService(hostSvc *appsvc.HostService, connManager appsvc.Connecti
 func (t *TerminalService) ServiceName() string { return "TerminalService" }
 
 // ServiceStartup captures the Application handle so we can emit events.
-func (t *TerminalService) ServiceStartup(app *wailsapp.App) error {
-	t.app = app
+// Wails calls this with (ctx, options) — the App is obtained via the global
+// accessor since ServiceOptions doesn't carry it.
+func (t *TerminalService) ServiceStartup(_ context.Context, _ wailsapp.ServiceOptions) error {
+	t.app = wailsapp.Get()
 	return nil
 }
 
 // ServiceShutdown closes all live sessions on app exit.
-func (t *TerminalService) ServiceShutdown(_ *wailsapp.App) error {
+func (t *TerminalService) ServiceShutdown() error {
 	return t.connManager.CloseAll()
 }
 
@@ -74,7 +80,12 @@ func (t *TerminalService) OpenSession(req OpenSessionRequest) (OpenSessionResult
 		return OpenSessionResult{}, fmt.Errorf("open session: %w", err)
 	}
 
-	creds := toDomainCreds(req.Creds)
+	// Resolve credentials: use what the frontend sent; fall back to any
+	// remembered secret from the OS vault when the frontend sent blanks.
+	creds, err := t.hostSvc.ResolveCredentials(host, toDomainCreds(req.Creds))
+	if err != nil {
+		return OpenSessionResult{}, err
+	}
 	events := &terminalEvents{app: t.app}
 
 	ctx := context.Background()
@@ -82,22 +93,44 @@ func (t *TerminalService) OpenSession(req OpenSessionRequest) (OpenSessionResult
 	if err != nil {
 		return OpenSessionResult{}, err
 	}
+	log.Printf("[OpenSession] created sessionID=%s, will emit on term:%s:out", sessionID, sessionID)
 	return OpenSessionResult{SessionID: sessionID}, nil
 }
 
 // WriteStdin forwards a keystroke/line to the session's remote shell.
 func (t *TerminalService) WriteStdin(sessionID string, data []byte) error {
-	return t.connManager.WriteStdin(sessionID, data)
+	if err := t.connManager.WriteStdin(sessionID, data); err != nil {
+		if errors.Is(err, ssh.ErrSessionNotFound) {
+			log.Printf("WriteStdin: session %s not found, ignoring", sessionID)
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // ResizeSession updates the remote PTY dimensions.
 func (t *TerminalService) ResizeSession(sessionID string, size PtySizeDTO) error {
-	return t.connManager.Resize(sessionID, size.Cols, size.Rows)
+	if err := t.connManager.Resize(sessionID, size.Cols, size.Rows); err != nil {
+		if errors.Is(err, ssh.ErrSessionNotFound) {
+			log.Printf("ResizeSession: session %s not found, ignoring", sessionID)
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // CloseSession ends a session and frees its connection.
 func (t *TerminalService) CloseSession(sessionID string) error {
-	return t.connManager.Close(sessionID)
+	if err := t.connManager.Close(sessionID); err != nil {
+		if errors.Is(err, ssh.ErrSessionNotFound) {
+			log.Printf("CloseSession: session %s not found, ignoring", sessionID)
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // terminalEvents implements application.SessionEvents, forwarding PTY output
@@ -110,9 +143,12 @@ type terminalEvents struct {
 
 func (te *terminalEvents) OnData(sessionID string, data []byte) {
 	if te.app == nil {
+		log.Printf("[OnData] te.app is nil — cannot emit!")
 		return
 	}
-	te.app.Event.Emit(fmt.Sprintf("term:%s:out", sessionID), string(data))
+	encoded := base64.StdEncoding.EncodeToString(data)
+	log.Printf("[OnData] session=%s bytes=%d emitting term:%s:out", sessionID, len(data), sessionID)
+	te.app.Event.Emit(fmt.Sprintf("term:%s:out", sessionID), encoded)
 }
 
 func (te *terminalEvents) OnExit(sessionID string, exitErr error) {

@@ -6,6 +6,8 @@ import (
 	"errors"
 
 	"github.com/zalando/go-keyring"
+
+	"github.com/ai-remote/workspace/internal/application"
 )
 
 // serviceName is the Secret Service collection label under which all AI Remote
@@ -14,7 +16,7 @@ const serviceName = "AI Remote Workspace"
 
 // defaultStore is the Linux Secret Service backend (via godbus D-Bus, no CGO).
 // Requires a running secret service provider (GNOME Keyring / KWallet).
-var defaultStore Store = &keyringStore{}
+var defaultStore application.SecretStore = &keyringStore{}
 
 type keyringStore struct{}
 
@@ -26,7 +28,7 @@ func (keyringStore) Get(key string) ([]byte, error) {
 	v, err := keyring.Get(serviceName, key)
 	if err != nil {
 		if errors.Is(err, keyring.ErrNotFound) {
-			return nil, ErrNotFound
+			return nil, application.ErrSecretNotFound
 		}
 		return nil, err
 	}

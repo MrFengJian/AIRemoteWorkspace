@@ -4,9 +4,10 @@ package domain
 // Stored in the `settings` table (Phase 1); sensitive fields would route
 // through SecretStore per AGENT.md §9.
 type AppConfig struct {
-	SecurityMode SecurityMode `json:"securityMode"`
-	DefaultShell string       `json:"defaultShell"`
-	Theme        string       `json:"theme"`
+	SecurityMode   SecurityMode `json:"securityMode"`
+	DefaultShell   string       `json:"defaultShell"`
+	Theme          string       `json:"theme"`
+	TerminalTheme  string       `json:"terminalTheme"` // terminal colour scheme id
 }
 
 // SecurityMode governs how credentials are handled (AGENT.md §10).
@@ -21,8 +22,9 @@ const (
 // DefaultConfig returns the out-of-the-box config applied on first launch.
 func DefaultConfig() AppConfig {
 	return AppConfig{
-		SecurityMode: SecurityBalanced,
-		DefaultShell: "/bin/bash",
-		Theme:        "dark",
+		SecurityMode:  SecurityBalanced,
+		DefaultShell:  "/bin/bash",
+		Theme:         "dark",
+		TerminalTheme: "cobalt2",
 	}
 }

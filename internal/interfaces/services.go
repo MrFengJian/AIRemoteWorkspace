@@ -7,6 +7,7 @@
 package interfaces
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 
@@ -44,7 +45,7 @@ func NewSystemService(appName, version string) *SystemService {
 func (s *SystemService) ServiceName() string { return "SystemService" }
 
 // ServiceStartup runs when the service is registered with the app.
-func (s *SystemService) ServiceStartup(_ *application.App) error { return nil }
+func (s *SystemService) ServiceStartup(_ context.Context, _ application.ServiceOptions) error { return nil }
 
 // SystemInfo returns the runtime info shown in the StatusBar.
 func (s *SystemService) SystemInfo() SystemInfoResult {
@@ -74,7 +75,7 @@ func NewConfigService(svc appsvc.ConfigService) *ConfigService {
 func (c *ConfigService) ServiceName() string { return "ConfigService" }
 
 // ServiceStartup runs when the service is registered with the app.
-func (c *ConfigService) ServiceStartup(_ *application.App) error { return nil }
+func (c *ConfigService) ServiceStartup(_ context.Context, _ application.ServiceOptions) error { return nil }
 
 // GetAppConfig returns the persisted application configuration.
 // Returning the concrete domain.AppConfig lets Wails emit typed TS bindings.

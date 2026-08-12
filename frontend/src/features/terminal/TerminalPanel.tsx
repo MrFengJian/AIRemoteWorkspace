@@ -74,18 +74,32 @@ export function TerminalPanel({ session }: TerminalPanelProps) {
     };
     applySize();
 
-    // Keystrokes → backend stdin.
+    // Keystrokes → backend stdin. Wails serialises []byte as a base64 string,
+    // so encode before sending (handles control chars like Ctrl+C correctly).
     const onDataDisp = term.onData((data) => {
-      TerminalService.WriteStdin(session.id, data).catch(() => {
+      const encoded = btoa(data);
+      TerminalService.WriteStdin(session.id, encoded).catch(() => {
         /* swallow; a closed session surfaces via :exit */
       });
     });
 
-    // Remote output → terminal.
-    const outCancel = Events.On(`term:${session.id}:out`, (event: unknown) => {
+    // Remote output → terminal. Backend sends base64-encoded bytes for
+    // binary safety; decode back to a string for xterm.
+    const outEventName = `term:${session.id}:out`;
+    console.log("[TerminalPanel] subscribing to", outEventName);
+    const outCancel = Events.On(outEventName, (event: unknown) => {
+      console.log("[TerminalPanel] received", outEventName, event);
       const data = (event as { data?: unknown }).data;
-      if (typeof data === "string") {
-        term.write(data);
+      if (typeof data === "string" && data.length > 0) {
+        try {
+          const decoded = atob(data);
+          console.log("[TerminalPanel] decoded", decoded.length, "chars, writing to xterm");
+          term.write(decoded);
+        } catch {
+          // Not valid base64 (shouldn't happen) — write raw as fallback.
+          console.warn("[TerminalPanel] base64 decode failed, writing raw");
+          term.write(data);
+        }
       }
     });
 
@@ -106,14 +120,16 @@ export function TerminalPanel({ session }: TerminalPanelProps) {
     ro.observe(container);
 
     return () => {
+      // Clean up xterm + event subscriptions only. Do NOT close the backend
+      // session here — React StrictMode mounts/cleans/mounts in dev, and any
+      // real re-mount would prematurely kill a live PTY. Backend session
+      // teardown happens when the user closes the tab (removeSession).
       onDataDisp.dispose();
       if (typeof outCancel === "function") outCancel();
       if (typeof exitCancel === "function") exitCancel();
       ro.disconnect();
       term.dispose();
       termRef.current = null;
-      // Best-effort close on the backend.
-      TerminalService.CloseSession(session.id).catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id]);

@@ -36,6 +36,14 @@ export function GetHost(id: string): $CancellablePromise<$models.HostDTO> {
 }
 
 /**
+ * GetRememberedCredentials reports which secrets are stored for a host. Used by
+ * the edit dialog to show a "remembered" indicator without revealing values.
+ */
+export function GetRememberedCredentials(hostID: string): $CancellablePromise<$models.RememberedCredentialsDTO> {
+    return $Call.ByID(501246757, hostID);
+}
+
+/**
  * ListHosts returns all stored hosts.
  */
 export function ListHosts(): $CancellablePromise<$models.HostDTO[] | null> {
@@ -43,8 +51,19 @@ export function ListHosts(): $CancellablePromise<$models.HostDTO[] | null> {
 }
 
 /**
+ * SaveCredentials stores or clears remembered secrets for a host.
+ * When remember is false, any existing secrets for this host are removed.
+ * Password is stored for password auth; passphrase for key auth.
+ */
+export function SaveCredentials(hostID: string, creds: $models.CredentialsDTO, remember: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1355001190, hostID, creds, remember);
+}
+
+/**
  * TestConnection dials the host with the given credentials and reports
- * success/failure without keeping the session open.
+ * success/failure without keeping the session open. If the caller sends empty
+ * credentials, remembered secrets from the OS vault are filled in first
+ * (so "remember password" works for testing too, not just connecting).
  */
 export function TestConnection(hostID: string, creds: $models.CredentialsDTO): $CancellablePromise<$models.TestConnectionResult> {
     return $Call.ByID(1230124561, hostID, creds);

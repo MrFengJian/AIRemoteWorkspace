@@ -4,6 +4,7 @@ import { TerminalSquare, X, Plus } from "lucide-react";
 import { useTerminalStore } from "@/features/terminal/terminal.store";
 import { useUIStore } from "@/stores/ui.store";
 import { TerminalPanel } from "@/features/terminal/TerminalPanel";
+import { TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,6 +18,15 @@ export function TerminalView() {
   const setActive = useTerminalStore((s) => s.setActive);
   const removeSession = useTerminalStore((s) => s.removeSession);
   const setView = useUIStore((s) => s.setView);
+
+  // closeSession tears down a session end to end: close the backend PTY, then
+  // drop it from the store. Called only when the user explicitly closes a tab.
+  const closeSession = (id: string) => {
+    TerminalService.CloseSession(id).catch(() => {
+      /* session may already be gone on the backend */
+    });
+    removeSession(id);
+  };
 
   // Auto-select hosts view when there are no sessions, so the empty state has
   // an obvious next action.
@@ -75,7 +85,7 @@ export function TerminalView() {
               aria-label="Close tab"
               onClick={(e) => {
                 e.stopPropagation();
-                removeSession(sess.id);
+                closeSession(sess.id);
               }}
               className="rounded p-0.5 opacity-0 transition-opacity hover:bg-background/60 group-hover:opacity-100"
             >

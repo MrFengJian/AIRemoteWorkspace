@@ -42,6 +42,7 @@ Diagnosis
 | Terminal | xterm.js（Phase 2） |
 | Storage | SQLite（纯 Go 驱动 modernc.org/sqlite，无 CGO） |
 | SSH | golang.org/x/crypto/ssh（认证 / keepalive / PTY / 已知主机校验） |
+| SFTP | github.com/pkg/sftp（远程文件操作，连接缓存） |
 
 > 技术栈以 [`AGENT.md`](./AGENT.md)（Coding Agent Guide）为准。
 
@@ -78,6 +79,8 @@ wails3 task build
 │   ├── domain/             # 业务模型（Host/Session/Tool/Agent/Config/SSH）
 │   ├── application/        # 业务流程 + port 接口（HostService/ConnectionManager）
 │   ├── infrastructure/
+│   │   ├── secret/         # OS 密码库（Windows Credential Manager / macOS Keychain / Linux Secret Service）
+│   │   ├── sftp/           # SFTP Manager（连接缓存）+ 文件操作（ls/upload/download/delete/rename/mkdir）
 │   │   ├── sqlite/         # SQLite 存储实现 + schema 迁移（hosts/host_keys/settings）
 │   │   └── ssh/            # SSH Client / PTY Session / ConnectionManager / 已知主机校验
 │   └── interfaces/         # Wails Service（HostService/TerminalService/SystemService/ConfigService）
@@ -110,4 +113,6 @@ wails3 task build
 
 - ✅ **Phase 1 — 基础框架**：Wails v3 + React 19 + SQLite + Dark Developer Theme
 - ✅ **Phase 2 — SSH Workspace**：Host CRUD + 多 Tab xterm.js 终端 + SSH 连接/认证/keepalive/已知主机校验
+- ✅ **Phase 3 — 文件管理（SFTP）**：远程文件浏览器，上传/下载/删除/重命名/新建文件夹
+- ✅ **Phase 5 — 安全增强（SecretStore）**：记住密码存入 OS 密码库（Windows Credential Manager / macOS Keychain / Linux Secret Service），三平台无 CGO
 - 🚧 文件管理（SFTP）/ AI Agent / MCP 等后续阶段开发中 — 详见 [ROADMAP.md](./docs/ROADMAP.md)

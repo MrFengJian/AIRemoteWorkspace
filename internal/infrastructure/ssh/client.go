@@ -105,6 +105,12 @@ func (c *Client) NewSession() (*ssh.Session, error) {
 	return c.ssh.NewSession()
 }
 
+// SSHClient returns the underlying *ssh.Client, for subsystems like SFTP that
+// need to open channels on the same connection (pkg/sftp.NewClient).
+func (c *Client) SSHClient() *ssh.Client {
+	return c.ssh
+}
+
 // Close stops keepalive and closes the SSH client.
 func (c *Client) Close() error {
 	var err error

@@ -9,9 +9,16 @@ import {
   type HostInputDTO,
   type CredentialsDTO,
   type TestConnectionResult,
+  type RememberedCredentialsDTO,
 } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 
-export type { HostDTO, HostInputDTO, CredentialsDTO, TestConnectionResult };
+export type {
+  HostDTO,
+  HostInputDTO,
+  CredentialsDTO,
+  TestConnectionResult,
+  RememberedCredentialsDTO,
+};
 
 export const hostsApi = {
   list: () => HostService.ListHosts(),
@@ -21,6 +28,10 @@ export const hostsApi = {
   remove: (id: string) => HostService.DeleteHost(id),
   testConnection: (hostId: string, creds: CredentialsDTO) =>
     HostService.TestConnection(hostId, creds),
+  saveCredentials: (hostId: string, creds: CredentialsDTO, remember: boolean) =>
+    HostService.SaveCredentials(hostId, creds, remember),
+  getRemembered: (hostId: string) =>
+    HostService.GetRememberedCredentials(hostId),
 };
 
 /** Auth type values match domain.AuthType on the backend. */
