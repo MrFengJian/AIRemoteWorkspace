@@ -1,0 +1,12 @@
+/*
+ * Dark Developer Theme — token overrides.
+ *
+ * The base tokens already live in src/styles/globals.css (@theme block) and
+ * drive the whole app. This file is the designated home for theme-specific
+ * overrides so that future Experience Packs (cyber / business / pixel /
+ * minimal — AGENT.md §5) can ship as drop-in alternatives without forking
+ * component code.
+ *
+ * To activate an override, import it after globals.css in main.tsx.
+ * Phase 1 ships dark-only; no overrides needed yet.
+ */

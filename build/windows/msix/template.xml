@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<MsixPackagingToolTemplate
+    xmlns="http://schemas.microsoft.com/msix/packaging/msixpackagingtool/template/2022">
+    <Settings
+        AllowTelemetry="false"
+        ApplyACLsToPackageFiles="true"
+        GenerateCommandLineFile="true"
+        AllowPromptForPassword="false">
+    </Settings>
+    <Installer
+        Path="ai-remote-workspace.exe"
+        Arguments=""
+        InstallLocation="C:\Program Files\AI Remote\AI Remote Workspace">
+    </Installer>
+    <PackageInformation
+        PackageName="AI Remote Workspace"
+        PackageDisplayName="AI Remote Workspace"
+        PublisherName="CN=AI Remote"
+        PublisherDisplayName="AI Remote"
+        Version="0.1.0.0"
+        PackageDescription="AI-native desktop remote workspace">
+        <Capabilities>
+            <Capability Name="runFullTrust" />
+            
+        </Capabilities>
+        <Applications>
+            <Application
+                Id="com.airemote.workspace"
+                Description="AI-native desktop remote workspace"
+                DisplayName="AI Remote Workspace"
+                ExecutableName="ai-remote-workspace.exe"
+                EntryPoint="Windows.FullTrustApplication">
+                
+            </Application>
+        </Applications>
+        <Resources>
+            <Resource Language="en-us" />
+        </Resources>
+        <Dependencies>
+            <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.19041.0" />
+        </Dependencies>
+        <Properties>
+            <Framework>false</Framework>
+            <DisplayName>AI Remote Workspace</DisplayName>
+            <PublisherDisplayName>AI Remote</PublisherDisplayName>
+            <Description>AI-native desktop remote workspace</Description>
+            <Logo>Assets\AppIcon.png</Logo>
+        </Properties>
+    </PackageInformation>
+    <SaveLocation PackagePath="ai-remote-workspace.msix" />
+    <PackageIntegrity>
+        <CertificatePath></CertificatePath>
+    </PackageIntegrity>
+</MsixPackagingToolTemplate>

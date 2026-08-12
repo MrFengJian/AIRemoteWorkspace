@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    AI Remote Workspace — application icon.
+
+    Design language (matches the Dark Developer Theme in globals.css):
+      - Rounded-square canvas, dark surface (background token).
+      - Electric-blue accent (primary token) for the active terminal glyph.
+      - A terminal window (the workspace) joined by two satellite nodes by a
+        connection curve — "remote context, wired to the AI/agent".
+    Pure vector so wails3 can rasterise it to PNG losslessly.
+  -->
+
+  <defs>
+    <!-- App-shaped clip: rounded square filling the canvas, like an app icon. -->
+    <clipPath id="appShape">
+      <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224"/>
+    </clipPath>
+
+    <!-- Subtle vertical depth gradient on the dark surface. -->
+    <linearGradient id="surface" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#20242e"/>
+      <stop offset="100%" stop-color="#12141b"/>
+    </linearGradient>
+
+    <!-- Primary brand gradient for the active glyph. -->
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"  stop-color="#5b9bff"/>
+      <stop offset="100%" stop-color="#2f6bff"/>
+    </linearGradient>
+
+    <!-- Soft glow for the terminal glyph. -->
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="16" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Surface -->
+  <g clip-path="url(#appShape)">
+    <rect x="0" y="0" width="1024" height="1024" fill="url(#surface)"/>
+
+    <!-- Faint grid lines: developer/terminal texture. -->
+    <g stroke="#ffffff" stroke-opacity="0.04" stroke-width="2">
+      <path d="M0 256 H1024 M0 512 H1024 M0 768 H1024 M256 0 V1024 M512 0 V1024 M768 0 V1024"/>
+    </g>
+  </g>
+
+  <!-- Connection curve: AI (top-right node) wired into the terminal workspace. -->
+  <path d="M760 300 C 640 360, 560 420, 470 520"
+        fill="none" stroke="url(#accent)" stroke-width="14" stroke-linecap="round" opacity="0.85"/>
+  <!-- Second curve: remote host (bottom-right node) wired into the workspace. -->
+  <path d="M790 740 C 660 700, 560 640, 500 560"
+        fill="none" stroke="#3a4150" stroke-width="14" stroke-linecap="round"/>
+
+  <!-- Terminal window (the workspace), centered-left. -->
+  <g transform="translate(232 300)">
+    <!-- Window body -->
+    <rect x="0" y="0" width="476" height="336" rx="36" ry="36"
+          fill="#181b22" stroke="#2c313c" stroke-width="3"/>
+    <!-- Title bar -->
+    <rect x="0" y="0" width="476" height="72" rx="36" ry="36" fill="#222732"/>
+    <rect x="0" y="36" width="476" height="36" fill="#222732"/>
+    <!-- Traffic-light dots -->
+    <circle cx="44"  cy="36" r="13" fill="#ff5f57"/>
+    <circle cx="84"  cy="36" r="13" fill="#febc2e"/>
+    <circle cx="124" cy="36" r="13" fill="#28c840"/>
+
+    <!-- Prompt glyph: ">"  + blinking caret block -->
+    <g filter="url(#glow)">
+      <path d="M64 150 L124 198 L64 246"
+            fill="none" stroke="url(#accent)" stroke-width="26"
+            stroke-linejoin="round" stroke-linecap="round"/>
+      <rect x="156" y="158" width="22" height="84" rx="10" fill="url(#accent)"/>
+    </g>
+    <!-- A second dimmer line of "output" to read as a shell. -->
+    <g stroke="#566072" stroke-width="16" stroke-linecap="round">
+      <line x1="64"  y1="290" x2="220" y2="290"/>
+      <line x1="244" y1="290" x2="330" y2="290"/>
+    </g>
+  </g>
+
+  <!-- AI / agent node (top-right). -->
+  <g transform="translate(712 244)">
+    <circle cx="56" cy="56" r="56" fill="url(#accent)" filter="url(#glow)"/>
+    <!-- Spark / 4-point star suggesting intelligence. -->
+    <path d="M56 20 C 62 40, 72 50, 92 56 C 72 62, 62 72, 56 92 C 50 72, 40 62, 20 56 C 40 50, 50 40, 56 20 Z"
+          fill="#ffffff" fill-opacity="0.95"/>
+  </g>
+
+  <!-- Remote host node (bottom-right). -->
+  <g transform="translate(742 666)">
+    <circle cx="56" cy="56" r="56" fill="#222732" stroke="#3a4150" stroke-width="4"/>
+    <!-- Server stack mark. -->
+    <g stroke="#9aa4b6" stroke-width="9" stroke-linecap="round" fill="none">
+      <rect x="28" y="30" width="56" height="20" rx="6"/>
+      <rect x="28" y="62" width="56" height="20" rx="6"/>
+      <circle cx="38" cy="40" r="3" fill="#9aa4b6" stroke="none"/>
+      <circle cx="38" cy="72" r="3" fill="#9aa4b6" stroke="none"/>
+    </g>
+  </g>
+</svg>

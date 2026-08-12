@@ -1,0 +1,98 @@
+package main
+
+import (
+	"embed"
+	"log"
+	"path/filepath"
+	"time"
+
+	"github.com/adrg/xdg"
+	wailsapp "github.com/wailsapp/wails/v3/pkg/application"
+
+	"github.com/ai-remote/workspace/internal/application"
+	"github.com/ai-remote/workspace/internal/infrastructure/sqlite"
+	"github.com/ai-remote/workspace/internal/interfaces"
+)
+
+// appMetadata is the single source of truth for identity surfaced through
+// the UI and, later, the MCP system_info tool.
+const (
+	appName    = "AI Remote Workspace"
+	appVersion = "0.1.0"
+)
+
+// Wails embeds the built frontend (frontend/dist) into the binary so the app
+// ships as a single file (AGENT.md §1 single-binary, §19 MVP success).
+//
+//go:embed all:frontend/dist
+var assets embed.FS
+
+func init() {
+	// Register the `time` event with a string payload so Wails generates a
+	// typed TS API for it. The StatusBar subscribes via Events.On("time").
+	wailsapp.RegisterEvent[string]("time")
+}
+
+func main() {
+	store, err := initStorage()
+	if err != nil {
+		log.Fatalf("storage init failed: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	// Wire layers: infrastructure → application → interface services.
+	configRepo := sqlite.NewConfigRepo(store)
+	configSvc := application.NewConfigService(configRepo)
+	systemService := interfaces.NewSystemService(appName, appVersion)
+	configService := interfaces.NewConfigService(configSvc)
+
+	app := wailsapp.New(wailsapp.Options{
+		Name:        appName,
+		Description: "A lightweight, local-first, AI-native desktop remote workspace.",
+		Services: []wailsapp.Service{
+			wailsapp.NewService(systemService),
+			wailsapp.NewService(configService),
+		},
+		Assets: wailsapp.AssetOptions{
+			Handler: wailsapp.AssetFileServerFS(assets),
+		},
+		Mac: wailsapp.MacOptions{
+			ApplicationShouldTerminateAfterLastWindowClosed: true,
+		},
+	})
+
+	app.Window.NewWithOptions(wailsapp.WebviewWindowOptions{
+		Title:     appName,
+		Width:     1280,
+		Height:    800,
+		MinWidth:  900,
+		MinHeight: 600,
+		Mac: wailsapp.MacWindow{
+			InvisibleTitleBarHeight: 50,
+			Backdrop:                wailsapp.MacBackdropTranslucent,
+			TitleBar:                wailsapp.MacTitleBarHiddenInset,
+		},
+		BackgroundColour: wailsapp.NewRGB(10, 10, 14),
+		URL:              "/",
+	})
+
+	// Heartbeat that proves the Wails event bus is live. The StatusBar clock
+	// renders each tick; later phases reuse this channel for session events.
+	go func() {
+		for {
+			app.Event.Emit("time", time.Now().Format(time.RFC1123))
+			time.Sleep(time.Second)
+		}
+	}()
+
+	if err := app.Run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// initStorage opens (and migrates) the SQLite database in the per-user data
+// directory. The path follows the OS convention (AGENT.md §2.1 local-first).
+func initStorage() (*sqlite.Store, error) {
+	dbPath := filepath.Join(xdg.DataHome, "ai-remote-workspace", "workspace.db")
+	return sqlite.Open(dbPath)
+}

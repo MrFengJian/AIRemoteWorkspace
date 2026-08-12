@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.0"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.1.0",
+			"CompanyName": "AI Remote",
+			"FileDescription": "AI-native desktop remote workspace",
+			"LegalCopyright": "© 2026, My Company",
+			"ProductName": "AI Remote Workspace",
+			"Comments": "This is a comment"
+		}
+	}
+}

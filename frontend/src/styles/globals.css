@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+/*
+ * AI Remote Workspace — Design System
+ * Dark Developer Theme (MVP)
+ *
+ * Architecture (AGENT.md §5):
+ *   Design Token (--background, --foreground, --primary, --border, --radius, --shadow)
+ *     → Tailwind v4 @theme mapping (bg-background, text-foreground, border-border, …)
+ *       → Components
+ *
+ * Visual target: VS Code Dark / Cursor Dark — high information density,
+ * dark first. Tokens live as plain CSS variables so future Experience Packs
+ * (cyber / business / pixel / minimal) can override them without touching
+ * component code.
+ */
+
+@theme {
+  /* ---- Surfaces ---- */
+  --color-background: oklch(16% 0.012 260); /* app canvas */
+  --color-foreground: oklch(93% 0.008 260); /* primary text */
+
+  --color-card: oklch(20% 0.014 260);
+  --color-card-foreground: oklch(93% 0.008 260);
+
+  --color-muted: oklch(24% 0.012 260);
+  --color-muted-foreground: oklch(64% 0.012 260);
+
+  --color-popover: oklch(22% 0.014 260);
+  --color-popover-foreground: oklch(93% 0.008 260);
+
+  /* ---- Brand / accent ---- */
+  --color-primary: oklch(72% 0.16 255); /* electric blue */
+  --color-primary-foreground: oklch(16% 0.012 260);
+
+  --color-secondary: oklch(28% 0.014 260);
+  --color-secondary-foreground: oklch(93% 0.008 260);
+
+  --color-accent: oklch(28% 0.014 260);
+  --color-accent-foreground: oklch(93% 0.008 260);
+
+  --color-destructive: oklch(62% 0.22 25);
+  --color-destructive-foreground: oklch(96% 0.01 260);
+
+  --color-success: oklch(70% 0.16 145);
+  --color-warning: oklch(78% 0.16 85);
+
+  /* ---- Lines ---- */
+  --color-border: oklch(30% 0.012 260);
+  --color-input: oklch(30% 0.012 260);
+  --color-ring: oklch(72% 0.16 255);
+
+  /* ---- Shape ---- */
+  --radius: 0.5rem;
+
+  /* ---- Elevation ---- */
+  --shadow-sm: 0 1px 2px 0 oklch(0% 0 0 / 0.3);
+  --shadow-md: 0 4px 12px -2px oklch(0% 0 0 / 0.4);
+  --shadow-lg: 0 12px 32px -4px oklch(0% 0 0 / 0.5);
+
+  /* ---- Typography ---- */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", "Cascadia Code", "Fira Code",
+    "SF Mono", Menlo, Consolas, monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* Disable native textarea/input zoom on focus (desktop app). */
+    overflow: hidden;
+  }
+
+  /* Thin, dark scrollbars to match the developer-tool aesthetic. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-border);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-muted-foreground);
+  }
+}
