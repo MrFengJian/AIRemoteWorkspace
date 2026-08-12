@@ -16,14 +16,14 @@
 
 ## Phase 2 — SSH Workspace（MVP 核心）
 
-- [ ] Host 数据模型与 CRUD
-- [ ] Host 添加 / 编辑 / 删除 UI
-- [ ] 测试连接功能
-- [ ] SSH Client 封装（连接、认证、Keepalive、Reconnect）
-- [ ] Connection Manager（连接状态管理）
-- [ ] xterm.js 终端组件集成
-- [ ] PTY 支持（stdin / stdout / resize）
-- [ ] Ctrl+C 与长连接支持
+- [x] Host 数据模型与 CRUD（domain.Host + sqlite.HostRepo + HostService）
+- [x] Host 添加 / 编辑 / 删除 UI（HostsView + HostFormDialog）
+- [x] 测试连接功能（TestConnection，凭据仅本次会话，不持久化）
+- [x] SSH Client 封装（infrastructure/ssh：dial / 三种认证 / keepalive / 已知主机校验）
+- [x] Connection Manager（多会话状态管理，infrastructure/ssh.Manager）
+- [x] xterm.js 终端组件集成（@xterm/xterm + addon-fit，多 Tab）
+- [x] PTY 支持（RequestPty + Shell + stdin/stdout/resize 事件流）
+- [x] Ctrl+C 与长连接支持（Ctrl+C 经 xterm onData 透传；keepalive 30s 保活）
 
 ## Phase 3 — 文件管理（MVP 核心）
 

@@ -2,13 +2,6 @@ package application
 
 import "github.com/ai-remote/workspace/internal/domain"
 
-// ConfigRepository is the persistence port for AppConfig.
-// Implemented by infrastructure/sqlite.ConfigRepo.
-type ConfigRepository interface {
-	Get() (domain.AppConfig, error)
-	Set(cfg domain.AppConfig) error
-}
-
 // configService is the application-layer implementation of ConfigService.
 // It owns the repository and applies defaults/validation.
 type configService struct {

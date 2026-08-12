@@ -11,6 +11,7 @@ import (
 
 	"github.com/ai-remote/workspace/internal/application"
 	"github.com/ai-remote/workspace/internal/infrastructure/sqlite"
+	"github.com/ai-remote/workspace/internal/infrastructure/ssh"
 	"github.com/ai-remote/workspace/internal/interfaces"
 )
 
@@ -40,11 +41,23 @@ func main() {
 	}
 	defer func() { _ = store.Close() }()
 
-	// Wire layers: infrastructure → application → interface services.
+	// Repositories (infrastructure).
 	configRepo := sqlite.NewConfigRepo(store)
+	hostRepo := sqlite.NewHostRepo(store)
+	hostKeyRepo := sqlite.NewHostKeyRepo(store)
+
+	// Connection manager needs a HostKeyStore; adapt the app-layer repo.
+	connManager := ssh.NewManager(ssh.FromHostKeyRepo(hostKeyRepo))
+
+	// Application services.
 	configSvc := application.NewConfigService(configRepo)
+	hostSvc := application.NewHostService(hostRepo, connManager, hostKeyRepo)
+
+	// Wails-facing services (interface adapter layer).
 	systemService := interfaces.NewSystemService(appName, appVersion)
 	configService := interfaces.NewConfigService(configSvc)
+	hostService := interfaces.NewHostService(hostSvc)
+	terminalService := interfaces.NewTerminalService(hostSvc, connManager)
 
 	app := wailsapp.New(wailsapp.Options{
 		Name:        appName,
@@ -52,6 +65,8 @@ func main() {
 		Services: []wailsapp.Service{
 			wailsapp.NewService(systemService),
 			wailsapp.NewService(configService),
+			wailsapp.NewService(hostService),
+			wailsapp.NewService(terminalService),
 		},
 		Assets: wailsapp.AssetOptions{
 			Handler: wailsapp.AssetFileServerFS(assets),

@@ -9,7 +9,7 @@
 ```
 Phase 1  基础框架               ✅ 已完成
    ↓
-Phase 2  SSH Workspace          ★ MVP 核心
+Phase 2  SSH Workspace          ★ MVP 核心 ✅ 已完成
    ↓
 Phase 3  文件管理 (SFTP)        ★ MVP 核心
    ↓
@@ -36,15 +36,17 @@ Phase 7  Docker / Kubernetes
 
 **状态**：已完成。`wails3 task build` 产出单 Binary `bin/ai-remote-workspace.exe`。
 
-## Phase 2 — SSH Workspace（MVP 核心）
+## Phase 2 — SSH Workspace（MVP 核心） ✅
 
 让用户能连上服务器、打开终端、执行命令。
 
-- Host CRUD
-- SSH Client
-- Connection Manager
-- xterm.js 终端
-- PTY 支持
+- Host CRUD（SQLite 持久化非敏感字段，凭据仅会话内存）
+- SSH Client（golang.org/x/crypto/ssh，三种认证 + keepalive + 已知主机校验）
+- Connection Manager（多会话生命周期管理）
+- xterm.js 终端（@xterm/xterm + addon-fit，多 Tab，scrollback 保留）
+- PTY 支持（RequestPty + Shell，事件总线双向流，resize/Ctrl+C 透传）
+
+**状态**：已完成。`wails3 task build` 产出 15MB 单 Binary，含完整 Host 管理 + 多 Tab SSH 终端。
 
 **目标流程**
 

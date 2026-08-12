@@ -41,6 +41,7 @@ Diagnosis
 | Icons | Lucide |
 | Terminal | xterm.js（Phase 2） |
 | Storage | SQLite（纯 Go 驱动 modernc.org/sqlite，无 CGO） |
+| SSH | golang.org/x/crypto/ssh（认证 / keepalive / PTY / 已知主机校验） |
 
 > 技术栈以 [`AGENT.md`](./AGENT.md)（Coding Agent Guide）为准。
 
@@ -74,11 +75,12 @@ wails3 task build
 .
 ├── main.go                 # 应用入口：组装各层 + Wails 窗口 + time 事件
 ├── internal/
-│   ├── domain/             # 业务模型（Host/Session/Tool/Agent/Config）
-│   ├── application/        # 业务流程 + port 接口
+│   ├── domain/             # 业务模型（Host/Session/Tool/Agent/Config/SSH）
+│   ├── application/        # 业务流程 + port 接口（HostService/ConnectionManager）
 │   ├── infrastructure/
-│   │   └── sqlite/         # SQLite 存储实现 + schema 迁移
-│   └── interfaces/         # Wails Service（暴露 application 层给前端）
+│   │   ├── sqlite/         # SQLite 存储实现 + schema 迁移（hosts/host_keys/settings）
+│   │   └── ssh/            # SSH Client / PTY Session / ConnectionManager / 已知主机校验
+│   └── interfaces/         # Wails Service（HostService/TerminalService/SystemService/ConfigService）
 ├── frontend/
 │   ├── src/
 │   │   ├── app/            # providers, router
@@ -106,5 +108,6 @@ wails3 task build
 
 ## 状态
 
-✅ **Phase 1 — 基础框架已完成** — 详见 [ROADMAP.md](./docs/ROADMAP.md)。
-🚧 SSH Workspace / 文件管理 / AI Agent 等后续阶段开发中。
+- ✅ **Phase 1 — 基础框架**：Wails v3 + React 19 + SQLite + Dark Developer Theme
+- ✅ **Phase 2 — SSH Workspace**：Host CRUD + 多 Tab xterm.js 终端 + SSH 连接/认证/keepalive/已知主机校验
+- 🚧 文件管理（SFTP）/ AI Agent / MCP 等后续阶段开发中 — 详见 [ROADMAP.md](./docs/ROADMAP.md)
