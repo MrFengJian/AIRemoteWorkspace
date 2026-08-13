@@ -1,7 +1,7 @@
 package sqlite
 
 import (
-	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -9,7 +9,7 @@ import (
 	"github.com/ai-remote/workspace/internal/domain"
 )
 
-// HostRepo implements application.HostRepository over SQLite.
+// HostRepo implements application.HostRepository over GORM.
 type HostRepo struct {
 	store *Store
 }
@@ -24,38 +24,31 @@ var ErrHostNotFound = errors.New("host not found")
 
 // List returns all hosts ordered by name.
 func (r *HostRepo) List() ([]domain.Host, error) {
-	rows, err := r.store.db.Query(`
-		SELECT id, name, host, port, username, auth_type, secret_ref, created_at, updated_at
-		FROM hosts ORDER BY name COLLATE NOCASE`)
-	if err != nil {
-		return nil, fmt.Errorf("list hosts: %w", err)
+	var models []hostModel
+	if err := r.store.db.Order("name COLLATE NOCASE").Find(&models).Error; err != nil {
+		return nil, err
 	}
-	defer rows.Close()
-
-	var hosts []domain.Host
-	for rows.Next() {
-		h, err := scanHost(rows)
-		if err != nil {
-			return nil, err
-		}
-		hosts = append(hosts, h)
+	hosts := make([]domain.Host, 0, len(models))
+	for _, m := range models {
+		hosts = append(hosts, hostFromModel(m))
 	}
-	return hosts, rows.Err()
+	return hosts, nil
 }
 
 // Get returns a single host by id.
 func (r *HostRepo) Get(id string) (domain.Host, error) {
-	row := r.store.db.QueryRow(`
-		SELECT id, name, host, port, username, auth_type, secret_ref, created_at, updated_at
-		FROM hosts WHERE id = ?1`, id)
-	h, err := scanHost(row)
-	if errors.Is(err, sql.ErrNoRows) {
+	var m hostModel
+	err := r.store.db.First(&m, "id = ?", id).Error
+	if errors.Is(err, gormErrRecordNotFound) {
 		return domain.Host{}, ErrHostNotFound
 	}
-	return h, err
+	if err != nil {
+		return domain.Host{}, err
+	}
+	return hostFromModel(m), nil
 }
 
-// Save inserts or updates a host (upsert on id).
+// Save inserts or updates a host (GORM Save = upsert on primary key).
 func (r *HostRepo) Save(h domain.Host) error {
 	now := time.Now().UTC()
 	if h.CreatedAt.IsZero() {
@@ -63,56 +56,48 @@ func (r *HostRepo) Save(h domain.Host) error {
 	}
 	h.UpdatedAt = now
 
-	_, err := r.store.db.Exec(`
-		INSERT INTO hosts (id, name, host, port, username, auth_type, secret_ref, created_at, updated_at)
-		VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-		ON CONFLICT(id) DO UPDATE SET
-			name=excluded.name,
-			host=excluded.host,
-			port=excluded.port,
-			username=excluded.username,
-			auth_type=excluded.auth_type,
-			secret_ref=excluded.secret_ref,
-			updated_at=excluded.updated_at`,
-		h.ID, h.Name, h.Host, h.Port, h.Username, string(h.AuthType), h.SecretRef, h.CreatedAt.Format(time.RFC3339), h.UpdatedAt.Format(time.RFC3339))
+	tagsJSON, err := json.Marshal(h.Tags)
 	if err != nil {
-		return fmt.Errorf("save host: %w", err)
+		return fmt.Errorf("marshal tags: %w", err)
 	}
-	return nil
+
+	return r.store.db.Save(&hostModel{
+		ID:            h.ID,
+		Name:          h.Name,
+		Host:          h.Host,
+		Port:          h.Port,
+		Username:      h.Username,
+		AuthType:      string(h.AuthType),
+		SecretRef:     h.SecretRef,
+		TerminalTheme: h.TerminalTheme,
+		Group:         h.Group,
+		Tags:          string(tagsJSON),
+		CreatedAt:     h.CreatedAt,
+		UpdatedAt:     h.UpdatedAt,
+	}).Error
 }
 
 // Delete removes a host by id.
 func (r *HostRepo) Delete(id string) error {
-	_, err := r.store.db.Exec(`DELETE FROM hosts WHERE id = ?1`, id)
-	if err != nil {
-		return fmt.Errorf("delete host: %w", err)
-	}
-	return nil
+	return r.store.db.Delete(&hostModel{}, "id = ?", id).Error
 }
 
-// scanner abstracts *sql.Row and *sql.Rows for shared scan logic.
-type scanner interface {
-	Scan(dest ...any) error
-}
-
-func scanHost(s scanner) (domain.Host, error) {
-	var (
-		h           domain.Host
-		authType    string
-		createdRaw  sql.NullString
-		updatedRaw  sql.NullString
-		secretRef   string
-	)
-	if err := s.Scan(&h.ID, &h.Name, &h.Host, &h.Port, &h.Username, &authType, &secretRef, &createdRaw, &updatedRaw); err != nil {
-		return domain.Host{}, err
+// hostFromModel converts a GORM row to the domain type.
+func hostFromModel(m hostModel) domain.Host {
+	var tags []string
+	_ = json.Unmarshal([]byte(m.Tags), &tags) // tolerate empty/legacy values
+	return domain.Host{
+		ID:            m.ID,
+		Name:          m.Name,
+		Host:          m.Host,
+		Port:          m.Port,
+		Username:      m.Username,
+		AuthType:      domain.AuthType(m.AuthType),
+		SecretRef:     m.SecretRef,
+		TerminalTheme: m.TerminalTheme,
+		Group:         m.Group,
+		Tags:          tags,
+		CreatedAt:     m.CreatedAt,
+		UpdatedAt:     m.UpdatedAt,
 	}
-	h.AuthType = domain.AuthType(authType)
-	h.SecretRef = secretRef
-	if createdRaw.Valid {
-		h.CreatedAt, _ = time.Parse(time.RFC3339, createdRaw.String)
-	}
-	if updatedRaw.Valid {
-		h.UpdatedAt, _ = time.Parse(time.RFC3339, updatedRaw.String)
-	}
-	return h, nil
 }

@@ -64,7 +64,7 @@ export function useOpenTerminal() {
       host,
       creds,
     }: {
-      host: { id: string; name: string };
+      host: { id: string; name: string; terminalTheme?: string };
       creds: CredentialsDTO;
     }) => {
       const res = await TerminalService.OpenSession({
@@ -72,10 +72,10 @@ export function useOpenTerminal() {
         creds,
         size: { cols: 80, rows: 24 },
       });
-      return { sessionId: res.sessionId, hostName: host.name };
+      return { sessionId: res.sessionId, hostName: host.name, terminalTheme: host.terminalTheme ?? "" };
     },
-    onSuccess: ({ sessionId, hostName }) => {
-      addSession(sessionId, hostName);
+    onSuccess: ({ sessionId, hostName, terminalTheme }) => {
+      addSession(sessionId, hostName, terminalTheme);
     },
   });
 }

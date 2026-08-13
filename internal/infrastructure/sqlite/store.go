@@ -1,32 +1,32 @@
 // Package sqlite is the local persistence implementation for the workspace.
 //
-// It embeds schema.sql and applies it idempotently on Open. The store stays
-// generic (key/value settings + host rows) so the domain/application layers
-// above it remain storage-agnostic.
+// It uses GORM (gorm.io/gorm) with the pure-Go sqlite driver
+// github.com/glebarez/sqlite (built on modernc.org/sqlite), so the whole
+// stack stays CGO-free — preserving the single-binary, no-dependency promise
+// (AGENT.md §8.1).
+//
+// Schema is managed by GORM AutoMigrate from the structs in models.go: tables
+// are created and altered automatically on startup, replacing the old
+// hand-maintained schema.sql.
 package sqlite
 
 import (
-	"database/sql"
-	"embed"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 
-	_ "modernc.org/sqlite" // pure-Go driver; no CGO (AGENT.md §8.1)
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
-//go:embed schema.sql
-var schemaFS embed.FS
-
-// Store wraps a SQLite connection. Methods are safe for concurrent use from
-// the UI/services: modernc.org/sqlite serialises writes under the hood and we
-// enable WAL for read concurrency.
+// Store wraps the GORM database handle. Methods are safe for concurrent use
+// from the UI/services (GORM handles pooling; WAL keeps reads concurrent).
 type Store struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
-// Open creates or opens the database at path and runs migrations.
+// Open creates or opens the database at path and runs AutoMigrate.
 // path should live in the user data dir (see xdg). Use ":memory:" for tests.
 func Open(path string) (*Store, error) {
 	// Ensure the parent directory exists — SQLite returns a misleading
@@ -38,41 +38,49 @@ func Open(path string) (*Store, error) {
 		}
 	}
 
-	// _pragma keys tune modernc.org/sqlite for a desktop single-user workload.
+	// glebarez/sqlite accepts a DSN that includes pragmas, same as modernc.
 	dsn := path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)"
-	db, err := sql.Open("sqlite", dsn)
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
+		// Keep logs quiet for a desktop app; errors are still surfaced.
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite %q: %w", path, err)
 	}
-	// Single writer is the SQLite model; one connection pool is plenty.
-	db.SetMaxOpenConns(1)
 
 	s := &Store{db: db}
 	if err := s.migrate(); err != nil {
-		_ = db.Close()
 		return nil, err
 	}
 	return s, nil
 }
 
-// Close releases the database handle.
+// Close releases the underlying connection pool.
 func (s *Store) Close() error {
-	return s.db.Close()
+	raw, err := s.db.DB()
+	if err != nil {
+		return err
+	}
+	return raw.Close()
 }
 
-// DB exposes the underlying *sql.DB for repositories that need it.
-// Kept unexported-baggage-free: callers go through typed methods instead.
-func (s *Store) DB() *sql.DB { return s.db }
+// DB exposes the underlying *gorm.DB for repositories.
+func (s *Store) DB() *gorm.DB { return s.db }
 
-// migrate runs schema.sql. It is idempotent (CREATE TABLE IF NOT EXISTS) and
-// records the applied version for future incremental migrations.
+// migrate prepares the schema for GORM and then AutoMigrates. It first strips
+// legacy FOREIGN KEY constraints (which break glebarez's migrator), then lets
+// AutoMigrate create/alter the tables from the model structs. AutoMigrate is
+// idempotent and additive: it adds missing tables/columns/indexes and never
+// drops data.
 func (s *Store) migrate() error {
-	schema, err := fs.ReadFile(schemaFS, "schema.sql")
-	if err != nil {
-		return fmt.Errorf("read embedded schema: %w", err)
+	if err := stripLegacyForeignKeys(s.db); err != nil {
+		return fmt.Errorf("prepare legacy schema: %w", err)
 	}
-	if _, err := s.db.Exec(string(schema)); err != nil {
-		return fmt.Errorf("apply schema: %w", err)
-	}
-	return nil
+	return s.db.AutoMigrate(
+		&hostModel{},
+		&hostKeyModel{},
+		&settingModel{},
+		&sessionModel{},
+		&secretRefModel{},
+	)
 }

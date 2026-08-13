@@ -10,7 +10,48 @@ export interface AppConfig {
     "securityMode": SecurityMode;
     "defaultShell": string;
     "theme": string;
+
+    /**
+     * terminal colour scheme id
+     */
+    "terminalTheme": string;
+
+    /**
+     * AI agent provider config (API key in SecretStore)
+     */
+    "llm": LLMConfig;
 }
+
+/**
+ * LLMConfig holds the non-sensitive LLM provider settings. The API Key is
+ * stored in the OS vault (SecretStore), never here.
+ */
+export interface LLMConfig {
+    /**
+     * e.g. "https://api.openai.com/v1" or a compatible endpoint
+     */
+    "baseUrl": string;
+
+    /**
+     * e.g. "gpt-4o", "deepseek-chat"
+     */
+    "model": string;
+}
+
+/**
+ * Permission tier (AGENT.md §14). READ runs silently; WRITE prompts;
+ * DANGEROUS requires explicit user approval.
+ */
+export enum Permission {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    PermissionRead = "read",
+    PermissionWrite = "write",
+    PermissionDangerous = "dangerous",
+};
 
 /**
  * SecurityMode governs how credentials are handled (AGENT.md §10).

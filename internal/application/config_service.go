@@ -28,6 +28,12 @@ func (s *configService) GetAppConfig() (domain.AppConfig, error) {
 	if cfg.SecurityMode == "" {
 		cfg.SecurityMode = domain.SecurityBalanced
 	}
+	if cfg.TerminalTheme == "" {
+		cfg.TerminalTheme = "cobalt2"
+	}
+	if cfg.LLM.BaseURL == "" {
+		cfg.LLM = domain.DefaultConfig().LLM
+	}
 	return cfg, nil
 }
 

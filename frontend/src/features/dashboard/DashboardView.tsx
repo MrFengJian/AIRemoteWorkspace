@@ -6,6 +6,7 @@ import {
   ArrowRight,
   type LucideIcon,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import {
   Card,
@@ -18,39 +19,39 @@ import { useUIStore, type AppView } from "@/stores/ui.store";
 
 interface RoadmapEntry {
   view: AppView;
-  title: string;
-  description: string;
-  phase: string;
+  titleKey: string;
+  descKey: string;
+  phaseKey: string;
   icon: LucideIcon;
 }
 
 const ROADMAP: RoadmapEntry[] = [
   {
     view: "hosts",
-    title: "Host Management",
-    description: "Add, edit, test, and organise remote machines.",
-    phase: "Phase 2",
+    titleKey: "dashboard.hostManagement.title",
+    descKey: "dashboard.hostManagement.desc",
+    phaseKey: "dashboard.hostManagement.phase",
     icon: Server,
   },
   {
     view: "terminal",
-    title: "SSH Terminal",
-    description: "Stable PTY-backed terminal over SSH (xterm.js).",
-    phase: "Phase 2",
+    titleKey: "dashboard.sshTerminal.title",
+    descKey: "dashboard.sshTerminal.desc",
+    phaseKey: "dashboard.sshTerminal.phase",
     icon: TerminalSquare,
   },
   {
     view: "sftp",
-    title: "File Workspace",
-    description: "Browse, upload, download, and edit remote files.",
-    phase: "Phase 3",
+    titleKey: "dashboard.fileWorkspace.title",
+    descKey: "dashboard.fileWorkspace.desc",
+    phaseKey: "dashboard.fileWorkspace.phase",
     icon: FolderTree,
   },
   {
     view: "agent",
-    title: "AI Agent",
-    description: "LLM + Tool Calling with permission-gated execution.",
-    phase: "Phase 4",
+    titleKey: "dashboard.aiAgent.title",
+    descKey: "dashboard.aiAgent.desc",
+    phaseKey: "dashboard.aiAgent.phase",
     icon: Bot,
   },
 ];
@@ -61,34 +62,33 @@ const ROADMAP: RoadmapEntry[] = [
  */
 export function DashboardView() {
   const setView = useUIStore((s) => s.setView);
+  const { t } = useTranslation();
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
-          AI Remote Workspace
+          {t("dashboard.title")}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          A lightweight, local-first, AI-native desktop remote workspace.
-          Connect machines, run terminals, manage files, and let an AI agent
-          diagnose your infrastructure — all from a single binary.
+          {t("dashboard.subtitle")}
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {ROADMAP.map(({ view, title, description, phase, icon: Icon }) => (
+        {ROADMAP.map(({ view, titleKey, descKey, phaseKey, icon: Icon }) => (
           <Card key={view}>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Icon className="h-4 w-4 text-primary" />
-                  {title}
+                  {t(titleKey)}
                 </CardTitle>
                 <span className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                  {phase}
+                  {t(phaseKey)}
                 </span>
               </div>
-              <CardDescription>{description}</CardDescription>
+              <CardDescription>{t(descKey)}</CardDescription>
             </CardHeader>
             <CardContent>
               <button
@@ -96,7 +96,7 @@ export function DashboardView() {
                 onClick={() => setView(view)}
                 className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
               >
-                Open panel <ArrowRight className="h-3 w-3" />
+                {t("dashboard.openPanel")} <ArrowRight className="h-3 w-3" />
               </button>
             </CardContent>
           </Card>

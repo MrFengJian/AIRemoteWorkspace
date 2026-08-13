@@ -37,6 +37,13 @@ export interface HostDTO {
     "authType": string;
     "keyPath"?: string;
     "hasRememberedSecret": boolean;
+
+    /**
+     * per-host terminal colour scheme id
+     */
+    "terminalTheme": string;
+    "group": string;
+    "tags": string[] | null;
 }
 
 /**
@@ -49,6 +56,22 @@ export interface HostInputDTO {
     "username": string;
     "authType": string;
     "keyPath"?: string;
+    "terminalTheme": string;
+    "group": string;
+    "tags": string[] | null;
+}
+
+/**
+ * LLMConfigDTO carries the non-sensitive LLM settings to the frontend.
+ */
+export interface LLMConfigDTO {
+    "baseUrl": string;
+    "model": string;
+
+    /**
+     * never the key itself
+     */
+    "hasApiKey": boolean;
 }
 
 /**
@@ -83,6 +106,19 @@ export interface PtySizeDTO {
 export interface RememberedCredentialsDTO {
     "hasPassword": boolean;
     "hasPassphrase": boolean;
+}
+
+/**
+ * SetLLMConfigInput is what the frontend sends to configure the provider.
+ */
+export interface SetLLMConfigInput {
+    "baseUrl": string;
+    "model": string;
+
+    /**
+     * empty = keep existing; " " = clear
+     */
+    "apiKey": string;
 }
 
 /**

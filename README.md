@@ -43,6 +43,7 @@ Diagnosis
 | Storage | SQLite（纯 Go 驱动 modernc.org/sqlite，无 CGO） |
 | SSH | golang.org/x/crypto/ssh（认证 / keepalive / PTY / 已知主机校验） |
 | SFTP | github.com/pkg/sftp（远程文件操作，连接缓存） |
+| AI Agent | CloudWeGo eino（ReAct Agent + Tool Calling + 流式）+ eino-ext openai |
 
 > 技术栈以 [`AGENT.md`](./AGENT.md)（Coding Agent Guide）为准。
 
@@ -114,5 +115,6 @@ wails3 task build
 - ✅ **Phase 1 — 基础框架**：Wails v3 + React 19 + SQLite + Dark Developer Theme
 - ✅ **Phase 2 — SSH Workspace**：Host CRUD + 多 Tab xterm.js 终端 + SSH 连接/认证/keepalive/已知主机校验
 - ✅ **Phase 3 — 文件管理（SFTP）**：远程文件浏览器，上传/下载/删除/重命名/新建文件夹
+- ✅ **Phase 4 — AI Agent**：基于 CloudWeGo eino 的 ReAct Agent，7 个工具（ssh_exec/local_exec/文件操作），流式对话，Permission 门禁，关联终端会话
 - ✅ **Phase 5 — 安全增强（SecretStore）**：记住密码存入 OS 密码库（Windows Credential Manager / macOS Keychain / Linux Secret Service），三平台无 CGO
 - 🚧 文件管理（SFTP）/ AI Agent / MCP 等后续阶段开发中 — 详见 [ROADMAP.md](./docs/ROADMAP.md)

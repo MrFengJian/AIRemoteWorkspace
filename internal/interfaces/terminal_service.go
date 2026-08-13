@@ -93,7 +93,6 @@ func (t *TerminalService) OpenSession(req OpenSessionRequest) (OpenSessionResult
 	if err != nil {
 		return OpenSessionResult{}, err
 	}
-	log.Printf("[OpenSession] created sessionID=%s, will emit on term:%s:out", sessionID, sessionID)
 	return OpenSessionResult{SessionID: sessionID}, nil
 }
 
@@ -143,11 +142,9 @@ type terminalEvents struct {
 
 func (te *terminalEvents) OnData(sessionID string, data []byte) {
 	if te.app == nil {
-		log.Printf("[OnData] te.app is nil — cannot emit!")
 		return
 	}
 	encoded := base64.StdEncoding.EncodeToString(data)
-	log.Printf("[OnData] session=%s bytes=%d emitting term:%s:out", sessionID, len(data), sessionID)
 	te.app.Event.Emit(fmt.Sprintf("term:%s:out", sessionID), encoded)
 }
 

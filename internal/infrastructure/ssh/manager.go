@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/google/uuid"
@@ -76,7 +75,6 @@ func (m *Manager) OpenSession(
 
 	// Output handler routes PTY chunks to the events sink.
 	onOutput := func(data []byte) {
-		log.Printf("[manager.onOutput] session=%s bytes=%d", sessionID, len(data))
 		if events != nil {
 			events.OnData(sessionID, data)
 		}
@@ -139,6 +137,32 @@ func (m *Manager) Close(sessionID string) error {
 	err := ms.client.Close()
 	m.removeSession(sessionID)
 	return err
+}
+
+// ExecInSession runs a one-shot command on the SSH connection backing sessionID
+// (opens a fresh non-interactive session — does not disturb the PTY). Returns
+// combined stdout+stderr. Used by the Agent's ssh_exec tool.
+func (m *Manager) ExecInSession(sessionID, cmd string) (string, error) {
+	ms, ok := m.session(sessionID)
+	if !ok {
+		return "", errSessionNotFound(sessionID)
+	}
+	sess, err := ms.client.NewSession()
+	if err != nil {
+		return "", fmt.Errorf("new exec session: %w", err)
+	}
+	defer sess.Close()
+	out, err := sess.CombinedOutput(cmd)
+	return string(out), err
+}
+
+// HostOfSession returns the domain.Host associated with a session.
+func (m *Manager) HostOfSession(sessionID string) (domain.Host, bool) {
+	ms, ok := m.session(sessionID)
+	if !ok {
+		return domain.Host{}, false
+	}
+	return ms.host, true
 }
 
 // CloseAll tears down every active session.

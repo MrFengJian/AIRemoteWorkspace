@@ -1,9 +1,10 @@
 package sqlite
 
 import (
-	"database/sql"
 	"encoding/json"
-	"fmt"
+	"errors"
+
+	"gorm.io/gorm"
 
 	"github.com/ai-remote/workspace/internal/domain"
 )
@@ -24,20 +25,18 @@ func NewConfigRepo(store *Store) *ConfigRepo {
 func (r *ConfigRepo) Get() (domain.AppConfig, error) {
 	cfg := domain.DefaultConfig()
 
-	var raw string
-	err := r.store.db.QueryRow(
-		`SELECT value FROM settings WHERE key = 'app'`,
-	).Scan(&raw)
-	if err != nil {
+	var m settingModel
+	err := r.store.db.First(&m, "key = ?", "app").Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// No row yet → return defaults, not an error.
-		if err == sql.ErrNoRows {
-			return cfg, nil
-		}
-		return cfg, fmt.Errorf("read app config: %w", err)
+		return cfg, nil
+	}
+	if err != nil {
+		return cfg, err
 	}
 
-	if jsonErr := json.Unmarshal([]byte(raw), &cfg); jsonErr != nil {
-		return domain.DefaultConfig(), fmt.Errorf("parse app config: %w", jsonErr)
+	if jsonErr := json.Unmarshal([]byte(m.Value), &cfg); jsonErr != nil {
+		return domain.DefaultConfig(), jsonErr
 	}
 	return cfg, nil
 }
@@ -46,14 +45,16 @@ func (r *ConfigRepo) Get() (domain.AppConfig, error) {
 func (r *ConfigRepo) Set(cfg domain.AppConfig) error {
 	raw, err := json.Marshal(cfg)
 	if err != nil {
-		return fmt.Errorf("serialize app config: %w", err)
+		return err
 	}
-	if _, err := r.store.db.Exec(
-		`INSERT INTO settings (key, value) VALUES ('app', ?1)
-		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-		string(raw),
-	); err != nil {
-		return fmt.Errorf("write app config: %w", err)
+	var m settingModel
+	err = r.store.db.First(&m, "key = ?", "app").Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return r.store.db.Create(&settingModel{Key: "app", Value: string(raw)}).Error
 	}
-	return nil
+	if err != nil {
+		return err
+	}
+	m.Value = string(raw)
+	return r.store.db.Save(&m).Error
 }

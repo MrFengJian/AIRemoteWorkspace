@@ -23,6 +23,10 @@ const (
 	SecretPassphrase SecretKind = "passphrase"
 )
 
+// llmAPIKeyRef is the stable key under which the LLM provider API key is
+// stored in the OS vault.
+const llmAPIKeyRef = "airemote:llm:apikey"
+
 // ErrSecretNotFound is returned by SecretStore.Get when no entry exists.
 // Infrastructure backends translate their platform-specific "not found" errors
 // into this sentinel.
@@ -85,4 +89,28 @@ func (s *SecretService) HasHostSecret(hostID string) bool {
 		}
 	}
 	return false
+}
+
+// --- LLM API key (Phase 4) ---
+
+// SaveLLMKey stores the LLM provider API key in the OS vault.
+func (s *SecretService) SaveLLMKey(key string) error {
+	if key == "" {
+		return s.store.Delete(llmAPIKeyRef)
+	}
+	return s.store.Set(llmAPIKeyRef, []byte(key))
+}
+
+// GetLLMKey retrieves the stored LLM API key. Returns ErrSecretNotFound if none.
+func (s *SecretService) GetLLMKey() (string, error) {
+	v, err := s.store.Get(llmAPIKeyRef)
+	if err != nil {
+		return "", err
+	}
+	return string(v), nil
+}
+
+// DeleteLLMKey removes the stored LLM API key.
+func (s *SecretService) DeleteLLMKey() error {
+	return s.store.Delete(llmAPIKeyRef)
 }

@@ -35,15 +35,16 @@
 
 ## Phase 4 — AI Agent（MVP 核心）
 
-- [ ] LLM Provider 抽象与接入（OpenAI / 兼容 API）
-- [ ] Agent Runtime（对话、上下文管理）
-- [ ] Tool Registry（注册、发现、调用）
-- [ ] `local_exec` Tool
-- [ ] `local_read_file` Tool
-- [ ] `ssh_exec` Tool
-- [ ] `ssh_read_file` / `ssh_write_file` Tool
-- [ ] `upload` / `download` Tool
-- [ ] AI 基础诊断场景验证
+- [x] LLM Provider 抽象与接入（CloudWeGo eino + eino-ext openai，OpenAI 兼容 API）
+- [x] Agent Runtime（eino ReAct Agent，自动工具循环，流式输出）
+- [x] Tool Registry（eino utils.InferTool，7 个工具注册）
+- [x] `local_exec` Tool
+- [x] `local_read_file` Tool
+- [x] `ssh_exec` Tool（复用 SSH 连接，ExecInSession）
+- [x] `ssh_read_file` / `ssh_write_file` Tool（复用 SFTP）
+- [x] `upload` / `download` Tool
+- [x] Permission 系统（READ 自动 / WRITE+DANGEROUS 同步等待用户批准）
+- [x] AI 基础诊断场景（ssh_exec 检查 CPU/内存/磁盘，关联终端会话）
 
 ## Phase 5 — 安全增强
 

@@ -14,24 +14,30 @@ import (
 // but exposes authType as a plain string and omits internal timestamps that
 // the UI doesn't need.
 type HostDTO struct {
-	ID                 string `json:"id"`
-	Name               string `json:"name"`
-	Host               string `json:"host"`
-	Port               int    `json:"port"`
-	Username           string `json:"username"`
-	AuthType           string `json:"authType"`
-	KeyPath            string `json:"keyPath,omitempty"`
-	HasRememberedSecret bool   `json:"hasRememberedSecret"`
+	ID                 string   `json:"id"`
+	Name               string   `json:"name"`
+	Host               string   `json:"host"`
+	Port               int      `json:"port"`
+	Username           string   `json:"username"`
+	AuthType           string   `json:"authType"`
+	KeyPath            string   `json:"keyPath,omitempty"`
+	HasRememberedSecret bool    `json:"hasRememberedSecret"`
+	TerminalTheme      string   `json:"terminalTheme"` // per-host terminal colour scheme id
+	Group              string   `json:"group"`
+	Tags               []string `json:"tags"`
 }
 
 // HostInputDTO is what the frontend sends to create/update a host.
 type HostInputDTO struct {
-	Name     string `json:"name"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Username string `json:"username"`
-	AuthType string `json:"authType"`
-	KeyPath  string `json:"keyPath,omitempty"`
+	Name          string   `json:"name"`
+	Host          string   `json:"host"`
+	Port          int      `json:"port"`
+	Username      string   `json:"username"`
+	AuthType      string   `json:"authType"`
+	KeyPath       string   `json:"keyPath,omitempty"`
+	TerminalTheme string   `json:"terminalTheme"`
+	Group         string   `json:"group"`
+	Tags          []string `json:"tags"`
 }
 
 // CredentialsDTO carries connect-time secret material supplied by the UI.
@@ -143,23 +149,29 @@ func (h *HostService) TestConnection(hostID string, creds CredentialsDTO) (TestC
 
 func toHostInput(in HostInputDTO) appsvc.CreateHostInput {
 	return appsvc.CreateHostInput{
-		Name:     in.Name,
-		Host:     in.Host,
-		Port:     in.Port,
-		Username: in.Username,
-		AuthType: domain.AuthType(in.AuthType),
-		KeyPath:  in.KeyPath,
+		Name:          in.Name,
+		Host:          in.Host,
+		Port:          in.Port,
+		Username:      in.Username,
+		AuthType:      domain.AuthType(in.AuthType),
+		KeyPath:       in.KeyPath,
+		TerminalTheme: in.TerminalTheme,
+		Group:         in.Group,
+		Tags:          in.Tags,
 	}
 }
 
 func toHostDTO(h domain.Host) HostDTO {
 	return HostDTO{
-		ID:       h.ID,
-		Name:     h.Name,
-		Host:     h.Host,
-		Port:     h.Port,
-		Username: h.Username,
-		AuthType: string(h.AuthType),
+		ID:            h.ID,
+		Name:          h.Name,
+		Host:          h.Host,
+		Port:          h.Port,
+		Username:      h.Username,
+		AuthType:      string(h.AuthType),
+		TerminalTheme: h.TerminalTheme,
+		Group:         h.Group,
+		Tags:          h.Tags,
 	}
 }
 

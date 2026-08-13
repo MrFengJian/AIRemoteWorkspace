@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Folder,
   File as FileIcon,
@@ -33,6 +34,7 @@ import { cn } from "@/lib/utils";
  *   └ status / error line                       ┘
  */
 export function SftpView() {
+  const { t } = useTranslation();
   const { data: hosts } = useHosts();
   const { hostId, hostName, cwd, entries, loading, error, setHost, setCwd, setEntries, setLoading, setError } =
     useSftpStore();
@@ -115,7 +117,7 @@ export function SftpView() {
 
   const handleDelete = async (entry: FileEntryDTO) => {
     if (!hostId) return;
-    if (!confirm(`Delete "${entry.name}"?`)) return;
+    if (!confirm(t("sftp.deleteConfirm", { name: entry.name }))) return;
     const fullPath = cwd.replace(/\/$/, "") + "/" + entry.name;
     try {
       await sftpApi.deleteFile(hostId, fullPath);
@@ -148,7 +150,7 @@ export function SftpView() {
 
   const handleMkdir = async () => {
     if (!hostId) return;
-    const name = prompt("New folder name:");
+    const name = prompt(t("sftp.newFolderPrompt"));
     if (!name) return;
     const fullPath = cwd.replace(/\/$/, "") + "/" + name;
     try {
@@ -169,16 +171,16 @@ export function SftpView() {
   if (!hostId) {
     return (
       <div className="mx-auto max-w-3xl p-6">
-        <h1 className="text-xl font-semibold tracking-tight">Files</h1>
+        <h1 className="text-xl font-semibold tracking-tight">{t("sftp.title")}</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
           Browse and manage remote files over SFTP.
         </p>
         <div className="mt-6 rounded-[var(--radius)] border border-dashed border-border p-8">
-          <p className="mb-3 text-sm text-muted-foreground">Select a host to browse its files:</p>
+          <p className="mb-3 text-sm text-muted-foreground">{t("sftp.selectHost")}</p>
           <HostSelector hosts={hosts ?? []} onSelect={(id, name) => setHost(id, name)} />
           {(hosts ?? []).length === 0 && (
             <p className="mt-3 text-xs text-muted-foreground">
-              No hosts yet — add one in the Hosts panel first.
+              {t("sftp.noHosts")}
             </p>
           )}
         </div>
@@ -206,7 +208,7 @@ export function SftpView() {
           ))}
         </select>
 
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goUp} title="Up">
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goUp} title={t("sftp.up")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
 
@@ -225,10 +227,10 @@ export function SftpView() {
         <div className="mx-1 h-5 w-px bg-border" />
 
         <Button variant="ghost" size="sm" className="h-8" onClick={handleMkdir}>
-          <FolderPlus className="h-4 w-4" /> New Folder
+          <FolderPlus className="h-4 w-4" /> {t("sftp.newFolder")}
         </Button>
         <Button variant="ghost" size="sm" className="h-8" onClick={() => fileInputRef.current?.click()}>
-          <Upload className="h-4 w-4" /> Upload
+          <Upload className="h-4 w-4" /> {t("sftp.upload")}
         </Button>
         <input
           ref={fileInputRef}
@@ -253,7 +255,7 @@ export function SftpView() {
                 className="rounded px-1 hover:bg-accent hover:text-foreground"
                 onClick={() => navigate(path)}
               >
-                {i === 0 ? "root" : part}
+                {i === 0 ? t("sftp.root") : part}
               </button>
             </span>
           );
@@ -367,7 +369,7 @@ export function SftpView() {
       {/* Status bar */}
       <div className="flex items-center justify-between border-t border-border bg-card px-3 py-1 text-xs text-muted-foreground">
         <span>
-          {hostName} · {entries.length} item{entries.length === 1 ? "" : "s"}
+          {hostName} · {entries.length} {t("sftp.items")}
         </span>
         {loading && <Badge variant="secondary">refreshing…</Badge>}
       </div>

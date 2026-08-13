@@ -4,8 +4,10 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Events } from "@wailsio/runtime";
 import { XCircle } from "lucide-react";
 
+import { useTranslation } from "react-i18next";
 import { TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { useTerminalStore, type TerminalSession } from "@/features/terminal/terminal.store";
+import { getTerminalTheme } from "@/features/terminal/themes";
 
 import "@xterm/xterm/css/xterm.css";
 
@@ -27,26 +29,34 @@ interface TerminalPanelProps {
  * toggled via CSS by the parent so we don't pay dispose/recreate cost).
  */
 export function TerminalPanel({ session }: TerminalPanelProps) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const setSessionStatus = useTerminalStore((s) => s.setSessionStatus);
   const removeSession = useTerminalStore((s) => s.removeSession);
+  const themeId = useTerminalStore((s) => s.themeId);
+
+  // The session's theme takes precedence; fall back to the global setting.
+  const resolvedTheme = getTerminalTheme(session.terminalTheme || themeId);
+
+  // Live-update the xterm theme when the scheme changes (per-host or global).
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.options.theme = getTerminalTheme(session.terminalTheme || themeId).theme;
+    }
+  }, [themeId, session.terminalTheme]);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    const themeDef = resolvedTheme;
     const term = new Terminal({
       fontFamily:
         'ui-monospace, "JetBrains Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, monospace',
       fontSize: 13,
       cursorBlink: true,
-      theme: {
-        background: "#12141b",
-        foreground: "#edeef2",
-        cursor: "#5b9bff",
-        selectionBackground: "#264f7855",
-      },
+      theme: themeDef.theme,
       allowProposedApi: true,
     });
     const fit = new FitAddon();
@@ -86,14 +96,11 @@ export function TerminalPanel({ session }: TerminalPanelProps) {
     // Remote output → terminal. Backend sends base64-encoded bytes for
     // binary safety; decode back to a string for xterm.
     const outEventName = `term:${session.id}:out`;
-    console.log("[TerminalPanel] subscribing to", outEventName);
     const outCancel = Events.On(outEventName, (event: unknown) => {
-      console.log("[TerminalPanel] received", outEventName, event);
       const data = (event as { data?: unknown }).data;
       if (typeof data === "string" && data.length > 0) {
         try {
           const decoded = atob(data);
-          console.log("[TerminalPanel] decoded", decoded.length, "chars, writing to xterm");
           term.write(decoded);
         } catch {
           // Not valid base64 (shouldn't happen) — write raw as fallback.
@@ -134,8 +141,9 @@ export function TerminalPanel({ session }: TerminalPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id]);
 
+  const themeDef = resolvedTheme;
   return (
-    <div className="relative h-full w-full bg-[#12141b]">
+    <div className="relative h-full w-full" style={{ background: themeDef.theme.background }}>
       <div ref={containerRef} className="h-full w-full p-2" />
       {session.status === "closed" && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/40">
@@ -144,7 +152,7 @@ export function TerminalPanel({ session }: TerminalPanelProps) {
             onClick={() => removeSession(session.id)}
             className="pointer-events-auto inline-flex items-center gap-1.5 rounded-[var(--radius)] border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
           >
-            <XCircle className="h-3.5 w-3.5" /> Session closed — dismiss
+            <XCircle className="h-3.5 w-3.5" /> {t("terminal.sessionClosed")}
           </button>
         </div>
       )}

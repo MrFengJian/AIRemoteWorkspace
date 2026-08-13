@@ -7,25 +7,24 @@ import {
   Settings,
   type LucideIcon,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
 import { useUIStore, type AppView } from "@/stores/ui.store";
 
 interface NavItem {
   view: AppView;
-  label: string;
+  labelKey: string;
   icon: LucideIcon;
-  /** Phase when this view becomes functional (used for the badge tooltip). */
-  phase?: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { view: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { view: "hosts", label: "Hosts", icon: Server, phase: "Phase 2" },
-  { view: "terminal", label: "Terminal", icon: TerminalSquare, phase: "Phase 2" },
-  { view: "sftp", label: "Files", icon: FolderTree, phase: "Phase 3" },
-  { view: "agent", label: "Agent", icon: Bot, phase: "Phase 4" },
-  { view: "settings", label: "Settings", icon: Settings },
+  { view: "dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
+  { view: "hosts", labelKey: "nav.hosts", icon: Server },
+  { view: "terminal", labelKey: "nav.terminal", icon: TerminalSquare },
+  { view: "sftp", labelKey: "nav.files", icon: FolderTree },
+  { view: "agent", labelKey: "nav.agent", icon: Bot },
+  { view: "settings", labelKey: "nav.settings", icon: Settings },
 ];
 
 /**
@@ -35,20 +34,22 @@ const NAV_ITEMS: NavItem[] = [
 export function Sidebar() {
   const activeView = useUIStore((s) => s.activeView);
   const setView = useUIStore((s) => s.setView);
+  const { t } = useTranslation();
 
   return (
     <nav
       aria-label="Primary"
       className="flex h-full w-14 flex-col items-center gap-1 border-r border-border bg-card py-3"
     >
-      {NAV_ITEMS.map(({ view, label, icon: Icon, phase }) => {
+      {NAV_ITEMS.map(({ view, labelKey, icon: Icon }) => {
         const active = activeView === view;
+        const label = t(labelKey);
         return (
           <button
             key={view}
             type="button"
             onClick={() => setView(view)}
-            title={phase ? `${label} (${phase})` : label}
+            title={label}
             aria-label={label}
             aria-current={active ? "page" : undefined}
             className={cn(
@@ -58,9 +59,6 @@ export function Sidebar() {
             )}
           >
             <Icon className="h-5 w-5" />
-            {phase && (
-              <span className="pointer-events-none absolute left-12 hidden whitespace-nowrap rounded-[var(--radius)] border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md group-hover:block" />
-            )}
           </button>
         );
       })}

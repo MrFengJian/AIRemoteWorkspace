@@ -43,3 +43,13 @@ export const AUTH_TYPE_LABELS: Record<string, string> = {
   key: "Private key file",
   agent: "ssh-agent",
 };
+
+/** Default host groups (custom groups are allowed by typing any value). */
+export const HOST_GROUPS = ["", "test", "stage", "production"] as const;
+
+export const GROUP_LABELS: Record<string, string> = {
+  "": "None",
+  test: "Test",
+  stage: "Stage",
+  production: "Production",
+};

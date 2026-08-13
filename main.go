@@ -11,6 +11,7 @@ import (
 
 	"github.com/ai-remote/workspace/internal/application"
 	"github.com/ai-remote/workspace/internal/domain"
+	"github.com/ai-remote/workspace/internal/infrastructure/agent"
 	"github.com/ai-remote/workspace/internal/infrastructure/secret"
 	"github.com/ai-remote/workspace/internal/infrastructure/sftp"
 	"github.com/ai-remote/workspace/internal/infrastructure/sqlite"
@@ -77,6 +78,12 @@ func main() {
 	configSvc := application.NewConfigService(configRepo)
 	hostSvc := application.NewHostService(hostRepo, connManager, hostKeyRepo, secretSvc)
 	sftpSvc := application.NewSftpService(sftp.NewAppClient(sftpMgr), hostRepo, secretSvc)
+	llmSvc := application.NewLLMService(configRepo, secretSvc)
+
+	// Agent: permission gate (emitter wired after AgentService is created),
+	// tool runtime (eino ReAct agent per session).
+	permGate := application.NewPermissionGate(nil)
+	agentRuntime := agent.NewRuntime(llmSvc, connManager, sftpMgr, permGate, &secretResolver{secretSvc})
 
 	// Wails-facing services (interface adapter layer).
 	systemService := interfaces.NewSystemService(appName, appVersion)
@@ -84,6 +91,10 @@ func main() {
 	hostService := interfaces.NewHostService(hostSvc)
 	terminalService := interfaces.NewTerminalService(hostSvc, connManager)
 	sftpService := interfaces.NewSftpService(sftpSvc)
+	agentService := interfaces.NewAgentService(llmSvc, agentRuntime, permGate)
+
+	// Wire the approval emitter now that AgentService exists.
+	permGate.SetEmitter(agentService)
 
 	app := wailsapp.New(wailsapp.Options{
 		Name:        appName,
@@ -94,6 +105,7 @@ func main() {
 			wailsapp.NewService(hostService),
 			wailsapp.NewService(terminalService),
 			wailsapp.NewService(sftpService),
+			wailsapp.NewService(agentService),
 		},
 		Assets: wailsapp.AssetOptions{
 			Handler: wailsapp.AssetFileServerFS(assets),
@@ -137,4 +149,12 @@ func main() {
 func initStorage() (*sqlite.Store, error) {
 	dbPath := filepath.Join(xdg.DataHome, "ai-remote-workspace", "workspace.db")
 	return sqlite.Open(dbPath)
+}
+
+// secretResolver adapts application.SecretService to the agent.SecretsForResolver
+// interface (translating the string kind to SecretKind).
+type secretResolver struct{ inner *application.SecretService }
+
+func (r *secretResolver) GetHostSecret(hostID string, kind string) ([]byte, error) {
+	return r.inner.GetHostSecret(hostID, application.SecretKind(kind))
 }

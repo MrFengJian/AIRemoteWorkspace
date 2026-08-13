@@ -13,7 +13,7 @@ Phase 2  SSH Workspace          ★ MVP 核心 ✅ 已完成
    ↓
 Phase 3  文件管理 (SFTP)        ★ MVP 核心 ✅ 已完成
    ↓
-Phase 4  AI Agent               ★ MVP 核心
+Phase 4  AI Agent               ★ MVP 核心 ✅ 已完成
    ↓
 Phase 5  安全增强               ✅ 已完成（SecretStore）
    ↓
@@ -67,14 +67,18 @@ Phase 7  Docker / Kubernetes
 
 **状态**：已完成。基础文件操作；凭据复用 Phase 5 的 OS vault 自动解析。
 
-## Phase 4 — AI Agent（MVP 核心）
+## Phase 4 — AI Agent（MVP 核心）✅
 
 引入 LLM 驱动的智能运维。
 
-- LLM Provider 接入
-- Agent Runtime
-- Tool Registry
-- `ssh_exec` / `local_exec` Tool
+- LLM Provider（CloudWeGo eino + eino-ext openai，OpenAI 兼容 API）
+- Agent Runtime（eino ReAct Agent，自动工具循环，流式输出）
+- Tool Registry（7 个工具：local_exec / local_read_file / ssh_exec / ssh_read_file / ssh_write_file / upload / download）
+- Permission 系统（READ 自动 / WRITE+DANGEROUS 同步等待用户批准）
+- Agent 关联终端会话（每个会话独立 Agent，操作该会话连接的 Host）
+- API Key 存 OS 密码库（复用 Phase 5 SecretStore）
+
+**状态**：已完成。27MB 单 Binary。需要配置 LLM API Key 后使用。
 
 ## Phase 5 — 安全增强（SecretStore）✅
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Plug, Save, Trash2, KeyRound } from "lucide-react";
+import { Loader2, Plug, Save, Trash2, KeyRound, FolderKanban } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import {
   Dialog,
@@ -18,6 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   AUTH_TYPES,
   AUTH_TYPE_LABELS,
+  HOST_GROUPS,
   hostsApi,
   type AuthType,
   type CredentialsDTO,
@@ -33,6 +35,7 @@ import {
 } from "@/features/hosts/hooks";
 import { useHostsUIStore } from "@/features/hosts/store";
 import { useUIStore } from "@/stores/ui.store";
+import { TERMINAL_THEMES } from "@/features/terminal/themes";
 
 const EMPTY_INPUT: HostInputDTO = {
   name: "",
@@ -41,6 +44,9 @@ const EMPTY_INPUT: HostInputDTO = {
   username: "",
   authType: "password",
   keyPath: "",
+  terminalTheme: "",
+  group: "",
+  tags: [],
 };
 
 const EMPTY_CREDS: CredentialsDTO = { password: "", keyPath: "", keyPassphrase: "", useAgent: false };
@@ -55,6 +61,7 @@ const EMPTY_CREDS: CredentialsDTO = { password: "", keyPath: "", keyPassphrase: 
  * checkbox pre-checks; the actual value is read from the vault at connect time.
  */
 export function HostFormDialog() {
+  const { t } = useTranslation();
   const editing = useHostsUIStore((s) => s.editing);
   const closeEditor = useHostsUIStore((s) => s.closeEditor);
   const openEditor = useHostsUIStore((s) => s.openEditor);
@@ -90,6 +97,9 @@ export function HostFormDialog() {
         username: existing.username,
         authType: (existing.authType || "password") as AuthType,
         keyPath: "",
+        terminalTheme: existing.terminalTheme || "",
+        group: existing.group || "",
+        tags: existing.tags ?? [],
       });
       // Check if a remembered secret already exists for this host.
       hostsApi
@@ -155,7 +165,7 @@ export function HostFormDialog() {
 
   const handleDelete = async () => {
     if (!existing) return;
-    if (!confirm(`Delete host "${existing.name}"? This also clears any remembered password.`)) return;
+    if (!confirm(t("hosts.deleteConfirm", { name: existing.name }))) return;
     await deleteHost.mutateAsync(existing.id);
     closeEditor();
   };
@@ -167,7 +177,7 @@ export function HostFormDialog() {
         hostId,
         creds: buildCreds(),
       });
-      setTestResult(res.ok ? "✓ Connected successfully" : `✗ ${res.msg}`);
+      setTestResult(res.ok ? t("hostForm.testConnected") : `✗ ${res.msg}`);
     } catch (e) {
       setTestResult(`✗ ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -198,7 +208,11 @@ export function HostFormDialog() {
       // ResolveCredentials on the backend fills in remembered secrets when the
       // frontend sends blanks, so passing an empty password still connects.
       await openTerminal.mutateAsync({
-        host: { id: existing.id, name: existing.name },
+        host: {
+          id: existing.id,
+          name: existing.name,
+          terminalTheme: input.terminalTheme,
+        },
         creds: buildCreds(),
       });
       if (remember) await persistRemembered(existing.id);
@@ -229,27 +243,27 @@ export function HostFormDialog() {
         if (!o) closeEditor();
       }}
     >
-      <DialogContent>
+      <DialogContent className="max-w-4xl">
         <DialogHeader>
-          <DialogTitle>{existing ? "Edit Host" : "Add Host"}</DialogTitle>
-          <DialogDescription>
-            Configure a remote machine. Credentials are used only for this
-            session unless you tick “Remember” — then they’re stored in the OS
-            credential vault (Windows Credential Manager / macOS Keychain /
-            Linux Secret Service), never in the database.
-          </DialogDescription>
+          <DialogTitle>{existing ? t("hostForm.editTitle") : t("hostForm.addTitle")}</DialogTitle>
+          <DialogDescription>{t("hostForm.description")}</DialogDescription>
         </DialogHeader>
 
         <form
-          className="grid gap-4"
+          className="grid grid-cols-1 gap-4 md:grid-cols-3"
           onSubmit={(e) => {
             e.preventDefault();
             handleSave();
           }}
         >
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2 grid gap-1.5">
-              <Label htmlFor="name">Name</Label>
+          {/* ── Column 1: Connection ─────────────────────────────── */}
+          <div className="flex flex-col gap-3 rounded-[var(--radius)] border border-border bg-background/30 p-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <Plug className="h-3.5 w-3.5" /> {t("hostForm.connection")}
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="name">{t("hostForm.name")}</Label>
               <Input
                 id="name"
                 value={input.name}
@@ -260,7 +274,7 @@ export function HostFormDialog() {
             </div>
 
             <div className="grid gap-1.5">
-              <Label htmlFor="host">Host</Label>
+              <Label htmlFor="host">{t("hostForm.host")}</Label>
               <Input
                 id="host"
                 value={input.host}
@@ -269,30 +283,33 @@ export function HostFormDialog() {
                 required
               />
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="port">Port</Label>
-              <Input
-                id="port"
-                type="number"
-                min={1}
-                max={65535}
-                value={input.port}
-                onChange={(e) => update({ port: Number(e.target.value) || 22 })}
-              />
+
+            <div className="grid grid-cols-[1fr_5rem] gap-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="username">{t("hostForm.username")}</Label>
+                <Input
+                  id="username"
+                  value={input.username}
+                  onChange={(e) => update({ username: e.target.value })}
+                  placeholder="root"
+                  required
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="port">{t("hostForm.port")}</Label>
+                <Input
+                  id="port"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={input.port}
+                  onChange={(e) => update({ port: Number(e.target.value) || 22 })}
+                />
+              </div>
             </div>
 
             <div className="grid gap-1.5">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                value={input.username}
-                onChange={(e) => update({ username: e.target.value })}
-                placeholder="root"
-                required
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="authType">Authentication</Label>
+              <Label htmlFor="authType">{t("hostForm.authentication")}</Label>
               <Select
                 id="authType"
                 value={input.authType}
@@ -307,8 +324,8 @@ export function HostFormDialog() {
             </div>
 
             {input.authType === "key" && (
-              <div className="col-span-2 grid gap-1.5">
-                <Label htmlFor="keyPath">Private key path (saved)</Label>
+              <div className="grid gap-1.5">
+                <Label htmlFor="keyPath">{t("hostForm.keyPath")}</Label>
                 <Input
                   id="keyPath"
                   value={input.keyPath}
@@ -319,14 +336,139 @@ export function HostFormDialog() {
             )}
           </div>
 
-          {/* Credentials — session only, optionally persisted to OS vault. */}
-          <fieldset className="grid gap-3 rounded-[var(--radius)] border border-border bg-background/50 p-3">
-            <legend className="px-1.5 text-xs text-muted-foreground">
-              Credentials (this session only)
-            </legend>
+          {/* ── Column 2: Organisation & appearance ──────────────── */}
+          <div className="flex flex-col gap-3 rounded-[var(--radius)] border border-border bg-background/30 p-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <FolderKanban className="h-3.5 w-3.5" /> {t("hostForm.organisation")}
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="group">{t("hostForm.group")}</Label>
+              <Select
+                id="group"
+                value={HOST_GROUPS.includes(input.group as (typeof HOST_GROUPS)[number]) ? input.group : "custom"}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  // "custom" is a placeholder option — clear the group so the
+                  // custom input below takes over.
+                  update({ group: v === "custom" ? "" : v });
+                }}
+              >
+                {HOST_GROUPS.map((g) => (
+                  <option key={g} value={g}>
+                    {g === "" ? t("hosts.group.none") : g}
+                  </option>
+                ))}
+                <option value="custom">{t("hostForm.customGroup")}</option>
+              </Select>
+            </div>
+
+            {/* Custom group input — typing here sets a custom group name */}
+            <div className="grid gap-1.5">
+              <Label htmlFor="customGroup">{t("hostForm.customGroup")}</Label>
+              <Input
+                id="customGroup"
+                value={HOST_GROUPS.includes(input.group as (typeof HOST_GROUPS)[number]) ? "" : input.group}
+                onChange={(e) => update({ group: e.target.value.trim() })}
+                placeholder="e.g. dev-cluster"
+              />
+            </div>
+
+            {/* Per-host terminal colour scheme */}
+            <div className="grid gap-1.5">
+              <Label htmlFor="termTheme">{t("hostForm.terminalScheme")}</Label>
+              <div className="flex items-center gap-2">
+                <Select
+                  id="termTheme"
+                  value={input.terminalTheme || ""}
+                  onChange={(e) => update({ terminalTheme: e.target.value })}
+                  className="min-w-0 flex-1"
+                >
+                  <option value="">{t("hostForm.schemeDefault")}</option>
+                  {TERMINAL_THEMES.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                    </option>
+                  ))}
+                </Select>
+                {input.terminalTheme && (
+                  <div
+                    className="flex h-9 w-16 shrink-0 items-center justify-center gap-1 rounded-[var(--radius)] border border-border font-mono text-xs"
+                    style={{
+                      background:
+                        TERMINAL_THEMES.find((t) => t.id === input.terminalTheme)?.theme
+                          .background ?? "transparent",
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: TERMINAL_THEMES.find((t) => t.id === input.terminalTheme)?.theme.red,
+                      }}
+                    >
+                      ●
+                    </span>
+                    <span
+                      style={{
+                        color: TERMINAL_THEMES.find((t) => t.id === input.terminalTheme)?.theme.green,
+                      }}
+                    >
+                      ●
+                    </span>
+                    <span
+                      style={{
+                        color: TERMINAL_THEMES.find((t) => t.id === input.terminalTheme)?.theme.blue,
+                      }}
+                    >
+                      ●
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Tags */}
+            <div className="grid gap-1.5">
+              <Label>{t("hostForm.tags")}</Label>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {(input.tags ?? []).map((tag, i) => (
+                  <span
+                    key={`${tag}-${i}`}
+                    className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-xs"
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        update({ tags: (input.tags ?? []).filter((_, j) => j !== i) })
+                      }
+                      className="text-muted-foreground hover:text-foreground"
+                      aria-label={`Remove tag ${tag}`}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <TagInput
+                onAdd={(tag) => {
+                  const current = input.tags ?? [];
+                  if (tag && !current.includes(tag)) {
+                    update({ tags: [...current, tag] });
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          {/* ── Column 3: Credentials ────────────────────────────── */}
+          <div className="flex flex-col gap-3 rounded-[var(--radius)] border border-border bg-background/30 p-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <KeyRound className="h-3.5 w-3.5" /> {t("hostForm.credentials")}
+            </div>
+
             {input.authType === "password" && (
               <div className="grid gap-1.5">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">{t("hostForm.password")}</Label>
                 <Input
                   id="password"
                   type="password"
@@ -339,7 +481,7 @@ export function HostFormDialog() {
             {input.authType === "key" && (
               <>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="credsKeyPath">Key file (override)</Label>
+                  <Label htmlFor="credsKeyPath">{t("hostForm.keyOverride")}</Label>
                   <Input
                     id="credsKeyPath"
                     value={creds.keyPath}
@@ -348,7 +490,7 @@ export function HostFormDialog() {
                   />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="passphrase">Passphrase (if encrypted)</Label>
+                  <Label htmlFor="passphrase">{t("hostForm.passphrase")}</Label>
                   <Input
                     id="passphrase"
                     type="password"
@@ -361,7 +503,7 @@ export function HostFormDialog() {
             )}
             {input.authType === "agent" && (
               <p className="text-xs text-muted-foreground">
-                Uses ssh-agent via SSH_AUTH_SOCK. No credential entry needed.
+                {t("hostForm.agentHint")}
               </p>
             )}
 
@@ -374,22 +516,22 @@ export function HostFormDialog() {
                 />
                 <span className="flex items-center gap-1.5">
                   <KeyRound className="h-3.5 w-3.5 text-muted-foreground" />
-                  {input.authType === "password" ? "Remember password" : "Remember passphrase"}
+                  {input.authType === "password" ? t("hostForm.rememberPassword") : t("hostForm.rememberPassphrase")}
                   {hasRemembered && (
-                    <Badge variant="success" className="ml-1 text-[10px]">saved</Badge>
+                    <Badge variant="success" className="ml-1 text-[10px]">{t("hostForm.saved")}</Badge>
                   )}
                 </span>
               </label>
             )}
-          </fieldset>
 
-          {testResult && (
-            <div className="flex items-center gap-2">
-              <Badge variant={testResult.startsWith("✓") ? "success" : "destructive"}>
-                {testResult}
-              </Badge>
-            </div>
-          )}
+            {testResult && (
+              <div className="flex items-center gap-2">
+                <Badge variant={testResult.startsWith("✓") ? "success" : "destructive"}>
+                  {testResult}
+                </Badge>
+              </div>
+            )}
+          </div>
         </form>
 
         <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -403,7 +545,7 @@ export function HostFormDialog() {
                 disabled={busy}
                 className="text-destructive hover:text-destructive"
               >
-                <Trash2 className="h-4 w-4" /> Delete
+                <Trash2 className="h-4 w-4" /> {t("hostForm.deleteHost")}
               </Button>
             )}
           </div>
@@ -419,7 +561,7 @@ export function HostFormDialog() {
               ) : (
                 <Plug className="h-4 w-4" />
               )}
-              Test
+              {t("hostForm.test")}
             </Button>
             {existing && (
               <Button
@@ -433,7 +575,7 @@ export function HostFormDialog() {
                 ) : (
                   <Plug className="h-4 w-4" />
                 )}
-                Connect & Open Terminal
+                {t("hostForm.connectOpen")}
               </Button>
             )}
             <Button type="button" onClick={handleSave} disabled={busy}>
@@ -442,11 +584,42 @@ export function HostFormDialog() {
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              {existing ? "Save" : "Create"}
+              {existing ? t("common.save") : t("common.create")}
             </Button>
           </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** TagInput — type a tag, press Enter or comma to add it. */
+function TagInput({ onAdd }: { onAdd: (tag: string) => void }) {
+  const { t } = useTranslation();
+  const [val, setVal] = useState("");
+
+  const commit = () => {
+    const tag = val.trim().replace(/,+$/, "");
+    if (tag) onAdd(tag);
+    setVal("");
+  };
+
+  return (
+    <Input
+      value={val}
+      onChange={(e) => setVal(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === ",") {
+          e.preventDefault();
+          commit();
+        }
+        if (e.key === "Backspace" && val === "") {
+          // handled by the chips' remove buttons; no-op here
+        }
+      }}
+      onBlur={commit}
+      placeholder={t("hostForm.tagPlaceholder")}
+      className="h-8 text-xs"
+    />
   );
 }
