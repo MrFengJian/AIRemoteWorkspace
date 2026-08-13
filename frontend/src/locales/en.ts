@@ -78,6 +78,7 @@ export const en = {
       none: "None",
     },
     deleteConfirm: 'Delete host "{{name}}"? This also clears any remembered password.',
+    deleteTitle: "Delete host",
   },
 
   // ── Host form ───────────────────────────────────────────────
@@ -112,6 +113,7 @@ export const en = {
     testConnected: "✓ Connected successfully",
     connectOpen: "Connect & Open Terminal",
     deleteHost: "Delete",
+    osAuto: "auto-detected",
   },
 
   // ── Terminal ────────────────────────────────────────────────
@@ -121,6 +123,14 @@ export const en = {
     goToHosts: "Go to Hosts",
     sessionClosed: "Session closed — dismiss",
     sessionExited: "[session exited]",
+    duplicateTab: "Double-click to duplicate this terminal",
+    reconnect: "Reconnect",
+    duplicate: "Duplicate session",
+    editHost: "Edit host",
+    close: "Close session",
+    closeLeft: "Close left sessions",
+    closeRight: "Close right sessions",
+    closeAll: "Close all sessions",
   },
 
   // ── SFTP ────────────────────────────────────────────────────
@@ -136,7 +146,9 @@ export const en = {
     empty: "Empty directory",
     items: "item(s)",
     deleteConfirm: 'Delete "{{name}}"?',
+    deleteTitle: "Delete file",
     newFolderPrompt: "New folder name:",
+    newFolderTitle: "New folder",
   },
 
   // ── Agent ───────────────────────────────────────────────────

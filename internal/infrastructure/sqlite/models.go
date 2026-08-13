@@ -26,6 +26,7 @@ type hostModel struct {
 	TerminalTheme string `gorm:"not null;default:'';size:50"`
 	Group         string `gorm:"not null;default:'';size:50;index"`
 	Tags          string `gorm:"not null;default:'[]';type:text"` // JSON array
+	OS            string `gorm:"not null;default:'';size:50"`     // detected distro id (read-only)
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

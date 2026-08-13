@@ -118,6 +118,23 @@ func (s *HostService) Delete(id string) error {
 	return s.repo.Delete(id)
 }
 
+// EnsureOS detects the OS of the connected session and persists it on the host
+// if not already recorded. It is read-only from the user's perspective — the
+// OS field is never in the edit inputs. Failures are silent: a detection
+// problem must never break an otherwise successful connection.
+func (s *HostService) EnsureOS(hostID, sessionID string) {
+	host, err := s.repo.Get(hostID)
+	if err != nil || host.OS != "" {
+		return // already known, or host gone
+	}
+	osID, err := s.connect.DetectOS(sessionID)
+	if err != nil || osID == "" {
+		return // silent failure
+	}
+	host.OS = osID
+	_ = s.repo.Save(host) // best-effort persist
+}
+
 // ResolveCredentials returns credentials suitable for a connection attempt.
 // If the caller supplied a full secret (password/passphrase), it is used as-is.
 // Otherwise the remembered secret is loaded from the OS vault when available.

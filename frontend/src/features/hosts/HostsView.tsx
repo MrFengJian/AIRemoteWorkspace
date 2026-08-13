@@ -17,9 +17,11 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useHosts, useDeleteHost, useOpenTerminal } from "@/features/hosts/hooks";
 import { type HostDTO } from "@/features/hosts/api";
+import { osInfo } from "@/features/hosts/osIcons";
 import { useHostsUIStore } from "@/features/hosts/store";
 import { useUIStore } from "@/stores/ui.store";
 import { HostFormDialog } from "@/features/hosts/HostFormDialog";
+import { useConfirm } from "@/lib/useConfirm";
 
 /**
  * Host management view. Lists saved hosts grouped by their group
@@ -35,6 +37,7 @@ export function HostsView() {
   const setView = useUIStore((s) => s.setView);
   const [query, setQuery] = useState("");
   const { t } = useTranslation();
+  const { askConfirm } = useConfirm();
 
   // Search: name, host IP, group, or tags.
   const filtered = useMemo(() => {
@@ -90,7 +93,13 @@ export function HostsView() {
   };
 
   const handleDelete = async (host: HostDTO) => {
-    if (!confirm(t("hosts.deleteConfirm", { name: host.name }))) return;
+    const ok = await askConfirm({
+      title: t("hosts.deleteTitle"),
+      message: t("hosts.deleteConfirm", { name: host.name }),
+      danger: true,
+      confirmLabel: t("common.delete"),
+    });
+    if (!ok) return;
     await deleteHost.mutateAsync(host.id);
   };
 
@@ -181,7 +190,17 @@ function HostRow({
   return (
     <li className="group flex items-center gap-3 rounded-[var(--radius)] border border-border bg-card p-3 transition-colors hover:border-primary/40 hover:bg-accent/40">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius)] bg-secondary text-secondary-foreground">
-        <Server className="h-4 w-4" />
+        {osInfo(host.os) ? (
+          // Distro icon once detected — makes hosts visually distinct.
+          <img
+            src={osInfo(host.os)!.icon}
+            alt={osInfo(host.os)!.label}
+            title={osInfo(host.os)!.label}
+            className="h-4 w-4 invert"
+          />
+        ) : (
+          <Server className="h-4 w-4" />
+        )}
       </span>
 
       {/* Main info — double-click to connect (single click is easily
@@ -195,6 +214,7 @@ function HostRow({
           <span className="truncate font-medium text-foreground">
             {host.name}
           </span>
+          <OsBadge os={host.os} />
           <Badge variant="outline" className="shrink-0">
             {t(`hosts.authType.${host.authType}`)}
           </Badge>
@@ -253,6 +273,22 @@ function HostRow({
         </button>
       </div>
     </li>
+  );
+}
+
+/** OS badge — read-only indicator with the distro icon + name. Hidden when the
+ * host has no detected OS yet. */
+function OsBadge({ os }: { os?: string | null }) {
+  const info = osInfo(os);
+  if (!info) return null;
+  return (
+    <span
+      title={info.label}
+      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+    >
+      <img src={info.icon} alt="" className="h-3 w-3 invert" />
+      {info.label}
+    </span>
   );
 }
 

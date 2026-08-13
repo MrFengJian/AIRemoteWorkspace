@@ -93,6 +93,16 @@ func (t *TerminalService) OpenSession(req OpenSessionRequest) (OpenSessionResult
 	if err != nil {
 		return OpenSessionResult{}, err
 	}
+
+	// Auto-detect the host OS in the background (if not already recorded).
+	// Read-only metadata for display; failures are silent and never break
+	// the terminal session.
+	if host.OS == "" {
+		hostID := req.HostID
+		sid := sessionID
+		go t.hostSvc.EnsureOS(hostID, sid)
+	}
+
 	return OpenSessionResult{SessionID: sessionID}, nil
 }
 

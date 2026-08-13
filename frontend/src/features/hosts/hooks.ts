@@ -72,10 +72,15 @@ export function useOpenTerminal() {
         creds,
         size: { cols: 80, rows: 24 },
       });
-      return { sessionId: res.sessionId, hostName: host.name, terminalTheme: host.terminalTheme ?? "" };
+      return {
+        sessionId: res.sessionId,
+        hostID: host.id,
+        hostName: host.name,
+        terminalTheme: host.terminalTheme ?? "",
+      };
     },
-    onSuccess: ({ sessionId, hostName, terminalTheme }) => {
-      addSession(sessionId, hostName, terminalTheme);
+    onSuccess: ({ sessionId, hostID, hostName, terminalTheme }) => {
+      addSession(sessionId, hostID, hostName, terminalTheme);
     },
   });
 }

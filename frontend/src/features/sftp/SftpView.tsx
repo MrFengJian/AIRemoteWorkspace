@@ -22,6 +22,7 @@ import { sftpApi, type FileEntryDTO } from "@/features/sftp/api";
 import { useSftpStore } from "@/features/sftp/store";
 import { useHosts } from "@/features/hosts/hooks";
 import { cn } from "@/lib/utils";
+import { useConfirm } from "@/lib/useConfirm";
 
 /**
  * SFTP file browser. Lists a remote directory per host, with download/upload/
@@ -42,6 +43,7 @@ export function SftpView() {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { askConfirm, askPrompt } = useConfirm();
 
   // Keep the path input in sync with cwd.
   useEffect(() => setPathInput(cwd), [cwd]);
@@ -117,7 +119,13 @@ export function SftpView() {
 
   const handleDelete = async (entry: FileEntryDTO) => {
     if (!hostId) return;
-    if (!confirm(t("sftp.deleteConfirm", { name: entry.name }))) return;
+    const ok = await askConfirm({
+      title: t("sftp.deleteTitle"),
+      message: t("sftp.deleteConfirm", { name: entry.name }),
+      danger: true,
+      confirmLabel: t("common.delete"),
+    });
+    if (!ok) return;
     const fullPath = cwd.replace(/\/$/, "") + "/" + entry.name;
     try {
       await sftpApi.deleteFile(hostId, fullPath);
@@ -150,7 +158,11 @@ export function SftpView() {
 
   const handleMkdir = async () => {
     if (!hostId) return;
-    const name = prompt(t("sftp.newFolderPrompt"));
+    const name = await askPrompt({
+      title: t("sftp.newFolderTitle"),
+      placeholder: t("sftp.newFolderPrompt"),
+      confirmLabel: t("sftp.newFolder"),
+    });
     if (!name) return;
     const fullPath = cwd.replace(/\/$/, "") + "/" + name;
     try {

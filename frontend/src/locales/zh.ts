@@ -77,6 +77,7 @@ export const zh = {
       none: "无",
     },
     deleteConfirm: '删除主机 "{{name}}"？同时会清除已记住的密码。',
+    deleteTitle: "删除主机",
   },
 
   // ── 主机表单 ────────────────────────────────────────────────
@@ -111,6 +112,7 @@ export const zh = {
     testConnected: "✓ 连接成功",
     connectOpen: "连接并打开终端",
     deleteHost: "删除",
+    osAuto: "自动检测",
   },
 
   // ── 终端 ────────────────────────────────────────────────────
@@ -120,6 +122,14 @@ export const zh = {
     goToHosts: "前往主机",
     sessionClosed: "会话已关闭 — 关闭",
     sessionExited: "[会话已退出]",
+    duplicateTab: "双击复制此终端",
+    reconnect: "重新连接",
+    duplicate: "复制会话",
+    editHost: "编辑主机",
+    close: "关闭会话",
+    closeLeft: "关闭左侧会话",
+    closeRight: "关闭右侧会话",
+    closeAll: "关闭所有会话",
   },
 
   // ── 文件 ────────────────────────────────────────────────────
@@ -135,7 +145,9 @@ export const zh = {
     empty: "空目录",
     items: "个项目",
     deleteConfirm: '删除 "{{name}}"？',
+    deleteTitle: "删除文件",
     newFolderPrompt: "新文件夹名称：",
+    newFolderTitle: "新建文件夹",
   },
 
   // ── 助手 ────────────────────────────────────────────────────

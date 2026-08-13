@@ -63,6 +63,9 @@ type ConnectionManager interface {
 	Resize(sessionID string, cols, rows int) error
 	// Close ends a session and frees its connection.
 	Close(sessionID string) error
+	// DetectOS inspects the session's host and returns the distro id
+	// (e.g. "ubuntu"). Returns "" when detection failed.
+	DetectOS(sessionID string) (string, error)
 	// CloseAll tears down every active session (used on app shutdown).
 	CloseAll() error
 }

@@ -36,6 +36,8 @@ import {
 import { useHostsUIStore } from "@/features/hosts/store";
 import { useUIStore } from "@/stores/ui.store";
 import { TERMINAL_THEMES } from "@/features/terminal/themes";
+import { osInfo } from "@/features/hosts/osIcons";
+import { useConfirm } from "@/lib/useConfirm";
 
 const EMPTY_INPUT: HostInputDTO = {
   name: "",
@@ -66,6 +68,7 @@ export function HostFormDialog() {
   const closeEditor = useHostsUIStore((s) => s.closeEditor);
   const openEditor = useHostsUIStore((s) => s.openEditor);
   const setView = useUIStore((s) => s.setView);
+  const { askConfirm } = useConfirm();
 
   const createHost = useCreateHost();
   const updateHost = useUpdateHost();
@@ -165,7 +168,13 @@ export function HostFormDialog() {
 
   const handleDelete = async () => {
     if (!existing) return;
-    if (!confirm(t("hosts.deleteConfirm", { name: existing.name }))) return;
+    const ok = await askConfirm({
+      title: t("hosts.deleteTitle"),
+      message: t("hosts.deleteConfirm", { name: existing.name }),
+      danger: true,
+      confirmLabel: t("common.delete"),
+    });
+    if (!ok) return;
     await deleteHost.mutateAsync(existing.id);
     closeEditor();
   };
@@ -261,6 +270,21 @@ export function HostFormDialog() {
             <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <Plug className="h-3.5 w-3.5" /> {t("hostForm.connection")}
             </div>
+
+            {/* Read-only OS indicator (auto-detected at connect time). */}
+            {existing && osInfo(existing.os) && (
+              <div className="flex items-center gap-2 rounded-[var(--radius)] bg-muted/30 px-2.5 py-1.5 text-xs text-muted-foreground">
+                <img
+                  src={osInfo(existing.os)!.icon}
+                  alt=""
+                  className="h-3.5 w-3.5 invert"
+                />
+                {osInfo(existing.os)!.label}
+                <span className="ml-auto text-[10px] uppercase tracking-wide opacity-60">
+                  {t("hostForm.osAuto")}
+                </span>
+              </div>
+            )}
 
             <div className="grid gap-1.5">
               <Label htmlFor="name">{t("hostForm.name")}</Label>

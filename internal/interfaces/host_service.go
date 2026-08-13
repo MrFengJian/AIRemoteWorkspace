@@ -25,6 +25,7 @@ type HostDTO struct {
 	TerminalTheme      string   `json:"terminalTheme"` // per-host terminal colour scheme id
 	Group              string   `json:"group"`
 	Tags               []string `json:"tags"`
+	OS                 string   `json:"os"` // detected distro id; read-only, never editable
 }
 
 // HostInputDTO is what the frontend sends to create/update a host.
@@ -172,6 +173,7 @@ func toHostDTO(h domain.Host) HostDTO {
 		TerminalTheme: h.TerminalTheme,
 		Group:         h.Group,
 		Tags:          h.Tags,
+		OS:            h.OS,
 	}
 }
 

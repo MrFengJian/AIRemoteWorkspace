@@ -117,4 +117,5 @@ wails3 task build
 - ✅ **Phase 3 — 文件管理（SFTP）**：远程文件浏览器，上传/下载/删除/重命名/新建文件夹
 - ✅ **Phase 4 — AI Agent**：基于 CloudWeGo eino 的 ReAct Agent，7 个工具（ssh_exec/local_exec/文件操作），流式对话，Permission 门禁，关联终端会话
 - ✅ **Phase 5 — 安全增强（SecretStore）**：记住密码存入 OS 密码库（Windows Credential Manager / macOS Keychain / Linux Secret Service），三平台无 CGO
+- ✅ **增强 — OS 自动识别**：连接时自动检测主机操作系统（发行版），列表/编辑弹窗只读展示图标 + 名称（simple-icons SVG，18 个常见发行版）
 - 🚧 文件管理（SFTP）/ AI Agent / MCP 等后续阶段开发中 — 详见 [ROADMAP.md](./docs/ROADMAP.md)

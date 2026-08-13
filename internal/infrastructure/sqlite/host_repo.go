@@ -72,6 +72,7 @@ func (r *HostRepo) Save(h domain.Host) error {
 		TerminalTheme: h.TerminalTheme,
 		Group:         h.Group,
 		Tags:          string(tagsJSON),
+		OS:            h.OS,
 		CreatedAt:     h.CreatedAt,
 		UpdatedAt:     h.UpdatedAt,
 	}).Error
@@ -97,6 +98,7 @@ func hostFromModel(m hostModel) domain.Host {
 		TerminalTheme: m.TerminalTheme,
 		Group:         m.Group,
 		Tags:          tags,
+		OS:            m.OS,
 		CreatedAt:     m.CreatedAt,
 		UpdatedAt:     m.UpdatedAt,
 	}

@@ -44,6 +44,11 @@ export interface HostDTO {
     "terminalTheme": string;
     "group": string;
     "tags": string[] | null;
+
+    /**
+     * detected distro id; read-only, never editable
+     */
+    "os": string;
 }
 
 /**

@@ -24,6 +24,7 @@ type Host struct {
 	TerminalTheme string   // per-host terminal colour scheme id; "" = use default
 	Group         string   // host group: "test" | "stage" | "production" | custom
 	Tags          []string // free-form labels, e.g. ["nginx", "us-east-1"]
+	OS            string   // detected distro id, e.g. "ubuntu"; read-only, set at connect time
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
