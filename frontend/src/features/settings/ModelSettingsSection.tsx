@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
 import { Bot, Loader2, Pencil, PlugZap, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,12 @@ import {
 } from "@/components/ui/card";
 import { useConfirm } from "@/lib/useConfirm";
 import {
+  useModelProviders,
+  useSaveProvider,
+  useDeleteProvider,
+  PROVIDERS_KEY,
+} from "@/features/settings/hooks";
+import {
   providersApi,
   type ModelProviderDTO,
   type TestConnectionResult,
@@ -23,31 +30,26 @@ import { ProviderFormDialog } from "@/features/settings/ProviderFormDialog";
 /**
  * Settings → Models. Lists the configured LLM providers with enable toggles,
  * inline testing, and add/edit/delete via ProviderFormDialog. API keys live in
- * the OS vault and never round-trip to the UI.
+ * the OS vault and never round-trip to the UI. List + mutations run through
+ * TanStack Query (queryKey "model-providers") so the agent panel and this
+ * section stay in sync; failures surface via the global toast.
  */
 export function ModelSettingsSection() {
   const { t } = useTranslation();
   const { askConfirm } = useConfirm();
+  const queryClient = useQueryClient();
 
-  const [providers, setProviders] = useState<ModelProviderDTO[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const { data: providers, isLoading } = useModelProviders();
+  const saveProvider = useSaveProvider();
+  const deleteProvider = useDeleteProvider();
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ModelProviderDTO | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, TestConnectionResult>>({});
-  const [busyId, setBusyId] = useState<string | null>(null);
-
-  const reload = useCallback(() => {
-    providersApi
-      .list()
-      .then((list) => setProviders(list ?? []))
-      .catch(() => setProviders([]))
-      .finally(() => setLoaded(true));
-  }, []);
-
-  useEffect(() => {
-    reload();
-  }, [reload]);
+  const busyId = saveProvider.isPending || deleteProvider.isPending
+    ? (saveProvider.variables ?? deleteProvider.variables ?? null)
+    : null;
 
   const openAdd = () => {
     setEditing(null);
@@ -74,21 +76,16 @@ export function ModelSettingsSection() {
     }
   };
 
-  const handleToggle = async (p: ModelProviderDTO, enabled: boolean) => {
-    setBusyId(p.id);
-    try {
-      await providersApi.save({
-        id: p.id,
-        name: p.name,
-        baseUrl: p.baseUrl,
-        models: p.models ?? [],
-        enabled,
-        apiKey: "", // keep the stored key
-      });
-      reload();
-    } finally {
-      setBusyId(null);
-    }
+  const handleToggle = (p: ModelProviderDTO, enabled: boolean) => {
+    // Failures surface via the global mutation toast.
+    saveProvider.mutate({
+      id: p.id,
+      name: p.name,
+      baseUrl: p.baseUrl,
+      models: p.models ?? [],
+      enabled,
+      apiKey: "", // keep the stored key
+    });
   };
 
   const handleDelete = async (p: ModelProviderDTO) => {
@@ -99,13 +96,8 @@ export function ModelSettingsSection() {
       confirmLabel: t("common.delete"),
     });
     if (!ok) return;
-    setBusyId(p.id);
-    try {
-      await providersApi.remove(p.id);
-      reload();
-    } finally {
-      setBusyId(null);
-    }
+    // Failures surface via the global mutation toast.
+    deleteProvider.mutate(p.id);
   };
 
   return (
@@ -124,11 +116,11 @@ export function ModelSettingsSection() {
           <CardDescription>{t("settings.models.providersDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          {!loaded ? (
+          {isLoading ? (
             <div className="flex items-center justify-center py-8 text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
             </div>
-          ) : providers.length === 0 ? (
+          ) : !providers || providers.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-8 text-center">
               <Bot className="h-8 w-8 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">{t("settings.models.empty")}</p>
@@ -221,7 +213,10 @@ export function ModelSettingsSection() {
         open={dialogOpen}
         provider={editing}
         onClose={() => setDialogOpen(false)}
-        onSaved={reload}
+        onSaved={() => {
+          // The dialog saves via providersApi directly; refresh the shared list.
+          queryClient.invalidateQueries({ queryKey: PROVIDERS_KEY });
+        }}
       />
     </div>
   );

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ai-remote/workspace/internal/application"
 	"github.com/ai-remote/workspace/internal/domain"
 )
 
@@ -55,9 +56,13 @@ func (m *Manager) ListDir(host domain.Host, creds domain.Credentials, dir string
 	return entries, nil
 }
 
+// progressChunkBytes is the granularity at which transfer progress is
+// reported to the callback (per-chunk, not per-write-call).
+const progressChunkBytes = 256 * 1024
+
 // DownloadFile reads a remote file into memory. Returns an error if the file
-// exceeds maxDownloadBytes.
-func (m *Manager) DownloadFile(host domain.Host, creds domain.Credentials, remotePath string) ([]byte, error) {
+// exceeds maxDownloadBytes. Progress is reported every progressChunkBytes.
+func (m *Manager) DownloadFile(host domain.Host, creds domain.Credentials, remotePath string, progress application.SftpProgress) ([]byte, error) {
 	sc, err := m.client(host, creds)
 	if err != nil {
 		return nil, err
@@ -76,15 +81,34 @@ func (m *Manager) DownloadFile(host domain.Host, creds domain.Credentials, remot
 		return nil, fmt.Errorf("open %q: %w", remotePath, err)
 	}
 	defer r.Close()
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return nil, fmt.Errorf("read %q: %w", remotePath, err)
+	total := info.Size()
+	if progress != nil {
+		progress(0, total)
+	}
+	// Chunked read so progress can fire while the transfer runs.
+	var data []byte
+	buf := make([]byte, progressChunkBytes)
+	for {
+		n, rerr := r.Read(buf)
+		if n > 0 {
+			data = append(data, buf[:n]...)
+			if progress != nil {
+				progress(int64(len(data)), total)
+			}
+		}
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return nil, fmt.Errorf("read %q: %w", remotePath, rerr)
+		}
 	}
 	return data, nil
 }
 
-// UploadFile writes data to remotePath, overwriting if it exists.
-func (m *Manager) UploadFile(host domain.Host, creds domain.Credentials, remotePath string, data []byte) error {
+// UploadFile writes data to remotePath, overwriting if it exists. Progress is
+// reported every progressChunkBytes written.
+func (m *Manager) UploadFile(host domain.Host, creds domain.Credentials, remotePath string, data []byte, progress application.SftpProgress) error {
 	sc, err := m.client(host, creds)
 	if err != nil {
 		return err
@@ -95,8 +119,21 @@ func (m *Manager) UploadFile(host domain.Host, creds domain.Credentials, remoteP
 		return fmt.Errorf("create %q: %w", remotePath, err)
 	}
 	defer w.Close()
-	if _, err := w.Write(data); err != nil {
-		return fmt.Errorf("write %q: %w", remotePath, err)
+	total := int64(len(data))
+	if progress != nil {
+		progress(0, total)
+	}
+	for off := 0; off < len(data); off += progressChunkBytes {
+		end := off + progressChunkBytes
+		if end > len(data) {
+			end = len(data)
+		}
+		if _, err := w.Write(data[off:end]); err != nil {
+			return fmt.Errorf("write %q: %w", remotePath, err)
+		}
+		if progress != nil {
+			progress(int64(end), total)
+		}
 	}
 	return nil
 }

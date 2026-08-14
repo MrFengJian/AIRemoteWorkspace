@@ -42,6 +42,16 @@ export interface HostDTO {
      * per-host terminal colour scheme id
      */
     "terminalTheme": string;
+
+    /**
+     * per-host override; "" = follow settings
+     */
+    "terminalFont": string;
+
+    /**
+     * per-host override; 0 = follow settings
+     */
+    "terminalFontSize": number;
     "group": string;
     "tags": string[] | null;
 
@@ -69,6 +79,8 @@ export interface HostInputDTO {
     "authType": string;
     "keyPath"?: string;
     "terminalTheme": string;
+    "terminalFont": string;
+    "terminalFontSize": number;
     "group": string;
     "tags": string[] | null;
 }

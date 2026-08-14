@@ -82,12 +82,20 @@ export function HostsView() {
       // terminal store — do NOT call addSession here or the session appears
       // twice (duplicate tabs).
       await openTerminal.mutateAsync({
-        host: { id: host.id, name: host.name, terminalTheme: host.terminalTheme },
+        host: {
+          id: host.id,
+          name: host.name,
+          terminalTheme: host.terminalTheme,
+          terminalFont: host.terminalFont,
+          terminalFontSize: host.terminalFontSize,
+        },
         creds: {},
       });
       setView("terminal");
     } catch {
-      // open terminal failed (e.g. no credentials) — open editor instead
+      // Open terminal failed (e.g. no remembered credentials). The global
+      // mutation handler shows the reason as a toast — open the editor so the
+      // user can fix credentials right away.
       openEditor(host);
     }
   };
@@ -100,7 +108,8 @@ export function HostsView() {
       confirmLabel: t("common.delete"),
     });
     if (!ok) return;
-    await deleteHost.mutateAsync(host.id);
+    // Failure surfaces via the global mutation toast.
+    deleteHost.mutateAsync(host.id).catch(() => {});
   };
 
   return (
@@ -130,7 +139,7 @@ export function HostsView() {
 
       {isLoading ? (
         <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t("common.loading")}
         </div>
       ) : !hosts || hosts.length === 0 ? (
         <EmptyState onAdd={() => openEditor("new")} />
@@ -208,7 +217,7 @@ function HostRow({
       <div
         className="min-w-0 flex-1 cursor-default select-none text-left"
         onDoubleClick={onConnect}
-        title="Double-click to open terminal"
+        title={t("hosts.doubleClickTitle")}
       >
         <div className="flex items-center gap-2">
           <span className="truncate font-medium text-foreground">
@@ -245,29 +254,29 @@ function HostRow({
         </span>
       </div>
 
-      {/* Row actions — visible on hover */}
-      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+      {/* Row actions — visible on hover and when keyboard-focused within */}
+      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
         <button
           type="button"
           onClick={onConnect}
-          title="Open terminal"
-          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-primary"
+          title={t("hosts.openTerminal")}
+          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <TerminalSquare className="h-4 w-4" />
         </button>
         <button
           type="button"
           onClick={onEdit}
-          title="Edit"
-          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+          title={t("common.edit")}
+          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Pencil className="h-4 w-4" />
         </button>
         <button
           type="button"
           onClick={onDelete}
-          title="Delete"
-          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-destructive"
+          title={t("common.delete")}
+          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Trash2 className="h-4 w-4" />
         </button>

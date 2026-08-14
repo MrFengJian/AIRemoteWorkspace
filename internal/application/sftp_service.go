@@ -6,12 +6,16 @@ import (
 	"github.com/ai-remote/workspace/internal/domain"
 )
 
+// SftpProgress reports transfer progress. transferred/total are in bytes;
+// total is 0 when the size is unknown.
+type SftpProgress func(transferred, total int64)
+
 // SftpClient is the port the SFTP service depends on. Implemented by
 // infrastructure/sftp.Manager; kept as an interface for testability.
 type SftpClient interface {
 	ListDir(host domain.Host, creds domain.Credentials, dir string) ([]SftpEntry, error)
-	DownloadFile(host domain.Host, creds domain.Credentials, remotePath string) ([]byte, error)
-	UploadFile(host domain.Host, creds domain.Credentials, remotePath string, data []byte) error
+	DownloadFile(host domain.Host, creds domain.Credentials, remotePath string, progress SftpProgress) ([]byte, error)
+	UploadFile(host domain.Host, creds domain.Credentials, remotePath string, data []byte, progress SftpProgress) error
 	DeleteFile(host domain.Host, creds domain.Credentials, remotePath string) error
 	RenameFile(host domain.Host, creds domain.Credentials, oldPath, newPath string) error
 	Mkdir(host domain.Host, creds domain.Credentials, remotePath string) error
@@ -70,22 +74,22 @@ func (s *SftpService) ListDir(hostID string, creds domain.Credentials, dir strin
 	return s.client.ListDir(host, c, dir)
 }
 
-// DownloadFile downloads a remote file into memory.
-func (s *SftpService) DownloadFile(hostID string, creds domain.Credentials, remotePath string) ([]byte, error) {
+// DownloadFile downloads a remote file into memory, reporting progress.
+func (s *SftpService) DownloadFile(hostID string, creds domain.Credentials, remotePath string, progress SftpProgress) ([]byte, error) {
 	host, c, err := s.resolve(hostID, creds)
 	if err != nil {
 		return nil, err
 	}
-	return s.client.DownloadFile(host, c, remotePath)
+	return s.client.DownloadFile(host, c, remotePath, progress)
 }
 
-// UploadFile uploads data to a remote path.
-func (s *SftpService) UploadFile(hostID string, creds domain.Credentials, remotePath string, data []byte) error {
+// UploadFile uploads data to a remote path, reporting progress.
+func (s *SftpService) UploadFile(hostID string, creds domain.Credentials, remotePath string, data []byte, progress SftpProgress) error {
 	host, c, err := s.resolve(hostID, creds)
 	if err != nil {
 		return err
 	}
-	return s.client.UploadFile(host, c, remotePath, data)
+	return s.client.UploadFile(host, c, remotePath, data, progress)
 }
 
 // DeleteFile removes a remote file or empty directory.

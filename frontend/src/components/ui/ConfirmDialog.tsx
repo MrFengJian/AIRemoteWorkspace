@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, SquarePen } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import {
   Dialog,
@@ -24,6 +25,7 @@ export function ConfirmDialog() {
   const request = useConfirmStore((s) => s.request);
   const resolve = useConfirmStore((s) => s.resolve);
   const close = useConfirmStore((s) => s.close);
+  const { t } = useTranslation();
 
   const [value, setValue] = useState("");
 
@@ -88,7 +90,7 @@ export function ConfirmDialog() {
             variant="outline"
             onClick={() => finish(false)}
           >
-            {request.cancelLabel ?? "Cancel"}
+            {request.cancelLabel ?? t("common.cancel")}
           </Button>
           <Button
             variant={request.danger ? "destructive" : "default"}
@@ -96,7 +98,7 @@ export function ConfirmDialog() {
             onClick={() => finish(isPrompt ? value.trim() || null : true)}
             disabled={isPrompt && !value.trim()}
           >
-            {request.confirmLabel ?? (isPrompt ? "OK" : "Confirm")}
+            {request.confirmLabel ?? t(isPrompt ? "common.ok" : "common.confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>

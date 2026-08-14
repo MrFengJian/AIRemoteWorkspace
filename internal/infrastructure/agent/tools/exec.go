@@ -60,7 +60,7 @@ func (ss *sessionToolSet) sshReadFile(ctx context.Context, a sshReadFileArgs) (s
 	if err != nil {
 		return "", err
 	}
-	data, err := ss.sftp.DownloadFile(host, creds, a.Path)
+	data, err := ss.sftp.DownloadFile(host, creds, a.Path, nil)
 	if err != nil {
 		return "", fmt.Errorf("sftp read %s: %w", a.Path, err)
 	}
@@ -76,7 +76,7 @@ func (ss *sessionToolSet) sshWriteFile(ctx context.Context, a sshWriteFileArgs) 
 	if err != nil {
 		return "", err
 	}
-	if err := ss.sftp.UploadFile(host, creds, a.Path, []byte(a.Content)); err != nil {
+	if err := ss.sftp.UploadFile(host, creds, a.Path, []byte(a.Content), nil); err != nil {
 		return "", fmt.Errorf("sftp write %s: %w", a.Path, err)
 	}
 	return fmt.Sprintf("wrote %d bytes to %s", len(a.Content), a.Path), nil
@@ -95,7 +95,7 @@ func (ss *sessionToolSet) upload(ctx context.Context, a uploadArgs) (string, err
 	if err != nil {
 		return "", err
 	}
-	if err := ss.sftp.UploadFile(host, creds, a.RemotePath, data); err != nil {
+	if err := ss.sftp.UploadFile(host, creds, a.RemotePath, data, nil); err != nil {
 		return "", fmt.Errorf("upload to %s: %w", a.RemotePath, err)
 	}
 	return fmt.Sprintf("uploaded %s → %s (%d bytes)", a.LocalPath, a.RemotePath, len(data)), nil
@@ -110,7 +110,7 @@ func (ss *sessionToolSet) download(ctx context.Context, a downloadArgs) (string,
 	if err != nil {
 		return "", err
 	}
-	data, err := ss.sftp.DownloadFile(host, creds, a.RemotePath)
+	data, err := ss.sftp.DownloadFile(host, creds, a.RemotePath, nil)
 	if err != nil {
 		return "", fmt.Errorf("download %s: %w", a.RemotePath, err)
 	}

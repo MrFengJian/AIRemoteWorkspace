@@ -4,13 +4,15 @@ package domain
 // Stored in the `settings` table (Phase 1); sensitive fields would route
 // through SecretStore per AGENT.md §9.
 type AppConfig struct {
-	SecurityMode SecurityMode `json:"securityMode"`
-	DefaultShell string       `json:"defaultShell"`
-	Theme        string       `json:"theme"`    // "light" | "dark" | "auto"
-	UIFont       string       `json:"uiFont"`   // interface font family name
-	FontSize     int          `json:"fontSize"` // interface font size in px
-	CJKFont      string       `json:"cjkFont"`  // CJK (Chinese) font family name
-	LLM          LLMConfig    `json:"llm"`      // AI agent provider config (API key in SecretStore)
+	SecurityMode      SecurityMode `json:"securityMode"`
+	DefaultShell      string       `json:"defaultShell"`
+	Theme             string       `json:"theme"`          // "light" | "dark" | "auto"
+	UIFont            string       `json:"uiFont"`         // interface font family name
+	FontSize          int          `json:"fontSize"`       // interface font size in px
+	CJKFont           string       `json:"cjkFont"`        // CJK (Chinese) font family name
+	TerminalFont      string       `json:"terminalFont"`   // terminal font family name; "" = built-in default
+	TerminalFontSize  int          `json:"terminalFontSize"` // terminal font size in px; 0 = default (13)
+	LLM               LLMConfig    `json:"llm"`            // AI agent provider config (API key in SecretStore)
 }
 
 // LLMConfig holds the non-sensitive LLM provider settings. The API Key is
@@ -53,12 +55,14 @@ const (
 // DefaultConfig returns the out-of-the-box config applied on first launch.
 func DefaultConfig() AppConfig {
 	return AppConfig{
-		SecurityMode: SecurityBalanced,
-		DefaultShell: "/bin/bash",
-		Theme:        "dark",
-		UIFont:       "",
-		FontSize:     13,
-		CJKFont:      "",
+		SecurityMode:     SecurityBalanced,
+		DefaultShell:     "/bin/bash",
+		Theme:            "dark",
+		UIFont:           "",
+		FontSize:         13,
+		CJKFont:          "",
+		TerminalFont:     "",
+		TerminalFontSize: 13,
 		LLM: LLMConfig{
 			BaseURL: "https://api.openai.com/v1",
 			Model:   "gpt-4o",

@@ -12,6 +12,9 @@ export interface TerminalSession {
   status: "connecting" | "connected" | "closed" | "error";
   /** Per-host terminal colour scheme id (from the host config). "" = default. */
   terminalTheme: string;
+  /** Per-host terminal font overrides. "" / 0 = follow the global settings. */
+  terminalFont: string;
+  terminalFontSize: number;
   /** All pane backend session IDs in this tab (flat list, no hierarchy).
    *  paneIds[0] === id. Length > 1 means split-screen is active. */
   paneIds: string[];
@@ -27,7 +30,7 @@ interface TerminalState {
   sessions: TerminalSession[];
   activeId: string | null;
 
-  addSession: (id: string, hostID: string, hostName: string, terminalTheme: string) => void;
+  addSession: (id: string, hostID: string, hostName: string, terminalTheme: string, terminalFont: string, terminalFontSize: number) => void;
   setSessionStatus: (id: string, status: TerminalSession["status"]) => void;
   removeSession: (id: string) => void;
   removeSessions: (ids: string[]) => void;
@@ -45,11 +48,11 @@ export const useTerminalStore = create<TerminalState>((set) => ({
   sessions: [],
   activeId: null,
 
-  addSession: (id, hostID, hostName, terminalTheme) =>
+  addSession: (id, hostID, hostName, terminalTheme, terminalFont, terminalFontSize) =>
     set((s) => ({
       sessions: [
         ...s.sessions,
-        { id, hostID, hostName, status: "connecting" as const, terminalTheme, paneIds: [id], splitDirection: null },
+        { id, hostID, hostName, status: "connecting" as const, terminalTheme, terminalFont, terminalFontSize, paneIds: [id], splitDirection: null },
       ],
       activeId: id,
     })),

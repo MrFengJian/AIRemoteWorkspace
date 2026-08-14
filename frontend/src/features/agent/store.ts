@@ -6,6 +6,8 @@ import { create } from "zustand";
  */
 
 export interface ChatMessage {
+  /** Stable identity for list keys — survives streaming appends/reorders. */
+  id: number;
   role: "user" | "assistant" | "tool";
   content: string;
   toolName?: string;
@@ -32,7 +34,7 @@ interface AgentState {
   /** Pending approval requests (only one at a time per session). */
   approvals: PendingApproval[];
 
-  addMessage: (sessionID: string, msg: ChatMessage) => void;
+  addMessage: (sessionID: string, msg: Omit<ChatMessage, "id">) => void;
   appendToLast: (sessionID: string, text: string) => void;
   setStreaming: (sessionID: string, v: boolean) => void;
   /** Attach a tool execution result to its step (matched by call id; an empty
@@ -45,6 +47,9 @@ interface AgentState {
   clearHistory: (sessionID: string) => void;
 }
 
+/** Monotonic message id source — stable React keys across streaming updates. */
+let nextMessageId = 1;
+
 export const useAgentStore = create<AgentState>((set) => ({
   histories: {},
   streaming: {},
@@ -54,7 +59,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((s) => ({
       histories: {
         ...s.histories,
-        [sessionID]: [...(s.histories[sessionID] ?? []), msg],
+        [sessionID]: [...(s.histories[sessionID] ?? []), { ...msg, id: nextMessageId++ }],
       },
     })),
 
@@ -72,7 +77,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       return {
         histories: {
           ...s.histories,
-          [sessionID]: [...hist, { role: "assistant", content: text }],
+          [sessionID]: [...hist, { id: nextMessageId++, role: "assistant", content: text }],
         },
       };
     }),

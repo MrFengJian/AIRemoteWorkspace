@@ -31,6 +31,16 @@ export interface AppConfig {
     "cjkFont": string;
 
     /**
+     * terminal font family name; "" = built-in default
+     */
+    "terminalFont": string;
+
+    /**
+     * terminal font size in px; 0 = default (13)
+     */
+    "terminalFontSize": number;
+
+    /**
      * AI agent provider config (API key in SecretStore)
      */
     "llm": LLMConfig;

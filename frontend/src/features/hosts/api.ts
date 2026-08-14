@@ -34,22 +34,11 @@ export const hostsApi = {
     HostService.GetRememberedCredentials(hostId),
 };
 
-/** Auth type values match domain.AuthType on the backend. */
+/** Auth type values match domain.AuthType on the backend. Labels are
+ *  localised via hosts.authType.* keys. */
 export const AUTH_TYPES = ["password", "key", "agent"] as const;
 export type AuthType = (typeof AUTH_TYPES)[number];
 
-export const AUTH_TYPE_LABELS: Record<string, string> = {
-  password: "Password",
-  key: "Private key file",
-  agent: "ssh-agent",
-};
-
-/** Default host groups (custom groups are allowed by typing any value). */
+/** Default host groups (custom groups are allowed by typing any value).
+ *  Displayed verbatim — only the "none" option is localised. */
 export const HOST_GROUPS = ["", "test", "stage", "production"] as const;
-
-export const GROUP_LABELS: Record<string, string> = {
-  "": "None",
-  test: "Test",
-  stage: "Stage",
-  production: "Production",
-};

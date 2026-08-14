@@ -40,15 +40,17 @@ func (s *HostService) Secrets() *SecretService { return s.secrets }
 // CreateHostInput carries the user-editable fields for a new host.
 // Credentials are supplied separately (at connect time), never stored.
 type CreateHostInput struct {
-	Name          string
-	Host          string
-	Port          int
-	Username      string
-	AuthType      domain.AuthType
-	KeyPath       string // only when AuthType == AuthKey
-	TerminalTheme string // per-host terminal colour scheme; "" = default
-	Group         string // host group (test/stage/production/custom)
-	Tags          []string
+	Name             string
+	Host             string
+	Port             int
+	Username         string
+	AuthType         domain.AuthType
+	KeyPath          string // only when AuthType == AuthKey
+	TerminalTheme    string // per-host terminal colour scheme; "" = default
+	TerminalFont     string // per-host terminal font family; "" = follow global setting
+	TerminalFontSize int    // per-host terminal font size in px; 0 = follow global setting
+	Group            string // host group (test/stage/production/custom)
+	Tags             []string
 }
 
 // Create validates and persists a new host, returning the stored Host with its
@@ -62,15 +64,17 @@ func (s *HostService) Create(in CreateHostInput) (domain.Host, error) {
 		port = 22
 	}
 	h := domain.Host{
-		ID:            newHostID(),
-		Name:          in.Name,
-		Host:          in.Host,
-		Port:          port,
-		Username:      in.Username,
-		AuthType:      in.AuthType,
-		TerminalTheme: in.TerminalTheme,
-		Group:         in.Group,
-		Tags:          in.Tags,
+		ID:               newHostID(),
+		Name:             in.Name,
+		Host:             in.Host,
+		Port:             port,
+		Username:         in.Username,
+		AuthType:         in.AuthType,
+		TerminalTheme:    in.TerminalTheme,
+		TerminalFont:     in.TerminalFont,
+		TerminalFontSize: in.TerminalFontSize,
+		Group:            in.Group,
+		Tags:             in.Tags,
 	}
 	if err := s.repo.Save(h); err != nil {
 		return domain.Host{}, err
@@ -97,6 +101,8 @@ func (s *HostService) Update(id string, in CreateHostInput) (domain.Host, error)
 	existing.Username = in.Username
 	existing.AuthType = in.AuthType
 	existing.TerminalTheme = in.TerminalTheme
+	existing.TerminalFont = in.TerminalFont
+	existing.TerminalFontSize = in.TerminalFontSize
 	existing.Group = in.Group
 	existing.Tags = in.Tags
 	if err := s.repo.Save(existing); err != nil {

@@ -18,7 +18,6 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   AUTH_TYPES,
-  AUTH_TYPE_LABELS,
   HOST_GROUPS,
   hostsApi,
   type AuthType,
@@ -36,6 +35,7 @@ import {
 import { useHostsUIStore } from "@/features/hosts/store";
 import { useUIStore } from "@/stores/ui.store";
 import { TERMINAL_THEMES } from "@/features/terminal/themes";
+import { TERMINAL_FONTS } from "@/features/terminal/fonts";
 import { osInfo } from "@/features/hosts/osIcons";
 import { useConfirm } from "@/lib/useConfirm";
 
@@ -47,6 +47,8 @@ const EMPTY_INPUT: HostInputDTO = {
   authType: "password",
   keyPath: "",
   terminalTheme: "",
+  terminalFont: "",
+  terminalFontSize: 0,
   group: "",
   tags: [],
 };
@@ -81,7 +83,8 @@ export function HostFormDialog() {
 
   const [input, setInput] = useState<HostInputDTO>(EMPTY_INPUT);
   const [creds, setCreds] = useState<CredentialsDTO>(EMPTY_CREDS);
-  const [testResult, setTestResult] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [remember, setRemember] = useState(false);
   const [hasRemembered, setHasRemembered] = useState(false);
 
@@ -101,6 +104,8 @@ export function HostFormDialog() {
         authType: (existing.authType || "password") as AuthType,
         keyPath: "",
         terminalTheme: existing.terminalTheme || "",
+        terminalFont: existing.terminalFont || "",
+        terminalFontSize: existing.terminalFontSize || 0,
         group: existing.group || "",
         tags: existing.tags ?? [],
       });
@@ -122,11 +127,20 @@ export function HostFormDialog() {
     }
     setCreds(EMPTY_CREDS);
     setTestResult(null);
+    setErrors({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, existing]);
 
-  const update = (patch: Partial<HostInputDTO>) =>
+  const update = (patch: Partial<HostInputDTO>) => {
     setInput((v) => ({ ...v, ...patch }));
+    // Clear the field's error as soon as the user edits it again.
+    setErrors((e) => {
+      if (Object.keys(e).length === 0) return e;
+      const next = { ...e };
+      for (const key of Object.keys(patch)) delete next[key];
+      return next;
+    });
+  };
   const updateCreds = (patch: Partial<CredentialsDTO>) =>
     setCreds((v) => ({ ...v, ...patch }));
 
@@ -136,6 +150,18 @@ export function HostFormDialog() {
     keyPassphrase: input.authType === "key" ? creds.keyPassphrase : "",
     useAgent: input.authType === "agent",
   });
+
+  /** Field-level validation. Returns a map of field → error message. */
+  const validate = (): Record<string, string> => {
+    const errs: Record<string, string> = {};
+    if (!input.name.trim()) errs.name = t("hostForm.errRequired");
+    if (!input.host.trim()) errs.host = t("hostForm.errRequired");
+    if (!input.username.trim()) errs.username = t("hostForm.errRequired");
+    if (!Number.isInteger(input.port) || input.port < 1 || input.port > 65535) {
+      errs.port = t("hostForm.errPort");
+    }
+    return errs;
+  };
 
   const persistRemembered = async (hostId: string) => {
     try {
@@ -147,6 +173,11 @@ export function HostFormDialog() {
 
   const handleSave = async () => {
     if (submitting.current) return;
+    const errs = validate();
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      return;
+    }
     submitting.current = true;
     try {
       const saved = existing
@@ -160,7 +191,7 @@ export function HostFormDialog() {
       }
       closeEditor();
     } catch {
-      /* mutation error surfaces via the hook's state; keep dialog open */
+      /* keep the dialog open; the failure is toasted globally */
     } finally {
       submitting.current = false;
     }
@@ -186,14 +217,23 @@ export function HostFormDialog() {
         hostId,
         creds: buildCreds(),
       });
-      setTestResult(res.ok ? t("hostForm.testConnected") : `✗ ${res.msg}`);
+      setTestResult(
+        res.ok
+          ? { ok: true, msg: t("hostForm.testConnected") }
+          : { ok: false, msg: res.msg },
+      );
     } catch (e) {
-      setTestResult(`✗ ${e instanceof Error ? e.message : String(e)}`);
+      setTestResult({ ok: false, msg: e instanceof Error ? e.message : String(e) });
     }
   };
 
   const handleTest = async () => {
     if (submitting.current) return;
+    const errs = validate();
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      return;
+    }
     submitting.current = true;
     try {
       let hostId = existing?.id;
@@ -206,6 +246,8 @@ export function HostFormDialog() {
         openEditor(created);
       }
       await runTest(hostId);
+    } catch {
+      /* creation failure is toasted globally */
     } finally {
       submitting.current = false;
     }
@@ -213,6 +255,11 @@ export function HostFormDialog() {
 
   const handleConnect = async () => {
     if (!existing) return;
+    const errs = validate();
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      return;
+    }
     try {
       // ResolveCredentials on the backend fills in remembered secrets when the
       // frontend sends blanks, so passing an empty password still connects.
@@ -221,6 +268,8 @@ export function HostFormDialog() {
           id: existing.id,
           name: existing.name,
           terminalTheme: input.terminalTheme,
+          terminalFont: input.terminalFont,
+          terminalFontSize: input.terminalFontSize,
         },
         creds: buildCreds(),
       });
@@ -228,7 +277,7 @@ export function HostFormDialog() {
       closeEditor();
       setView("terminal");
     } catch {
-      /* keep dialog open so the error is visible */
+      /* keep the dialog open; the failure is toasted globally */
     }
   };
 
@@ -242,7 +291,7 @@ export function HostFormDialog() {
   // Placeholder text for the secret field depends on whether a remembered
   // secret exists (we never reveal the stored value).
   const secretPlaceholder = hasRemembered
-    ? "•••••••• (saved in OS vault — leave blank to reuse)"
+    ? t("hostForm.savedSecretPlaceholder")
     : undefined;
 
   return (
@@ -293,8 +342,9 @@ export function HostFormDialog() {
                 value={input.name}
                 onChange={(e) => update({ name: e.target.value })}
                 placeholder="production-web-1"
-                required
+                aria-invalid={!!errors.name}
               />
+              {errors.name && <FieldError message={errors.name} />}
             </div>
 
             <div className="grid gap-1.5">
@@ -304,8 +354,9 @@ export function HostFormDialog() {
                 value={input.host}
                 onChange={(e) => update({ host: e.target.value })}
                 placeholder="10.0.0.1 or example.com"
-                required
+                aria-invalid={!!errors.host}
               />
+              {errors.host && <FieldError message={errors.host} />}
             </div>
 
             <div className="grid grid-cols-[1fr_5rem] gap-2">
@@ -316,8 +367,9 @@ export function HostFormDialog() {
                   value={input.username}
                   onChange={(e) => update({ username: e.target.value })}
                   placeholder="root"
-                  required
+                  aria-invalid={!!errors.username}
                 />
+                {errors.username && <FieldError message={errors.username} />}
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="port">{t("hostForm.port")}</Label>
@@ -327,8 +379,10 @@ export function HostFormDialog() {
                   min={1}
                   max={65535}
                   value={input.port}
-                  onChange={(e) => update({ port: Number(e.target.value) || 22 })}
+                  onChange={(e) => update({ port: Number(e.target.value) })}
+                  aria-invalid={!!errors.port}
                 />
+                {errors.port && <FieldError message={errors.port} />}
               </div>
             </div>
 
@@ -339,9 +393,9 @@ export function HostFormDialog() {
                 value={input.authType}
                 onChange={(e) => update({ authType: e.target.value as AuthType })}
               >
-                {AUTH_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {AUTH_TYPE_LABELS[t]}
+                {AUTH_TYPES.map((at) => (
+                  <option key={at} value={at}>
+                    {t(`hosts.authType.${at}`)}
                   </option>
                 ))}
               </Select>
@@ -370,12 +424,12 @@ export function HostFormDialog() {
               <Label htmlFor="group">{t("hostForm.group")}</Label>
               <Select
                 id="group"
-                value={HOST_GROUPS.includes(input.group as (typeof HOST_GROUPS)[number]) ? input.group : "custom"}
+                value={isPresetGroup(input.group) ? input.group : "custom"}
                 onChange={(e) => {
                   const v = e.target.value;
-                  // "custom" is a placeholder option — clear the group so the
-                  // custom input below takes over.
-                  update({ group: v === "custom" ? "" : v });
+                  // Switching to a preset clears any custom name; picking
+                  // "custom" keeps the current custom name (or empty).
+                  update({ group: v === "custom" ? (isPresetGroup(input.group) ? "" : input.group) : v });
                 }}
               >
                 {HOST_GROUPS.map((g) => (
@@ -387,16 +441,19 @@ export function HostFormDialog() {
               </Select>
             </div>
 
-            {/* Custom group input — typing here sets a custom group name */}
-            <div className="grid gap-1.5">
-              <Label htmlFor="customGroup">{t("hostForm.customGroup")}</Label>
-              <Input
-                id="customGroup"
-                value={HOST_GROUPS.includes(input.group as (typeof HOST_GROUPS)[number]) ? "" : input.group}
-                onChange={(e) => update({ group: e.target.value.trim() })}
-                placeholder="e.g. dev-cluster"
-              />
-            </div>
+            {/* Custom group name — only shown when "Custom group" is selected,
+                so typing here can never be silently discarded. */}
+            {!isPresetGroup(input.group) && (
+              <div className="grid gap-1.5">
+                <Label htmlFor="customGroup">{t("hostForm.customGroup")}</Label>
+                <Input
+                  id="customGroup"
+                  value={input.group}
+                  onChange={(e) => update({ group: e.target.value })}
+                  placeholder="e.g. dev-cluster"
+                />
+              </div>
+            )}
 
             {/* Per-host terminal colour scheme */}
             <div className="grid gap-1.5">
@@ -449,6 +506,55 @@ export function HostFormDialog() {
                 )}
               </div>
             </div>
+
+            {/* Per-host terminal font override — off = follow the global
+                settings (Settings → Appearance → Terminal font). */}
+            <label className="flex cursor-pointer items-center gap-2 pt-1 text-sm">
+              <Checkbox
+                checked={!!input.terminalFont || input.terminalFontSize > 0}
+                onCheckedChange={(v) => {
+                  if (v) {
+                    update({ terminalFont: "Consolas", terminalFontSize: 13 });
+                  } else {
+                    update({ terminalFont: "", terminalFontSize: 0 });
+                  }
+                }}
+              />
+              {t("hostForm.termFontOverride")}
+            </label>
+            {(!!input.terminalFont || input.terminalFontSize > 0) && (
+              <>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="termFont">{t("hostForm.termFont")}</Label>
+                  <Select
+                    id="termFont"
+                    value={input.terminalFont}
+                    onChange={(e) => update({ terminalFont: e.target.value })}
+                  >
+                    {TERMINAL_FONTS.map((f) => (
+                      <option key={f.value} value={f.value}>{f.label}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="termFontSize">{t("hostForm.termFontSize")}</Label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      id="termFontSize"
+                      type="range"
+                      min={10}
+                      max={22}
+                      value={input.terminalFontSize || 13}
+                      onChange={(e) => update({ terminalFontSize: Number(e.target.value) })}
+                      className="flex-1 accent-primary"
+                    />
+                    <span className="w-10 text-center font-mono text-xs">
+                      {input.terminalFontSize || 13}px
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Tags */}
             <div className="grid gap-1.5">
@@ -550,9 +656,14 @@ export function HostFormDialog() {
 
             {testResult && (
               <div className="flex items-center gap-2">
-                <Badge variant={testResult.startsWith("✓") ? "success" : "destructive"}>
-                  {testResult}
+                <Badge variant={testResult.ok ? "success" : "destructive"}>
+                  {testResult.ok ? t("hostForm.testOk") : t("hostForm.testFailed")}
                 </Badge>
+                {!testResult.ok && testResult.msg && (
+                  <span className="min-w-0 flex-1 break-all text-xs text-muted-foreground">
+                    {testResult.msg}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -615,6 +726,16 @@ export function HostFormDialog() {
       </DialogContent>
     </Dialog>
   );
+}
+
+/** True when the group is one of the preset options (including "none"). */
+function isPresetGroup(group: string): boolean {
+  return HOST_GROUPS.includes(group as (typeof HOST_GROUPS)[number]);
+}
+
+/** Inline validation error shown under a form field. */
+function FieldError({ message }: { message: string }) {
+  return <p className="text-xs text-destructive">{message}</p>;
 }
 
 /** TagInput — type a tag, press Enter or comma to add it. */

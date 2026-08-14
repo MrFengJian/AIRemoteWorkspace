@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Events } from "@wailsio/runtime";
 import { useTranslation } from "react-i18next";
 import {
@@ -30,7 +30,7 @@ import {
 import { agentApi } from "@/features/agent/api";
 import { useAgentStore } from "@/features/agent/store";
 import { useTerminalStore } from "@/features/terminal/terminal.store";
-import { providersApi, type ModelProviderDTO } from "@/features/settings/api";
+import { useModelProviders } from "@/features/settings/hooks";
 import { useHosts } from "@/features/hosts/hooks";
 import { AgentMarkdown } from "@/features/agent/AgentMarkdown";
 import { HostService, TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
@@ -78,8 +78,14 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
   } = useAgentStore();
 
   const [input, setInput] = useState("");
-  const [providers, setProviders] = useState<ModelProviderDTO[]>([]);
-  const [providersLoaded, setProvidersLoaded] = useState(false);
+  // Shared provider query (same cache as Settings → Models), filtered to
+  // enabled providers for the inline selector.
+  const { data: allProviders, isLoading: providersLoading } = useModelProviders();
+  const providers = useMemo(
+    () => (allProviders ?? []).filter((p) => p.enabled),
+    [allProviders],
+  );
+  const providersLoaded = !providersLoading;
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const sessionName = embeddedSessionName
@@ -108,25 +114,9 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
     HostService.SetAgentModel(hostID, providerId, model).catch(() => {});
   };
 
-  // Enabled providers for the inline selector. The panel unmounts when
-  // closed, so this also re-reads after settings changes on each open.
-  useEffect(() => {
-    let cancelled = false;
-    providersApi
-      .list()
-      .then((list) => {
-        if (!cancelled) setProviders((list ?? []).filter((p) => p.enabled));
-      })
-      .catch(() => {
-        if (!cancelled) setProviders([]);
-      })
-      .finally(() => {
-        if (!cancelled) setProvidersLoaded(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Enabled providers for the inline selector come from the shared
+  // useModelProviders query — the panel re-reads on each open and stays in
+  // sync with Settings → Models through the shared query cache.
 
   // Seed the session's selection from the host's saved preference once, when
   // the session has no selection yet and the hosts query has loaded.
@@ -350,9 +340,9 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {messages.map((msg, i) => (
+            {messages.map((msg) => (
               <MessageBubble
-                key={i}
+                key={msg.id}
                 msg={msg}
                 canInsert={!!activeSessionId}
                 onInsert={handleInsert}

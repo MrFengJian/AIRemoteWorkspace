@@ -5,8 +5,8 @@ import { queryClient } from "@/lib/queryClient";
 
 /**
  * Wraps the app with TanStack Query. Kept as its own provider so the
- * provider tree stays explicit and future providers (theme, toast) compose
- * without touching main.tsx.
+ * provider tree stays explicit (theme, confirm, toast) without touching
+ * main.tsx.
  */
 export function QueryProvider({ children }: { children: ReactNode }) {
   return (

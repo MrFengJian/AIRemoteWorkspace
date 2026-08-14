@@ -24,7 +24,10 @@ type hostModel struct {
 	AuthType      string `gorm:"not null;default:password;size:20"`
 	SecretRef     string `gorm:"not null;default:'';size:255"`
 	TerminalTheme string `gorm:"not null;default:'';size:50"`
-	Group         string `gorm:"not null;default:'';size:50;index"`
+	// Per-host terminal font overrides; "" / 0 = follow the global settings.
+	TerminalFont     string `gorm:"not null;default:'';size:100"`
+	TerminalFontSize int    `gorm:"not null;default:0"`
+	Group            string `gorm:"not null;default:'';size:50;index"`
 	Tags          string `gorm:"not null;default:'[]';type:text"` // JSON array
 	OS            string `gorm:"not null;default:'';size:50"`     // detected distro id (read-only)
 	// Last-used agent model preference (hidden; not in the host edit form).

@@ -27,11 +27,15 @@ import {
 
 import { TerminalService, SystemService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { useTerminalStore, type TerminalSession } from "@/features/terminal/terminal.store";
+import { useUIStore } from "@/stores/ui.store";
+import { useAppConfig } from "@/features/settings/useAppConfig";
+import { terminalFontFamily } from "@/features/terminal/fonts";
 import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabMenu";
 import { TerminalThemeDialog } from "@/features/terminal/TerminalThemeDialog";
 import { useHosts } from "@/features/hosts/hooks";
 import { getTerminalTheme } from "@/features/terminal/themes";
 import { base64ToBytes, encodeBase64 } from "@/lib/base64";
+import { toast } from "@/lib/toast";
 
 import "@xterm/xterm/css/xterm.css";
 
@@ -64,7 +68,11 @@ export function TerminalPanel({
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const setSessionStatus = useTerminalStore((s) => s.setSessionStatus);
   const removeSession = useTerminalStore((s) => s.removeSession);
+  const activeView = useUIStore((s) => s.activeView);
+  const activeTabId = useTerminalStore((s) => s.activeId);
   const { data: hosts } = useHosts();
+  // Global terminal font settings; the host's own override wins when set.
+  const { data: appConfig } = useAppConfig();
 
   // Context menu + search bar state.
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -79,6 +87,13 @@ export function TerminalPanel({
   // getTerminalTheme. The context-menu pick overrides it for this pane.
   const resolvedTheme = getTerminalTheme(liveThemeId ?? session.terminalTheme);
 
+  // Resolved font: per-host override → global setting → built-in default.
+  const resolvedFontFamily = terminalFontFamily(
+    session.terminalFont || appConfig?.terminalFont || "",
+  );
+  const resolvedFontSize =
+    session.terminalFontSize || appConfig?.terminalFontSize || 13;
+
   // Resolve the remote host IP for the "paste remote IP" action.
   const remoteIP = (hosts ?? []).find((h) => h.id === session.hostID)?.host ?? "";
 
@@ -89,6 +104,31 @@ export function TerminalPanel({
     }
   }, [session.terminalTheme, liveThemeId]);
 
+  // Auto-focus: when the terminal view is showing and this pane belongs to the
+  // active tab, grab focus so typing works immediately (no manual click).
+  // paneIds[0] is the tab's own id; in a split the first pane takes focus.
+  const tabId = session.paneIds[0] ?? session.id;
+  useEffect(() => {
+    if (activeView === "terminal" && activeTabId === tabId) {
+      termRef.current?.focus();
+    }
+  }, [activeView, activeTabId, tabId]);
+
+  // Live-update the terminal font when the global settings change (per-host
+  // overrides are fixed for the session's lifetime, like the theme). Font
+  // metrics change the cell size, so refit afterwards.
+  const fitRef = useRef<FitAddon | null>(null);
+  useEffect(() => {
+    if (!termRef.current) return;
+    termRef.current.options.fontFamily = resolvedFontFamily;
+    termRef.current.options.fontSize = resolvedFontSize;
+    try {
+      fitRef.current?.fit();
+    } catch {
+      /* container not laid out yet */
+    }
+  }, [resolvedFontFamily, resolvedFontSize]);
+
   // Mount xterm + wire events (runs once per session).
   useEffect(() => {
     const container = containerRef.current;
@@ -96,9 +136,8 @@ export function TerminalPanel({
 
     const themeDef = resolvedTheme;
     const term = new Terminal({
-      fontFamily:
-        'ui-monospace, "JetBrains Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, monospace',
-      fontSize: 13,
+      fontFamily: resolvedFontFamily,
+      fontSize: resolvedFontSize,
       cursorBlink: true,
       theme: themeDef.theme,
       allowProposedApi: true,
@@ -109,6 +148,7 @@ export function TerminalPanel({
     term.loadAddon(fit);
     term.loadAddon(search);
     term.open(container);
+    fitRef.current = fit;
     try {
       fit.fit();
     } catch {
@@ -165,9 +205,16 @@ export function TerminalPanel({
 
     const exitCancel = Events.On(`term:${session.id}:exit`, (event: unknown) => {
       const data = (event as { data?: unknown }).data;
-      const msg = typeof data === "string" && data ? `\r\n\r\n[session exited: ${data}]\r\n` : "\r\n\r\n[session exited]\r\n";
-      term.write(msg);
-      setSessionStatus(session.id, "closed");
+      const reason = typeof data === "string" ? data : "";
+      // A non-empty reason means the PTY wait returned an error (connection
+      // dropped, shell failed) — mark the tab red instead of plain closed.
+      if (reason) {
+        term.write(`\r\n\r\n[session exited: ${reason}]\r\n`);
+        setSessionStatus(session.id, "error");
+      } else {
+        term.write(`\r\n\r\n${t("terminal.sessionExited")}\r\n`);
+        setSessionStatus(session.id, "closed");
+      }
     });
 
     const ro = new ResizeObserver(() => {
@@ -186,6 +233,7 @@ export function TerminalPanel({
       term.dispose();
       termRef.current = null;
       searchAddonRef.current = null;
+      fitRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id]);
@@ -198,7 +246,12 @@ export function TerminalPanel({
 
   const handleCopy = async () => {
     const sel = termRef.current?.getSelection();
-    if (sel) await navigator.clipboard.writeText(sel).catch(() => {});
+    if (!sel) return;
+    try {
+      await navigator.clipboard.writeText(sel);
+    } catch {
+      toast.error(t("common.clipboardFailed"));
+    }
   };
 
   const handleCopyRTF = async () => {
@@ -206,7 +259,11 @@ export function TerminalPanel({
     if (!sel) return;
     // Minimal RTF with the terminal's monospace font + foreground colour.
     const rtf = `{\\rtf1\\ansi\\f0\\fs24 ${sel.replace(/\\/g, "\\\\").replace(/[{}]/g, (m) => `\\${m}`).replace(/\n/g, "\\par\n")}}`;
-    await navigator.clipboard.writeText(rtf).catch(() => {});
+    try {
+      await navigator.clipboard.writeText(rtf);
+    } catch {
+      toast.error(t("common.clipboardFailed"));
+    }
   };
 
   const handlePasteSelected = () => {
@@ -219,7 +276,7 @@ export function TerminalPanel({
       const text = await navigator.clipboard.readText();
       if (text) writeToStdin(text);
     } catch {
-      /* clipboard blocked */
+      toast.error(t("common.clipboardFailed"));
     }
   };
 
@@ -372,7 +429,7 @@ export function TerminalPanel({
       <div ref={containerRef} className="h-full w-full p-2" />
 
       {/* Session-closed dismiss button */}
-      {session.status === "closed" && (
+      {(session.status === "closed" || session.status === "error") && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/40">
           <button
             type="button"

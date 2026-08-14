@@ -31,12 +31,12 @@ func (a *AppClient) ListDir(host domain.Host, creds domain.Credentials, dir stri
 	return out, nil
 }
 
-func (a *AppClient) DownloadFile(host domain.Host, creds domain.Credentials, remotePath string) ([]byte, error) {
-	return a.m.DownloadFile(host, creds, remotePath)
+func (a *AppClient) DownloadFile(host domain.Host, creds domain.Credentials, remotePath string, progress application.SftpProgress) ([]byte, error) {
+	return a.m.DownloadFile(host, creds, remotePath, progress)
 }
 
-func (a *AppClient) UploadFile(host domain.Host, creds domain.Credentials, remotePath string, data []byte) error {
-	return a.m.UploadFile(host, creds, remotePath, data)
+func (a *AppClient) UploadFile(host domain.Host, creds domain.Credentials, remotePath string, data []byte, progress application.SftpProgress) error {
+	return a.m.UploadFile(host, creds, remotePath, data, progress)
 }
 
 func (a *AppClient) DeleteFile(host domain.Host, creds domain.Credentials, remotePath string) error {

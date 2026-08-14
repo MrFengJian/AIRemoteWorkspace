@@ -1,9 +1,12 @@
 import * as React from "react";
+import { useTranslation } from "react-i18next";
+
 import { useUIStore } from "@/stores/ui.store";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { StatusBar } from "@/components/layout/StatusBar";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { DashboardView } from "@/features/dashboard/DashboardView";
+import { Toaster } from "@/components/ui/Toaster";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HostsView } from "@/features/hosts/HostsView";
 import { TerminalView } from "@/features/terminal/TerminalView";
 import { SftpView } from "@/features/sftp/SftpView";
@@ -26,32 +29,40 @@ import { SettingsView } from "@/features/settings/SettingsView";
  */
 export function AppShell() {
   const activeView = useUIStore((s) => s.activeView);
+  const { t } = useTranslation();
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main className="relative min-w-0 flex-1 overflow-auto">
-          <View active={activeView === "dashboard"}>
-            <DashboardView />
-          </View>
           <View active={activeView === "hosts"}>
-            <HostsView />
+            <ErrorBoundary label={t("nav.hosts")} resetLabel={t("common.retry")}>
+              <HostsView />
+            </ErrorBoundary>
           </View>
           <View active={activeView === "terminal"}>
-            <TerminalView />
+            <ErrorBoundary label={t("nav.terminal")} resetLabel={t("common.retry")}>
+              <TerminalView />
+            </ErrorBoundary>
           </View>
           <View active={activeView === "sftp"}>
-            <SftpView />
+            <ErrorBoundary label={t("nav.files")} resetLabel={t("common.retry")}>
+              <SftpView />
+            </ErrorBoundary>
           </View>
           <View active={activeView === "settings"}>
-            <SettingsView />
+            <ErrorBoundary label={t("nav.settings")} resetLabel={t("common.retry")}>
+              <SettingsView />
+            </ErrorBoundary>
           </View>
         </main>
       </div>
       <StatusBar />
       {/* Single confirmation/prompt dialog host (replaces window.confirm/prompt). */}
       <ConfirmDialog />
+      {/* Single toast notification host (driven by lib/toast.ts). */}
+      <Toaster />
     </div>
   );
 }

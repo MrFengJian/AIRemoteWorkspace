@@ -27,6 +27,7 @@ import { useHostsUIStore } from "@/features/hosts/store";
 import { osInfo } from "@/features/hosts/osIcons";
 import { TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { cn } from "@/lib/utils";
+import { toast, errorMessage } from "@/lib/toast";
 
 /**
  * Terminal view: a tab bar of live sessions above a stack of (hidden) panels.
@@ -61,6 +62,53 @@ export function TerminalView() {
   const [rightOpen, setRightOpen] = useState(false);
   const [rightTab, setRightTab] = useState<"sftp" | "agent">("agent");
   const [copied, setCopied] = useState(false);
+  // Per-tab split ratio (first pane's share, 0–1) and the right panel width,
+  // both draggable. Kept locally: TerminalView stays mounted for the app run.
+  const [splitRatios, setSplitRatios] = useState<Record<string, number>>({});
+  const [panelWidth, setPanelWidth] = useState(320);
+
+  /** Drag handler for the split divider; adjusts the first pane's share. */
+  const startSplitDrag = (
+    e: React.PointerEvent,
+    sessId: string,
+    direction: "horizontal" | "vertical",
+  ) => {
+    e.preventDefault();
+    const container = (e.currentTarget as HTMLElement).parentElement;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const onMove = (ev: PointerEvent) => {
+      const ratio =
+        direction === "horizontal"
+          ? (ev.clientX - rect.left) / rect.width
+          : (ev.clientY - rect.top) / rect.height;
+      setSplitRatios((r) => ({ ...r, [sessId]: Math.min(0.8, Math.max(0.2, ratio)) }));
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  /** Drag handler for the right panel's left edge (width 240–560px). */
+  const startPanelDrag = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const windowWidth = window.innerWidth;
+    const onMove = (ev: PointerEvent) => {
+      // The sidebar (56px) + terminal area sit left of the panel; clamp by
+      // viewport so the terminal never collapses.
+      const width = Math.min(560, Math.max(240, windowWidth - ev.clientX));
+      setPanelWidth(width);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
 
   // Host list (for per-tab OS icon). OS is auto-detected at connect time on
   // the backend; polling the hosts query keeps the tab icon in sync until the
@@ -96,7 +144,7 @@ export function TerminalView() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      /* clipboard blocked */
+      toast.error(t("common.clipboardFailed"));
     }
   };
 
@@ -133,8 +181,8 @@ export function TerminalView() {
         size: { cols: 80, rows: 24 },
       });
       addPane(tabId, res.sessionId, direction);
-    } catch {
-      /* failed to open split — silent */
+    } catch (e) {
+      toast.error(`${t("terminal.openSessionFailed")}: ${errorMessage(e)}`);
     }
   };
 
@@ -152,30 +200,42 @@ export function TerminalView() {
       // Replace paneId with new session ID in the store.
       removePane(tabId, paneId);
       addPane(tabId, res.sessionId, sess.splitDirection ?? "horizontal");
-    } catch {
-      /* silent */
+    } catch (e) {
+      toast.error(`${t("terminal.openSessionFailed")}: ${errorMessage(e)}`);
     }
   };
 
   // duplicateSession opens a new terminal on the same host as an existing tab.
   // The backend resolves remembered credentials from the OS vault, so no
   // password entry is needed here.
-  const duplicateSession = (sess: { hostID: string; hostName: string; terminalTheme: string }) => {
+  const duplicateSession = (sess: {
+    hostID: string;
+    hostName: string;
+    terminalTheme: string;
+    terminalFont: string;
+    terminalFontSize: number;
+  }) => {
     openTerminal
       .mutateAsync({
-        host: { id: sess.hostID, name: sess.hostName, terminalTheme: sess.terminalTheme },
+        host: {
+          id: sess.hostID,
+          name: sess.hostName,
+          terminalTheme: sess.terminalTheme,
+          terminalFont: sess.terminalFont,
+          terminalFontSize: sess.terminalFontSize,
+        },
         creds: {},
       })
       .catch(() => {
-        /* failed (e.g. no remembered credentials) — nothing to do */
+        /* failure (e.g. no remembered credentials) is toasted globally */
       });
   };
 
   // reconnectSession closes all panes in the tab and opens a fresh tab.
   const reconnectSession = (sess: (typeof sessions)[number]) => {
-    const { hostID, hostName, terminalTheme } = sess;
+    const { hostID, hostName, terminalTheme, terminalFont, terminalFontSize } = sess;
     closeAllPanes(sess.id);
-    duplicateSession({ hostID, hostName, terminalTheme });
+    duplicateSession({ hostID, hostName, terminalTheme, terminalFont, terminalFontSize });
   };
 
   // editHostFor opens the host editor for the tab's host. The dialog renders
@@ -255,12 +315,6 @@ export function TerminalView() {
     ];
   };
 
-  // Auto-select hosts view when there are no sessions, so the empty state has
-  // an obvious next action.
-  useEffect(() => {
-    /* no-op: kept as a seam for future auto-focus behaviour */
-  }, [sessions.length]);
-
   if (sessions.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
@@ -285,15 +339,38 @@ export function TerminalView() {
   return (
     <div className="flex h-full flex-col">
       {/* Tab bar */}
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-card px-2">
+      <div
+        role="tablist"
+        aria-label={t("terminal.title")}
+        className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-card px-2"
+        onKeyDown={(e) => {
+          // Roving-tablist keyboard navigation: arrows move + activate.
+          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+          const idx = sessions.findIndex((s) => s.id === activeId);
+          if (idx < 0) return;
+          const next =
+            e.key === "ArrowRight"
+              ? (idx + 1) % sessions.length
+              : (idx - 1 + sessions.length) % sessions.length;
+          const target = sessions[next];
+          setActive(target.id);
+          document.getElementById(`term-tab-${target.id}`)?.focus();
+          e.preventDefault();
+        }}
+      >
         {sessions.map((sess) => (
           <div
             key={sess.id}
+            id={`term-tab-${sess.id}`}
+            role="tab"
+            aria-selected={sess.id === activeId}
+            tabIndex={sess.id === activeId ? 0 : -1}
             className={cn(
-              "group flex h-7 cursor-pointer items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-xs",
+              "group flex h-7 cursor-pointer items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-xs transition-colors",
               sess.id === activeId
                 ? "bg-accent text-foreground"
                 : "text-muted-foreground hover:bg-accent/50",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             )}
             onClick={() => setActive(sess.id)}
             onDoubleClick={() => duplicateSession(sess)}
@@ -325,12 +402,12 @@ export function TerminalView() {
             />
             <button
               type="button"
-              aria-label="Close tab"
+              aria-label={t("terminal.closeTab")}
               onClick={(e) => {
                 e.stopPropagation();
                 closeAllPanes(sess.id);
               }}
-              className="rounded p-0.5 opacity-0 transition-opacity hover:bg-background/60 group-hover:opacity-100"
+              className="rounded p-0.5 opacity-0 transition-opacity hover:bg-background/60 focus-visible:opacity-100 group-hover:opacity-100"
             >
               <X className="h-3 w-3" />
             </button>
@@ -435,15 +512,31 @@ export function TerminalView() {
                       <React.Fragment key={paneId}>
                         {idx > 0 && (
                           <div
+                            role="separator"
+                            aria-orientation={sess.splitDirection === "horizontal" ? "vertical" : "horizontal"}
+                            onPointerDown={(e) =>
+                              startSplitDrag(e, sess.id, sess.splitDirection ?? "horizontal")
+                            }
                             className={cn(
-                              "shrink-0 bg-foreground/15",
+                              "shrink-0 bg-foreground/15 transition-colors hover:bg-primary/50",
                               sess.splitDirection === "horizontal"
                                 ? "w-[3px] h-full cursor-col-resize"
                                 : "h-[3px] w-full cursor-row-resize",
                             )}
                           />
                         )}
-                        <div className="relative min-h-0 min-w-0 flex-1">
+                        <div
+                          className="relative min-h-0 min-w-0 flex-1"
+                          style={
+                            idx === 0 && sess.paneIds.length > 1
+                              ? {
+                                  flexGrow: 0,
+                                  flexShrink: 0,
+                                  flexBasis: `${(splitRatios[sess.id] ?? 0.5) * 100}%`,
+                                }
+                              : undefined
+                          }
+                        >
                           <TerminalPanel
                             session={{ ...sess, id: paneId }}
                             paneCount={sess.paneIds.length}
@@ -468,9 +561,20 @@ export function TerminalView() {
           </div>
         </div>
 
-        {/* Right panel: tabbed (SFTP / Agent) — hidden when closed. */}
+        {/* Right panel: tabbed (SFTP / Agent) — hidden when closed. Its left
+            edge is a drag handle (width clamped 240–560px). */}
         {rightOpen && activeSession && (
-          <div className="flex w-80 shrink-0 flex-col border-l border-border bg-card">
+          <div
+            className="relative flex shrink-0 flex-col border-l border-border bg-card"
+            style={{ width: panelWidth }}
+          >
+            {/* Drag handle on the panel's left edge */}
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              onPointerDown={startPanelDrag}
+              className="absolute inset-y-0 left-0 z-10 w-1 cursor-col-resize transition-colors hover:bg-primary/50"
+            />
             {/* Tab strip */}
             <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2">
               <button

@@ -22,6 +22,10 @@ type Host struct {
 	SecretRef string // keychain handle; empty in Secure mode (ask each time)
 
 	TerminalTheme string   // per-host terminal colour scheme id; "" = use default
+	// Per-host terminal font overrides; "" / 0 mean "follow the global
+	// settings" (AppConfig.TerminalFont / TerminalFontSize).
+	TerminalFont     string // font family name; "" = global setting
+	TerminalFontSize int    // px; 0 = global setting
 	Group         string   // host group: "test" | "stage" | "production" | custom
 	Tags          []string // free-form labels, e.g. ["nginx", "us-east-1"]
 	OS            string   // detected distro id, e.g. "ubuntu"; read-only, set at connect time

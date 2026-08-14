@@ -12,6 +12,7 @@ import (
 	"github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cloudwego/eino/schema"
 
+	"github.com/ai-remote/workspace/internal/application"
 	"github.com/ai-remote/workspace/internal/domain"
 	"github.com/ai-remote/workspace/internal/infrastructure/ssh"
 )
@@ -28,10 +29,11 @@ type PermissionGate interface {
 	Check(ctx context.Context, sessionID, toolName string, perm domain.Permission, argsJSON string) error
 }
 
-// SftpFileOps is the subset of the SFTP manager the file tools need.
+// SftpFileOps is the subset of the SFTP manager the file tools need. Progress
+// callbacks exist for the UI transfer path; tools pass nil.
 type SftpFileOps interface {
-	DownloadFile(host domain.Host, creds domain.Credentials, remotePath string) ([]byte, error)
-	UploadFile(host domain.Host, creds domain.Credentials, remotePath string, data []byte) error
+	DownloadFile(host domain.Host, creds domain.Credentials, remotePath string, progress application.SftpProgress) ([]byte, error)
+	UploadFile(host domain.Host, creds domain.Credentials, remotePath string, data []byte, progress application.SftpProgress) error
 }
 
 // Deps bundles the infrastructure a ToolSet needs.

@@ -7,6 +7,9 @@
  * The frontend passes empty credentials: the backend resolves remembered
  * secrets from the OS vault (Phase 5 SecretStore). If no remembered secret
  * exists, the operation fails with an auth error the UI surfaces.
+ * 
+ * Downloads/uploads emit per-transfer progress events named
+ * "sftp:transfer:<id>" (Go → JS); the frontend supplies the id.
  * @module
  */
 
@@ -26,10 +29,11 @@ export function DeleteFile(hostID: string, remotePath: string): $CancellableProm
 }
 
 /**
- * DownloadFile reads a remote file and returns its bytes.
+ * DownloadFile reads a remote file and returns its bytes. Progress events are
+ * emitted on "sftp:transfer:<transferID>" while the read runs.
  */
-export function DownloadFile(hostID: string, remotePath: string): $CancellablePromise<string | null> {
-    return $Call.ByID(3243520916, hostID, remotePath);
+export function DownloadFile(hostID: string, remotePath: string, transferID: string): $CancellablePromise<string | null> {
+    return $Call.ByID(3243520916, hostID, remotePath, transferID);
 }
 
 /**
@@ -54,8 +58,9 @@ export function RenameFile(hostID: string, oldPath: string, newPath: string): $C
 }
 
 /**
- * UploadFile writes data to a remote path.
+ * UploadFile writes data to a remote path. Progress events are emitted on
+ * "sftp:transfer:<transferID>" while the write runs.
  */
-export function UploadFile(hostID: string, remotePath: string, data: string | null): $CancellablePromise<void> {
-    return $Call.ByID(2314891305, hostID, remotePath, data);
+export function UploadFile(hostID: string, remotePath: string, data: string | null, transferID: string): $CancellablePromise<void> {
+    return $Call.ByID(2314891305, hostID, remotePath, data, transferID);
 }
