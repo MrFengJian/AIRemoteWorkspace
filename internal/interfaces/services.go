@@ -9,6 +9,7 @@ package interfaces
 import (
 	"context"
 	"fmt"
+	"net"
 	"runtime"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -55,6 +56,24 @@ func (s *SystemService) SystemInfo() SystemInfoResult {
 		Platform:  fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
 		GoVersion: runtime.Version(),
 	}
+}
+
+// LocalIPResult carries the machine's primary local IP address.
+type LocalIPResult struct {
+	IP string `json:"ip"`
+}
+
+// GetLocalIP returns the machine's primary outbound IPv4 address by dialing
+// a public address (no actual connection is established — UDP dial just
+// resolves the route). Used by the terminal right-click "paste local IP".
+func (s *SystemService) GetLocalIP() (LocalIPResult, error) {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return LocalIPResult{}, err
+	}
+	defer conn.Close()
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return LocalIPResult{IP: localAddr.IP.String()}, nil
 }
 
 // --- ConfigService -------------------------------------------------------

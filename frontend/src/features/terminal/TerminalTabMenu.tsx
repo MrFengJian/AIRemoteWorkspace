@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Check, ChevronRight } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -8,9 +9,13 @@ export interface MenuItem {
   icon?: LucideIcon;
   danger?: boolean;
   disabled?: boolean;
+  /** Show a check mark on the right when this item is the active choice. */
+  checked?: boolean;
   /** Separator between menu groups. */
   type?: "separator";
   onClick?: () => void;
+  /** Nested submenu, revealed on hover. */
+  children?: MenuItem[];
 }
 
 interface TerminalTabMenuProps {
@@ -22,10 +27,12 @@ interface TerminalTabMenuProps {
 
 /**
  * Lightweight context menu for terminal tabs. Rendered at the cursor position
- * and closes on outside click / Escape / scroll.
+ * and closes on outside click / Escape / scroll. Items with `children` reveal
+ * a nested submenu anchored to their right edge on hover.
  */
 export function TerminalTabMenu({ x, y, items, onClose }: TerminalTabMenuProps) {
   const ref = useRef<HTMLDivElement | null>(null);
+  const [sub, setSub] = useState<{ items: MenuItem[]; x: number; y: number } | null>(null);
 
   useEffect(() => {
     const handle = (e: MouseEvent | KeyboardEvent) => {
@@ -33,8 +40,12 @@ export function TerminalTabMenu({ x, y, items, onClose }: TerminalTabMenuProps) 
         if (e.key === "Escape") onClose();
         return;
       }
-      // Close when clicking outside the menu.
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      // Close when clicking outside the menu (and any open submenu).
+      if (
+        ref.current &&
+        !ref.current.contains(e.target as Node) &&
+        !(e.target as HTMLElement).closest?.("[data-submenu]")
+      ) {
         onClose();
       }
     };
@@ -50,10 +61,49 @@ export function TerminalTabMenu({ x, y, items, onClose }: TerminalTabMenuProps) 
     };
   }, [onClose]);
 
+  const renderItems = (list: MenuItem[], depth: number) =>
+    list.map((item, i) => {
+      if (item.type === "separator") {
+        return <div key={i} className="my-1 h-px bg-border" />;
+      }
+      const Icon = item.icon;
+      return (
+        <button
+          key={i}
+          type="button"
+          disabled={item.disabled}
+          onMouseEnter={(e) => {
+            if (item.children?.length) {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setSub({ items: item.children, x: rect.right + 4, y: rect.top });
+            } else {
+              setSub(null);
+            }
+          }}
+          onClick={() => {
+            item.onClick?.();
+            onClose();
+          }}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-[calc(var(--radius)-2px)] px-2.5 py-1.5 text-left text-sm transition-colors",
+            item.danger
+              ? "text-destructive hover:bg-destructive/10"
+              : "text-popover-foreground hover:bg-accent",
+            item.disabled && "cursor-not-allowed opacity-40 hover:bg-transparent",
+          )}
+        >
+          {Icon && <Icon className="h-3.5 w-3.5 shrink-0" />}
+          <span className="flex-1 truncate">{item.label}</span>
+          {item.checked && <Check className="h-3.5 w-3.5 shrink-0 text-foreground" />}
+          {item.children?.length ? <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-60" /> : null}
+        </button>
+      );
+    });
+
   // Keep the menu within the viewport.
   const style: React.CSSProperties = {
     position: "fixed",
-    left: Math.min(x, window.innerWidth - 200),
+    left: Math.min(x, window.innerWidth - 220),
     top: Math.min(y, window.innerHeight - items.length * 32 - 8),
     zIndex: 1000,
   };
@@ -62,36 +112,26 @@ export function TerminalTabMenu({ x, y, items, onClose }: TerminalTabMenuProps) 
     <div
       ref={ref}
       style={style}
-      className="min-w-[10rem] rounded-[var(--radius)] border border-border bg-popover p-1 shadow-lg"
+      className="min-w-[11rem] rounded-[var(--radius)] border border-border bg-popover p-1 shadow-lg"
       onContextMenu={(e) => e.preventDefault()}
     >
-      {items.map((item, i) => {
-        if (item.type === "separator") {
-          return <div key={i} className="my-1 h-px bg-border" />;
-        }
-        const Icon = item.icon;
-        return (
-          <button
-            key={i}
-            type="button"
-            disabled={item.disabled}
-            onClick={() => {
-              item.onClick?.();
-              onClose();
-            }}
-            className={cn(
-              "flex w-full items-center gap-2 rounded-[calc(var(--radius)-2px)] px-2.5 py-1.5 text-left text-sm transition-colors",
-              item.danger
-                ? "text-destructive hover:bg-destructive/10"
-                : "text-popover-foreground hover:bg-accent",
-              item.disabled && "cursor-not-allowed opacity-40 hover:bg-transparent",
-            )}
-          >
-            {Icon && <Icon className="h-3.5 w-3.5 shrink-0" />}
-            {item.label}
-          </button>
-        );
-      })}
+      {renderItems(items, 0)}
+      {sub && (
+        <div
+          data-submenu
+          style={{
+            position: "fixed",
+            left: Math.min(sub.x, window.innerWidth - 220),
+            top: Math.min(sub.y, window.innerHeight - sub.items.length * 32 - 8),
+            zIndex: 1001,
+          }}
+          className="min-w-[11rem] rounded-[var(--radius)] border border-border bg-popover p-1 shadow-lg"
+          onMouseLeave={() => setSub(null)}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {renderItems(sub.items, 1)}
+        </div>
+      )}
     </div>
   );
 }

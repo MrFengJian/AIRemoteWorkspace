@@ -10,6 +10,10 @@ export interface ChatMessage {
   content: string;
   toolName?: string;
   toolArgs?: string;
+  /** Tool-call correlation id — the start and end events share it. */
+  callId?: string;
+  /** True while the tool is executing; cleared when its result lands. */
+  running?: boolean;
 }
 
 export interface PendingApproval {
@@ -27,15 +31,17 @@ interface AgentState {
   streaming: Record<string, boolean>;
   /** Pending approval requests (only one at a time per session). */
   approvals: PendingApproval[];
-  /** Whether the LLM is configured (has API key). */
-  llmConfigured: boolean;
 
   addMessage: (sessionID: string, msg: ChatMessage) => void;
   appendToLast: (sessionID: string, text: string) => void;
   setStreaming: (sessionID: string, v: boolean) => void;
+  /** Attach a tool execution result to its step (matched by call id; an empty
+   *  callId targets the newest still-running step). */
+  setToolResult: (sessionID: string, callId: string, result: string) => void;
+  /** Mark every still-running tool step finished (chat ended). */
+  finishToolSteps: (sessionID: string) => void;
   addApproval: (a: PendingApproval) => void;
   removeApproval: (reqId: string) => void;
-  setLLMConfigured: (v: boolean) => void;
   clearHistory: (sessionID: string) => void;
 }
 
@@ -43,7 +49,6 @@ export const useAgentStore = create<AgentState>((set) => ({
   histories: {},
   streaming: {},
   approvals: [],
-  llmConfigured: false,
 
   addMessage: (sessionID, msg) =>
     set((s) => ({
@@ -75,11 +80,39 @@ export const useAgentStore = create<AgentState>((set) => ({
   setStreaming: (sessionID, v) =>
     set((s) => ({ streaming: { ...s.streaming, [sessionID]: v } })),
 
+  setToolResult: (sessionID, callId, result) =>
+    set((s) => {
+      const hist = s.histories[sessionID] ?? [];
+      // Search from the end: the matching step is the most recent one with
+      // this call id that hasn't received a result yet (or, for an empty
+      // callId, the most recent running step).
+      for (let i = hist.length - 1; i >= 0; i--) {
+        const m = hist[i];
+        if (m.role !== "tool") continue;
+        if (m.content && !m.running) continue;
+        if (callId && m.callId !== callId) continue;
+        const updated = [...hist];
+        updated[i] = { ...m, content: result, running: false };
+        return { histories: { ...s.histories, [sessionID]: updated } };
+      }
+      return s;
+    }),
+
+  finishToolSteps: (sessionID) =>
+    set((s) => {
+      const hist = s.histories[sessionID];
+      if (!hist?.some((m) => m.role === "tool" && m.running)) return s;
+      return {
+        histories: {
+          ...s.histories,
+          [sessionID]: hist.map((m) => (m.running ? { ...m, running: false } : m)),
+        },
+      };
+    }),
+
   addApproval: (a) => set((s) => ({ approvals: [...s.approvals, a] })),
   removeApproval: (reqId) =>
     set((s) => ({ approvals: s.approvals.filter((a) => a.reqId !== reqId) })),
-
-  setLLMConfigured: (v) => set({ llmConfigured: v }),
 
   clearHistory: (sessionID) =>
     set((s) => {

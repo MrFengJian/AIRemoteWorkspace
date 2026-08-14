@@ -277,7 +277,7 @@ export function HostFormDialog() {
                 <img
                   src={osInfo(existing.os)!.icon}
                   alt=""
-                  className="h-3.5 w-3.5 invert"
+                  className="os-icon h-3.5 w-3.5"
                 />
                 {osInfo(existing.os)!.label}
                 <span className="ml-auto text-[10px] uppercase tracking-wide opacity-60">

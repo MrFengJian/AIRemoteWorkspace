@@ -9,12 +9,26 @@
 export interface AppConfig {
     "securityMode": SecurityMode;
     "defaultShell": string;
+
+    /**
+     * "light" | "dark" | "auto"
+     */
     "theme": string;
 
     /**
-     * terminal colour scheme id
+     * interface font family name
      */
-    "terminalTheme": string;
+    "uiFont": string;
+
+    /**
+     * interface font size in px
+     */
+    "fontSize": number;
+
+    /**
+     * CJK (Chinese) font family name
+     */
+    "cjkFont": string;
 
     /**
      * AI agent provider config (API key in SecretStore)
@@ -25,6 +39,9 @@ export interface AppConfig {
 /**
  * LLMConfig holds the non-sensitive LLM provider settings. The API Key is
  * stored in the OS vault (SecretStore), never here.
+ * 
+ * Deprecated: superseded by ModelProvider (multi-provider). Kept only so the
+ * legacy single-provider config can be migrated on first run.
  */
 export interface LLMConfig {
     /**

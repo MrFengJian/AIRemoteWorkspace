@@ -1,18 +1,11 @@
 // Agent feature API — typed wrappers over the generated AgentService bindings.
 
-import {
-  AgentService,
-  type LLMConfigDTO,
-  type SetLLMConfigInput,
-} from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
-
-export type { LLMConfigDTO };
+import { AgentService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 
 export const agentApi = {
-  getLLMConfig: () => AgentService.GetLLMConfig(),
-  setLLMConfig: (input: SetLLMConfigInput) => AgentService.SetLLMConfig(input),
-  startChat: (sessionID: string, message: string) =>
-    AgentService.StartChat(sessionID, message),
+  /** Start a streaming chat on a session using the selected provider + model. */
+  startChat: (sessionID: string, providerID: string, model: string, message: string) =>
+    AgentService.StartChat(sessionID, providerID, model, message),
   cancelChat: (sessionID: string) => AgentService.CancelChat(sessionID),
   approveToolCall: (reqID: string, approved: boolean) =>
     AgentService.ApproveToolCall(reqID, approved),

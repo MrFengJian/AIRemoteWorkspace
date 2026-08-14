@@ -26,6 +26,10 @@ type HostDTO struct {
 	Group              string   `json:"group"`
 	Tags               []string `json:"tags"`
 	OS                 string   `json:"os"` // detected distro id; read-only, never editable
+	// Last-used agent model preference; read-only for the host form, written
+	// via SetAgentModel by the agent panel.
+	AgentProviderID    string   `json:"agentProviderId"`
+	AgentModel         string   `json:"agentModel"`
 }
 
 // HostInputDTO is what the frontend sends to create/update a host.
@@ -115,6 +119,12 @@ func (h *HostService) DeleteHost(id string) error {
 	return h.svc.Delete(id)
 }
 
+// SetAgentModel persists the host's last-used agent provider + model (hidden
+// preference; written by the agent panel, not the host edit form).
+func (h *HostService) SetAgentModel(hostID, providerID, model string) error {
+	return h.svc.SetAgentModel(hostID, providerID, model)
+}
+
 // TestConnectionResult reports a connection attempt outcome to the UI.
 type TestConnectionResult struct {
 	OK bool   `json:"ok"`
@@ -164,16 +174,18 @@ func toHostInput(in HostInputDTO) appsvc.CreateHostInput {
 
 func toHostDTO(h domain.Host) HostDTO {
 	return HostDTO{
-		ID:            h.ID,
-		Name:          h.Name,
-		Host:          h.Host,
-		Port:          h.Port,
-		Username:      h.Username,
-		AuthType:      string(h.AuthType),
-		TerminalTheme: h.TerminalTheme,
-		Group:         h.Group,
-		Tags:          h.Tags,
-		OS:            h.OS,
+		ID:              h.ID,
+		Name:            h.Name,
+		Host:            h.Host,
+		Port:            h.Port,
+		Username:        h.Username,
+		AuthType:        string(h.AuthType),
+		TerminalTheme:   h.TerminalTheme,
+		Group:           h.Group,
+		Tags:            h.Tags,
+		OS:              h.OS,
+		AgentProviderID: h.AgentProviderID,
+		AgentModel:      h.AgentModel,
 	}
 }
 

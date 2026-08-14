@@ -48,7 +48,7 @@ const ROADMAP: RoadmapEntry[] = [
     icon: FolderTree,
   },
   {
-    view: "agent",
+    view: "terminal",
     titleKey: "dashboard.aiAgent.title",
     descKey: "dashboard.aiAgent.desc",
     phaseKey: "dashboard.aiAgent.phase",

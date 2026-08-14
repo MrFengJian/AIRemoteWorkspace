@@ -3,7 +3,6 @@ import {
   Server,
   TerminalSquare,
   FolderTree,
-  Bot,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -18,12 +17,13 @@ interface NavItem {
   icon: LucideIcon;
 }
 
+// Agent is intentionally NOT in the nav — it's an embedded panel inside the
+// session page (toggled via the toolbar 🤖 button), not a standalone view.
 const NAV_ITEMS: NavItem[] = [
   { view: "dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
   { view: "hosts", labelKey: "nav.hosts", icon: Server },
   { view: "terminal", labelKey: "nav.terminal", icon: TerminalSquare },
   { view: "sftp", labelKey: "nav.files", icon: FolderTree },
-  { view: "agent", labelKey: "nav.agent", icon: Bot },
   { view: "settings", labelKey: "nav.settings", icon: Settings },
 ];
 

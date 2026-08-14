@@ -2,46 +2,35 @@
 
 /*
  * AI Remote Workspace — Design System
- * Dark Developer Theme (MVP)
  *
- * Architecture (AGENT.md §5):
- *   Design Token (--background, --foreground, --primary, --border, --radius, --shadow)
- *     → Tailwind v4 @theme mapping (bg-background, text-foreground, border-border, …)
- *       → Components
+ * Theme architecture: CSS custom properties on :root provide dark defaults.
+ * A light palette is defined under [data-theme="light"]. The "auto" mode
+ * uses prefers-color-scheme to pick between them at runtime.
  *
- * Visual target: VS Code Dark / Cursor Dark — high information density,
- * dark first. Tokens live as plain CSS variables so future Experience Packs
- * (cyber / business / pixel / minimal) can override them without touching
- * component code.
+ * Font settings (--app-font / --cjk-font / --app-font-size) are set
+ * dynamically from AppConfig via ThemeProvider.
  */
 
 @theme {
-  /* ---- Surfaces ---- */
-  --color-background: oklch(16% 0.012 260); /* app canvas */
-  --color-foreground: oklch(93% 0.008 260); /* primary text */
-
+  /* ---- Surfaces (dark defaults) ---- */
+  --color-background: oklch(16% 0.012 260);
+  --color-foreground: oklch(93% 0.008 260);
   --color-card: oklch(20% 0.014 260);
   --color-card-foreground: oklch(93% 0.008 260);
-
   --color-muted: oklch(24% 0.012 260);
   --color-muted-foreground: oklch(64% 0.012 260);
-
   --color-popover: oklch(22% 0.014 260);
   --color-popover-foreground: oklch(93% 0.008 260);
 
   /* ---- Brand / accent ---- */
-  --color-primary: oklch(72% 0.16 255); /* electric blue */
+  --color-primary: oklch(72% 0.16 255);
   --color-primary-foreground: oklch(16% 0.012 260);
-
   --color-secondary: oklch(28% 0.014 260);
   --color-secondary-foreground: oklch(93% 0.008 260);
-
   --color-accent: oklch(28% 0.014 260);
   --color-accent-foreground: oklch(93% 0.008 260);
-
   --color-destructive: oklch(62% 0.22 25);
   --color-destructive-foreground: oklch(96% 0.01 260);
-
   --color-success: oklch(70% 0.16 145);
   --color-warning: oklch(78% 0.16 85);
 
@@ -65,6 +54,91 @@
     "SF Mono", Menlo, Consolas, monospace;
 }
 
+/* ---- Light theme overrides ----
+   Applied when <html data-theme="light">. Auto mode also triggers these
+   via the media query below. */
+:root[data-theme="light"] {
+  --color-background: oklch(98% 0.003 260);
+  --color-foreground: oklch(20% 0.012 260);
+  --color-card: oklch(100% 0 0);
+  --color-card-foreground: oklch(20% 0.012 260);
+  --color-muted: oklch(95% 0.005 260);
+  --color-muted-foreground: oklch(45% 0.012 260);
+  --color-popover: oklch(100% 0 0);
+  --color-popover-foreground: oklch(20% 0.012 260);
+  --color-primary: oklch(55% 0.18 255);
+  --color-primary-foreground: oklch(98% 0.003 260);
+  --color-secondary: oklch(93% 0.005 260);
+  --color-secondary-foreground: oklch(20% 0.012 260);
+  --color-accent: oklch(93% 0.005 260);
+  --color-accent-foreground: oklch(20% 0.012 260);
+  --color-destructive: oklch(55% 0.22 25);
+  --color-destructive-foreground: oklch(98% 0.003 260);
+  --color-success: oklch(55% 0.16 145);
+  --color-warning: oklch(65% 0.16 85);
+  --color-border: oklch(88% 0.008 260);
+  --color-input: oklch(88% 0.008 260);
+  --color-ring: oklch(55% 0.18 255);
+  --shadow-sm: 0 1px 2px 0 oklch(0% 0 0 / 0.08);
+  --shadow-md: 0 4px 12px -2px oklch(0% 0 0 / 0.1);
+  --shadow-lg: 0 12px 32px -4px oklch(0% 0 0 / 0.12);
+}
+
+/* ---- Auto mode: follow system preference ----
+   data-theme="auto" resolves to light when the OS prefers it. */
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] {
+    --color-background: oklch(98% 0.003 260);
+    --color-foreground: oklch(20% 0.012 260);
+    --color-card: oklch(100% 0 0);
+    --color-card-foreground: oklch(20% 0.012 260);
+    --color-muted: oklch(95% 0.005 260);
+    --color-muted-foreground: oklch(45% 0.012 260);
+    --color-popover: oklch(100% 0 0);
+    --color-popover-foreground: oklch(20% 0.012 260);
+    --color-primary: oklch(55% 0.18 255);
+    --color-primary-foreground: oklch(98% 0.003 260);
+    --color-secondary: oklch(93% 0.005 260);
+    --color-secondary-foreground: oklch(20% 0.012 260);
+    --color-accent: oklch(93% 0.005 260);
+    --color-accent-foreground: oklch(20% 0.012 260);
+    --color-destructive: oklch(55% 0.22 25);
+    --color-destructive-foreground: oklch(98% 0.003 260);
+    --color-success: oklch(55% 0.16 145);
+    --color-warning: oklch(65% 0.16 85);
+    --color-border: oklch(88% 0.008 260);
+    --color-input: oklch(88% 0.008 260);
+    --color-ring: oklch(55% 0.18 255);
+    --shadow-sm: 0 1px 2px 0 oklch(0% 0 0 / 0.08);
+    --shadow-md: 0 4px 12px -2px oklch(0% 0 0 / 0.1);
+    --shadow-lg: 0 12px 32px -4px oklch(0% 0 0 / 0.12);
+  }
+}
+
+/* ---- Font CSS variables (set dynamically by ThemeProvider) ---- */
+:root {
+  --app-font: var(--font-sans);
+  --app-font-size: 13px;
+  --cjk-font: "";
+}
+
+/* ---- OS distro icons ----
+   The /os/*.svg assets are monochrome black. Invert to white on dark
+   backgrounds; keep black on light ones so they stay visible in both themes.
+   Mirrors the data-theme / auto media-query switching used for the colour
+   variables above. */
+.os-icon {
+  filter: invert(1); /* dark is the default theme */
+}
+:root[data-theme="light"] .os-icon {
+  filter: none;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] .os-icon {
+    filter: none;
+  }
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
@@ -80,16 +154,14 @@
     margin: 0;
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-family: var(--font-sans);
-    font-size: 13px;
+    font-family: var(--app-font), var(--cjk-font), var(--font-sans);
+    font-size: var(--app-font-size);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    /* Disable native textarea/input zoom on focus (desktop app). */
     overflow: hidden;
   }
 
-  /* Thin, dark scrollbars to match the developer-tool aesthetic. */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;

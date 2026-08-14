@@ -28,11 +28,11 @@ func (s *configService) GetAppConfig() (domain.AppConfig, error) {
 	if cfg.SecurityMode == "" {
 		cfg.SecurityMode = domain.SecurityBalanced
 	}
-	if cfg.TerminalTheme == "" {
-		cfg.TerminalTheme = "cobalt2"
-	}
 	if cfg.LLM.BaseURL == "" {
 		cfg.LLM = domain.DefaultConfig().LLM
+	}
+	if cfg.FontSize == 0 {
+		cfg.FontSize = 13
 	}
 	return cfg, nil
 }

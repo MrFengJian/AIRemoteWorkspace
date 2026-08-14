@@ -17,12 +17,15 @@ interface SftpState {
   entries: FileEntryDTO[];
   loading: boolean;
   error: string | null;
+  /** Whether dotfiles are listed. Off by default; toggled from the toolbar. */
+  showHidden: boolean;
 
   setHost: (id: string | null, name: string | null) => void;
   setCwd: (dir: string) => void;
   setEntries: (entries: FileEntryDTO[]) => void;
   setLoading: (v: boolean) => void;
   setError: (msg: string | null) => void;
+  setShowHidden: (v: boolean) => void;
 }
 
 export const useSftpStore = create<SftpState>((set) => ({
@@ -32,6 +35,7 @@ export const useSftpStore = create<SftpState>((set) => ({
   entries: [],
   loading: false,
   error: null,
+  showHidden: false,
 
   setHost: (id, name) =>
     set({ hostId: id, hostName: name, cwd: "/", entries: [], error: null }),
@@ -39,4 +43,5 @@ export const useSftpStore = create<SftpState>((set) => ({
   setEntries: (entries) => set({ entries }),
   setLoading: (v) => set({ loading: v }),
   setError: (msg) => set({ error: msg, loading: false }),
+  setShowHidden: (v) => set({ showHidden: v }),
 }));

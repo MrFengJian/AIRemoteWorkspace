@@ -7,7 +7,6 @@ import { DashboardView } from "@/features/dashboard/DashboardView";
 import { HostsView } from "@/features/hosts/HostsView";
 import { TerminalView } from "@/features/terminal/TerminalView";
 import { SftpView } from "@/features/sftp/SftpView";
-import { AgentView } from "@/features/agent/AgentView";
 import { SettingsView } from "@/features/settings/SettingsView";
 
 /**
@@ -44,9 +43,6 @@ export function AppShell() {
           </View>
           <View active={activeView === "sftp"}>
             <SftpView />
-          </View>
-          <View active={activeView === "agent"}>
-            <AgentView />
           </View>
           <View active={activeView === "settings"}>
             <SettingsView />

@@ -196,7 +196,7 @@ function HostRow({
             src={osInfo(host.os)!.icon}
             alt={osInfo(host.os)!.label}
             title={osInfo(host.os)!.label}
-            className="h-4 w-4 invert"
+            className="os-icon h-4 w-4"
           />
         ) : (
           <Server className="h-4 w-4" />
@@ -286,7 +286,7 @@ function OsBadge({ os }: { os?: string | null }) {
       title={info.label}
       className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground"
     >
-      <img src={info.icon} alt="" className="h-3 w-3 invert" />
+      <img src={info.icon} alt="" className="os-icon h-3 w-3" />
       {info.label}
     </span>
   );

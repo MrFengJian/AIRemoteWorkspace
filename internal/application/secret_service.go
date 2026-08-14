@@ -32,6 +32,12 @@ const llmAPIKeyRef = "airemote:llm:apikey"
 // into this sentinel.
 var ErrSecretNotFound = errors.New("secret not found")
 
+// IsErrSecretNotFound is a convenience wrapper so callers don't import the
+// sentinel directly.
+func IsErrSecretNotFound(err error) bool {
+	return errors.Is(err, ErrSecretNotFound)
+}
+
 // SecretService wraps a SecretStore with host-scoped key conventions. Keys
 // follow the stable scheme: airemote:host:<hostID>:<kind>.
 type SecretService struct {
@@ -91,7 +97,40 @@ func (s *SecretService) HasHostSecret(hostID string) bool {
 	return false
 }
 
-// --- LLM API key (Phase 4) ---
+// --- LLM provider API keys (per provider) ---
+
+// providerKeyRef is the vault key under which a provider's API key is stored.
+func providerKeyRef(providerID string) string {
+	return fmt.Sprintf("airemote:llm:%s:apikey", providerID)
+}
+
+// SaveProviderKey stores a provider's API key in the OS vault. An empty key
+// clears the entry. Local endpoints (e.g. Ollama) may simply never store one.
+func (s *SecretService) SaveProviderKey(providerID, key string) error {
+	if key == "" {
+		return s.store.Delete(providerKeyRef(providerID))
+	}
+	return s.store.Set(providerKeyRef(providerID), []byte(key))
+}
+
+// GetProviderKey retrieves a provider's API key. Returns "" if none stored.
+func (s *SecretService) GetProviderKey(providerID string) (string, error) {
+	v, err := s.store.Get(providerKeyRef(providerID))
+	if err != nil {
+		if errors.Is(err, ErrSecretNotFound) {
+			return "", nil
+		}
+		return "", err
+	}
+	return string(v), nil
+}
+
+// DeleteProviderKey removes a provider's API key (called on provider delete).
+func (s *SecretService) DeleteProviderKey(providerID string) error {
+	return s.store.Delete(providerKeyRef(providerID))
+}
+
+// --- Legacy LLM API key (pre multi-provider; kept for migration) ---
 
 // SaveLLMKey stores the LLM provider API key in the OS vault.
 func (s *SecretService) SaveLLMKey(key string) error {

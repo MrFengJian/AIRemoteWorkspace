@@ -27,6 +27,9 @@ type hostModel struct {
 	Group         string `gorm:"not null;default:'';size:50;index"`
 	Tags          string `gorm:"not null;default:'[]';type:text"` // JSON array
 	OS            string `gorm:"not null;default:'';size:50"`     // detected distro id (read-only)
+	// Last-used agent model preference (hidden; not in the host edit form).
+	AgentProviderID string `gorm:"not null;default:'';size:64"`
+	AgentModel      string `gorm:"not null;default:'';size:200"`
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

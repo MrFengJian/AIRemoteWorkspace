@@ -15,9 +15,19 @@ export type AppView =
   | "agent"
   | "settings";
 
+/** Settings sidebar categories. Global so other views can deep-link into one. */
+export type SettingsCategory =
+  | "appearance"
+  | "language"
+  | "models"
+  | "advanced"
+  | "about";
+
 interface UIState {
   activeView: AppView;
   setView: (view: AppView) => void;
+  settingsCategory: SettingsCategory;
+  setSettingsCategory: (category: SettingsCategory) => void;
 }
 
 /**
@@ -29,4 +39,6 @@ interface UIState {
 export const useUIStore = create<UIState>((set) => ({
   activeView: "dashboard",
   setView: (view) => set({ activeView: view }),
+  settingsCategory: "appearance",
+  setSettingsCategory: (category) => set({ settingsCategory: category }),
 }));

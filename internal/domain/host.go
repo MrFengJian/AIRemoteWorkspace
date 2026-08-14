@@ -26,6 +26,12 @@ type Host struct {
 	Tags          []string // free-form labels, e.g. ["nginx", "us-east-1"]
 	OS            string   // detected distro id, e.g. "ubuntu"; read-only, set at connect time
 
+	// Last model provider + model the agent used on this host. Hidden
+	// preference persisted by the agent panel when the user changes the inline
+	// selector; deliberately NOT part of the host edit form.
+	AgentProviderID string
+	AgentModel      string
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

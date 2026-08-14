@@ -62,19 +62,21 @@ func (r *HostRepo) Save(h domain.Host) error {
 	}
 
 	return r.store.db.Save(&hostModel{
-		ID:            h.ID,
-		Name:          h.Name,
-		Host:          h.Host,
-		Port:          h.Port,
-		Username:      h.Username,
-		AuthType:      string(h.AuthType),
-		SecretRef:     h.SecretRef,
-		TerminalTheme: h.TerminalTheme,
-		Group:         h.Group,
-		Tags:          string(tagsJSON),
-		OS:            h.OS,
-		CreatedAt:     h.CreatedAt,
-		UpdatedAt:     h.UpdatedAt,
+		ID:              h.ID,
+		Name:            h.Name,
+		Host:            h.Host,
+		Port:            h.Port,
+		Username:        h.Username,
+		AuthType:        string(h.AuthType),
+		SecretRef:       h.SecretRef,
+		TerminalTheme:   h.TerminalTheme,
+		Group:           h.Group,
+		Tags:            string(tagsJSON),
+		OS:              h.OS,
+		AgentProviderID: h.AgentProviderID,
+		AgentModel:      h.AgentModel,
+		CreatedAt:       h.CreatedAt,
+		UpdatedAt:       h.UpdatedAt,
 	}).Error
 }
 
@@ -88,18 +90,20 @@ func hostFromModel(m hostModel) domain.Host {
 	var tags []string
 	_ = json.Unmarshal([]byte(m.Tags), &tags) // tolerate empty/legacy values
 	return domain.Host{
-		ID:            m.ID,
-		Name:          m.Name,
-		Host:          m.Host,
-		Port:          m.Port,
-		Username:      m.Username,
-		AuthType:      domain.AuthType(m.AuthType),
-		SecretRef:     m.SecretRef,
-		TerminalTheme: m.TerminalTheme,
-		Group:         m.Group,
-		Tags:          tags,
-		OS:            m.OS,
-		CreatedAt:     m.CreatedAt,
-		UpdatedAt:     m.UpdatedAt,
+		ID:              m.ID,
+		Name:            m.Name,
+		Host:            m.Host,
+		Port:            m.Port,
+		Username:        m.Username,
+		AuthType:        domain.AuthType(m.AuthType),
+		SecretRef:       m.SecretRef,
+		TerminalTheme:   m.TerminalTheme,
+		Group:           m.Group,
+		Tags:            tags,
+		OS:              m.OS,
+		AgentProviderID: m.AgentProviderID,
+		AgentModel:      m.AgentModel,
+		CreatedAt:       m.CreatedAt,
+		UpdatedAt:       m.UpdatedAt,
 	}
 }

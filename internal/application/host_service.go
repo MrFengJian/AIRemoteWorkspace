@@ -135,6 +135,19 @@ func (s *HostService) EnsureOS(hostID, sessionID string) {
 	_ = s.repo.Save(host) // best-effort persist
 }
 
+// SetAgentModel persists the host's last-used agent provider + model. It is a
+// hidden preference written by the agent panel when the inline selector
+// changes — never part of the host edit form.
+func (s *HostService) SetAgentModel(hostID, providerID, model string) error {
+	host, err := s.repo.Get(hostID)
+	if err != nil {
+		return err
+	}
+	host.AgentProviderID = providerID
+	host.AgentModel = model
+	return s.repo.Save(host)
+}
+
 // ResolveCredentials returns credentials suitable for a connection attempt.
 // If the caller supplied a full secret (password/passphrase), it is used as-is.
 // Otherwise the remembered secret is loaded from the OS vault when available.

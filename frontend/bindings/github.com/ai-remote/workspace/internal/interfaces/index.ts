@@ -4,6 +4,7 @@
 import * as AgentService from "./agentservice.js";
 import * as ConfigService from "./configservice.js";
 import * as HostService from "./hostservice.js";
+import * as ModelProviderService from "./modelproviderservice.js";
 import * as SftpService from "./sftpservice.js";
 import * as SystemService from "./systemservice.js";
 import * as TerminalService from "./terminalservice.js";
@@ -11,6 +12,7 @@ export {
     AgentService,
     ConfigService,
     HostService,
+    ModelProviderService,
     SftpService,
     SystemService,
     TerminalService
@@ -21,12 +23,14 @@ export type {
     FileEntryDTO,
     HostDTO,
     HostInputDTO,
-    LLMConfigDTO,
+    LocalIPResult,
+    ModelProviderDTO,
     OpenSessionRequest,
     OpenSessionResult,
     PtySizeDTO,
     RememberedCredentialsDTO,
-    SetLLMConfigInput,
+    SaveProviderInput,
     SystemInfoResult,
-    TestConnectionResult
+    TestConnectionResult,
+    TestProviderInput
 } from "./models.js";

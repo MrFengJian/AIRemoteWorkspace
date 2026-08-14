@@ -78,12 +78,14 @@ func main() {
 	configSvc := application.NewConfigService(configRepo)
 	hostSvc := application.NewHostService(hostRepo, connManager, hostKeyRepo, secretSvc)
 	sftpSvc := application.NewSftpService(sftp.NewAppClient(sftpMgr), hostRepo, secretSvc)
-	llmSvc := application.NewLLMService(configRepo, secretSvc)
+	// ModelProviderService takes the provider repo + legacy config repo (both
+	// implemented by ConfigRepo) and the vault for per-provider API keys.
+	providerSvc := application.NewModelProviderService(configRepo, configRepo, secretSvc)
 
 	// Agent: permission gate (emitter wired after AgentService is created),
 	// tool runtime (eino ReAct agent per session).
 	permGate := application.NewPermissionGate(nil)
-	agentRuntime := agent.NewRuntime(llmSvc, connManager, sftpMgr, permGate, &secretResolver{secretSvc})
+	agentRuntime := agent.NewRuntime(providerSvc, connManager, sftpMgr, permGate, &secretResolver{secretSvc})
 
 	// Wails-facing services (interface adapter layer).
 	systemService := interfaces.NewSystemService(appName, appVersion)
@@ -91,7 +93,8 @@ func main() {
 	hostService := interfaces.NewHostService(hostSvc)
 	terminalService := interfaces.NewTerminalService(hostSvc, connManager)
 	sftpService := interfaces.NewSftpService(sftpSvc)
-	agentService := interfaces.NewAgentService(llmSvc, agentRuntime, permGate)
+	providerService := interfaces.NewModelProviderService(providerSvc)
+	agentService := interfaces.NewAgentService(agentRuntime, permGate)
 
 	// Wire the approval emitter now that AgentService exists.
 	permGate.SetEmitter(agentService)
@@ -105,6 +108,7 @@ func main() {
 			wailsapp.NewService(hostService),
 			wailsapp.NewService(terminalService),
 			wailsapp.NewService(sftpService),
+			wailsapp.NewService(providerService),
 			wailsapp.NewService(agentService),
 		},
 		Assets: wailsapp.AssetOptions{

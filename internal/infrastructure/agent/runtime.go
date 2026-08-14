@@ -25,17 +25,22 @@ import (
 )
 
 // AgentEvents delivers streaming agent output upward (to the Wails service).
+// A tool invocation is reported twice with the same callID: once when the
+// model requests it (OnToolCallStart) and once when the result is available
+// (OnToolCallEnd) — the UI folds both into one step.
 type AgentEvents interface {
 	OnChunk(sessionID, text string)
-	OnToolCall(sessionID, toolName, args, result string)
+	OnToolCallStart(sessionID, callID, toolName, args string)
+	OnToolCallEnd(sessionID, callID, result string)
 	OnDone(sessionID string)
 	OnError(sessionID, errMsg string)
 }
 
-// LLMConfigProvider supplies BaseURL/Model/APIKey for building the chat model.
-type LLMConfigProvider interface {
-	GetConfig() (domain.LLMConfig, error)
-	GetAPIKey() (string, error)
+// LLMResolver resolves a (providerID, model) selection into endpoint
+// credentials for building the chat model. Implemented by the application
+// layer's ModelProviderService.
+type LLMResolver interface {
+	ResolveLLM(providerID, model string) (domain.LLMEndpoint, error)
 }
 
 // CredsResolver returns host + credentials for a session (for SFTP tools).
@@ -49,7 +54,7 @@ type SftpFileOps = tools.SftpFileOps
 
 // Runtime manages per-session ReAct agents and streams their output.
 type Runtime struct {
-	llm     LLMConfigProvider
+	llm     LLMResolver
 	sshMgr  *ssh.Manager
 	sftp    SftpFileOps
 	gate    PermissionGate
@@ -65,7 +70,7 @@ type SecretsForResolver interface {
 }
 
 // NewRuntime wires the agent runtime.
-func NewRuntime(llm LLMConfigProvider, sshMgr *ssh.Manager, sftp SftpFileOps, gate PermissionGate, secrets SecretsForResolver) *Runtime {
+func NewRuntime(llm LLMResolver, sshMgr *ssh.Manager, sftp SftpFileOps, gate PermissionGate, secrets SecretsForResolver) *Runtime {
 	return &Runtime{
 		llm:       llm,
 		sshMgr:    sshMgr,
@@ -76,24 +81,24 @@ func NewRuntime(llm LLMConfigProvider, sshMgr *ssh.Manager, sftp SftpFileOps, ga
 	}
 }
 
-// Chat starts a streaming agent chat for a session.
-func (r *Runtime) Chat(ctx context.Context, sessionID, userMessage string, events AgentEvents) error {
-	llmCfg, err := r.llm.GetConfig()
+// Chat starts a streaming agent chat for a session using the selected
+// provider + model.
+func (r *Runtime) Chat(ctx context.Context, sessionID, providerID, model, userMessage string, events AgentEvents) error {
+	ep, err := r.llm.ResolveLLM(providerID, model)
 	if err != nil {
-		return fmt.Errorf("load llm config: %w", err)
+		return err
 	}
-	apiKey, err := r.llm.GetAPIKey()
-	if err != nil {
-		return fmt.Errorf("load api key: %w", err)
-	}
+	// Local OpenAI-compatible endpoints (Ollama, LM Studio) need no real key,
+	// but the client requires a non-empty one.
+	apiKey := ep.APIKey
 	if apiKey == "" {
-		return errors.New("no LLM API key configured — set it in Settings")
+		apiKey = "local-no-key"
 	}
 
-	model, err := openaimodel.NewChatModel(ctx, &openaimodel.ChatModelConfig{
-		BaseURL: llmCfg.BaseURL,
+	chatModel, err := openaimodel.NewChatModel(ctx, &openaimodel.ChatModelConfig{
+		BaseURL: ep.BaseURL,
 		APIKey:  apiKey,
-		Model:   llmCfg.Model,
+		Model:   ep.Model,
 	})
 	if err != nil {
 		return fmt.Errorf("create chat model: %w", err)
@@ -110,7 +115,7 @@ func (r *Runtime) Chat(ctx context.Context, sessionID, userMessage string, event
 	}
 
 	ag, err := react.NewAgent(ctx, &react.AgentConfig{
-		ToolCallingModel: model,
+		ToolCallingModel: chatModel,
 		ToolsConfig: compose.ToolsNodeConfig{
 			Tools: toolList,
 		},
@@ -148,12 +153,20 @@ func (r *Runtime) Chat(ctx context.Context, sessionID, userMessage string, event
 			}
 			return err
 		}
+		if msg.Role == schema.Tool {
+			// Tool result — pair it with the matching call, never into the
+			// assistant text stream.
+			if events != nil {
+				events.OnToolCallEnd(sessionID, msg.ToolCallID, msg.Content)
+			}
+			continue
+		}
 		if msg.Content != "" && events != nil {
 			events.OnChunk(sessionID, msg.Content)
 		}
 		if len(msg.ToolCalls) > 0 && events != nil {
 			for _, tc := range msg.ToolCalls {
-				events.OnToolCall(sessionID, tc.Function.Name, tc.Function.Arguments, "")
+				events.OnToolCallStart(sessionID, tc.ID, tc.Function.Name, tc.Function.Arguments)
 			}
 		}
 	}

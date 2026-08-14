@@ -5,27 +5,13 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"sync/atomic"
 
 	wailsapp "github.com/wailsapp/wails/v3/pkg/application"
 
 	appsvc "github.com/ai-remote/workspace/internal/application"
-	"github.com/ai-remote/workspace/internal/domain"
 	"github.com/ai-remote/workspace/internal/infrastructure/agent"
 )
-
-// LLMConfigDTO carries the non-sensitive LLM settings to the frontend.
-type LLMConfigDTO struct {
-	BaseURL   string `json:"baseUrl"`
-	Model     string `json:"model"`
-	HasAPIKey bool   `json:"hasApiKey"` // never the key itself
-}
-
-// SetLLMConfigInput is what the frontend sends to configure the provider.
-type SetLLMConfigInput struct {
-	BaseURL string `json:"baseUrl"`
-	Model   string `json:"model"`
-	APIKey  string `json:"apiKey"` // empty = keep existing; " " = clear
-}
 
 // ApprovalRequestDTO mirrors application.ApprovalRequest for the frontend.
 type ApprovalRequestDTO struct {
@@ -36,18 +22,18 @@ type ApprovalRequestDTO struct {
 	Args       string `json:"args"`
 }
 
-// AgentService exposes the AI agent + LLM config to the frontend.
+// AgentService exposes the AI agent to the frontend. Provider/model selection
+// is per chat call; provider management lives in ModelProviderService.
 type AgentService struct {
-	app       *wailsapp.App
-	llm       *appsvc.LLMService
-	runtime   *agent.Runtime
-	gate      *appsvc.PermissionGate
+	app     *wailsapp.App
+	runtime *agent.Runtime
+	gate    *appsvc.PermissionGate
 }
 
 // NewAgentService wires the AgentService. The *Application is injected via
 // ServiceStartup.
-func NewAgentService(llm *appsvc.LLMService, runtime *agent.Runtime, gate *appsvc.PermissionGate) *AgentService {
-	return &AgentService{llm: llm, runtime: runtime, gate: gate}
+func NewAgentService(runtime *agent.Runtime, gate *appsvc.PermissionGate) *AgentService {
+	return &AgentService{runtime: runtime, gate: gate}
 }
 
 func (a *AgentService) ServiceName() string { return "AgentService" }
@@ -73,37 +59,14 @@ func (a *AgentService) EmitApproval(req appsvc.ApprovalRequest) {
 	})
 }
 
-// GetLLMConfig returns the provider settings + whether an API key is stored.
-func (a *AgentService) GetLLMConfig() (LLMConfigDTO, error) {
-	cfg, err := a.llm.GetConfig()
-	if err != nil {
-		return LLMConfigDTO{}, err
-	}
-	key, _ := a.llm.GetAPIKey()
-	return LLMConfigDTO{
-		BaseURL:   cfg.BaseURL,
-		Model:     cfg.Model,
-		HasAPIKey: key != "",
-	}, nil
-}
-
-// SetLLMConfig persists BaseURL/Model and stores/clears the API key.
-func (a *AgentService) SetLLMConfig(in SetLLMConfigInput) error {
-	if err := a.llm.SetConfig(domain.LLMConfig{BaseURL: in.BaseURL, Model: in.Model}); err != nil {
-		return err
-	}
-	if in.APIKey != "" {
-		return a.llm.SetAPIKey(in.APIKey)
-	}
-	return nil
-}
-
-// StartChat kicks off a streaming agent chat. Output flows via events:
-//   agent:<sessionID>:chunk   — incremental LLM text
-//   agent:<sessionID>:toolcall — tool invocation notice
-//   agent:<sessionID>:done    — chat completed
-//   agent:<sessionID>:error   — chat failed
-func (a *AgentService) StartChat(sessionID, message string) error {
+// StartChat kicks off a streaming agent chat against the selected provider +
+// model. Output flows via events:
+//   agent:<sessionID>:chunk    — incremental LLM text
+//   agent:<sessionID>:toolcall — tool invocation start (id/tool/args)
+//   agent:<sessionID>:toolend  — tool invocation result (id/result)
+//   agent:<sessionID>:done     — chat completed
+//   agent:<sessionID>:error    — chat failed
+func (a *AgentService) StartChat(sessionID, providerID, model, message string) error {
 	if a.runtime == nil {
 		return fmt.Errorf("agent runtime not available")
 	}
@@ -112,8 +75,12 @@ func (a *AgentService) StartChat(sessionID, message string) error {
 	// Run in the background — the stream is long-lived and event-driven.
 	go func() {
 		ctx := context.Background()
-		if err := a.runtime.Chat(ctx, sid, message, events); err != nil {
+		if err := a.runtime.Chat(ctx, sid, providerID, model, message, events); err != nil {
 			log.Printf("[AgentService] chat for %s ended: %v", sid, err)
+			// Surface pre-stream failures (bad provider, disabled, …) to the
+			// frontend so it doesn't wait for events that will never come.
+			// The emitter dedupes if the stream already reported an error.
+			events.OnError(sid, err.Error())
 		}
 	}()
 	return nil
@@ -137,6 +104,7 @@ func (a *AgentService) ApproveToolCall(reqID string, approved bool) error {
 type agentEventsEmitter struct {
 	app       *wailsapp.App
 	sessionID string
+	errored   atomic.Bool
 }
 
 func (e *agentEventsEmitter) emit(name string, data any) {
@@ -151,10 +119,17 @@ func (e *agentEventsEmitter) OnChunk(_ string, text string) {
 	e.emit("chunk", base64.StdEncoding.EncodeToString([]byte(text)))
 }
 
-func (e *agentEventsEmitter) OnToolCall(_ string, toolName, args, result string) {
+func (e *agentEventsEmitter) OnToolCallStart(_ string, callID, toolName, args string) {
 	e.emit("toolcall", map[string]string{
-		"tool":   toolName,
-		"args":   args,
+		"id":   callID,
+		"tool": toolName,
+		"args": args,
+	})
+}
+
+func (e *agentEventsEmitter) OnToolCallEnd(_ string, callID, result string) {
+	e.emit("toolend", map[string]string{
+		"id":     callID,
 		"result": result,
 	})
 }
@@ -164,6 +139,11 @@ func (e *agentEventsEmitter) OnDone(_ string) {
 }
 
 func (e *agentEventsEmitter) OnError(_ string, msg string) {
+	// First error wins — later calls (e.g. StartChat re-reporting the error
+	// Chat already surfaced mid-stream) are dropped so the user sees one.
+	if !e.errored.CompareAndSwap(false, true) {
+		return
+	}
 	e.emit("error", msg)
 }
 

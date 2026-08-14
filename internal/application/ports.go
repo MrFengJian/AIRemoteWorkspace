@@ -25,6 +25,14 @@ type ConfigRepository interface {
 	Set(cfg domain.AppConfig) error
 }
 
+// ProviderRepository is the persistence port for LLM model providers. Stored
+// separately from AppConfig so whole-config saves can't clobber provider edits.
+// Implemented by infrastructure/sqlite.ConfigRepo.
+type ProviderRepository interface {
+	GetProviders() ([]domain.ModelProvider, error)
+	SetProviders(providers []domain.ModelProvider) error
+}
+
 // HostRepository is the persistence port for hosts.
 type HostRepository interface {
 	List() ([]domain.Host, error)

@@ -16,6 +16,15 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * GetLocalIP returns the machine's primary outbound IPv4 address by dialing
+ * a public address (no actual connection is established — UDP dial just
+ * resolves the route). Used by the terminal right-click "paste local IP".
+ */
+export function GetLocalIP(): $CancellablePromise<$models.LocalIPResult> {
+    return $Call.ByID(1333072652);
+}
+
+/**
  * SystemInfo returns the runtime info shown in the StatusBar.
  */
 export function SystemInfo(): $CancellablePromise<$models.SystemInfoResult> {

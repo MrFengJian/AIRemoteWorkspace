@@ -1,7 +1,20 @@
 import { useEffect, useState } from "react";
-import { Check, Languages } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import {
+  Palette,
+  Languages,
+  Settings2,
+  Info,
+  Bot,
+  Check,
+  Sun,
+  Moon,
+  Monitor,
+} from "lucide-react";
 
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -9,213 +22,349 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  TERMINAL_THEMES,
-  getTerminalTheme,
-} from "@/features/terminal/themes";
-import { useTerminalStore } from "@/features/terminal/terminal.store";
-import { ConfigService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
+import { ConfigService, SystemService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import {
   SecurityMode,
   type AppConfig,
 } from "@/../bindings/github.com/ai-remote/workspace/internal/domain/models";
+import { applyTheme, applyFonts } from "@/app/providers/ThemeProvider";
+import { useUIStore, type SettingsCategory } from "@/stores/ui.store";
+import { ModelSettingsSection } from "@/features/settings/ModelSettingsSection";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_CONFIG: AppConfig = {
   securityMode: SecurityMode.SecurityBalanced,
   defaultShell: "/bin/bash",
   theme: "dark",
-  terminalTheme: "cobalt2",
+  uiFont: "",
+  fontSize: 13,
+  cjkFont: "",
   llm: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o" },
 };
 
-/**
- * Settings view. Phase 1 read-only fields; terminal theme is editable and
- * persisted via ConfigService.SetAppConfig.
- */
+/** Common sans-serif font options. */
+const UI_FONTS = [
+  { value: "", label: "System Default" },
+  { value: "Inter", label: "Inter" },
+  { value: "Segoe UI", label: "Segoe UI" },
+  { value: "system-ui", label: "system-ui" },
+  { value: "SF Pro Text", label: "SF Pro Text" },
+  { value: "Microsoft YaHei", label: "Microsoft YaHei" },
+  { value: "Helvetica Neue", label: "Helvetica Neue" },
+  { value: "Arial", label: "Arial" },
+];
+
+/** Common CJK font options. */
+const CJK_FONTS = [
+  { value: "", label: "Follow UI font" },
+  { value: "Microsoft YaHei", label: "Microsoft YaHei" },
+  { value: "PingFang SC", label: "PingFang SC" },
+  { value: "Noto Sans CJK SC", label: "Noto Sans CJK SC" },
+  { value: "Source Han Sans SC", label: "Source Han Sans SC" },
+  { value: "SimHei", label: "SimHei" },
+  { value: "WenQuanYi Micro Hei", label: "WenQuanYi Micro Hei" },
+];
+
 export function SettingsView() {
   const { t, i18n } = useTranslation();
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
-  const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [savingTheme, setSavingTheme] = useState<string | null>(null);
-  const setTerminalThemeId = useTerminalStore((s) => s.setThemeId);
+  // Category lives in the global UI store so other views can deep-link into a
+  // specific settings section (e.g. the agent's "open model settings").
+  const category = useUIStore((s) => s.settingsCategory);
+  const setCategory = useUIStore((s) => s.setSettingsCategory);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     ConfigService.GetAppConfig()
       .then((res: AppConfig) => {
-        if (!cancelled) {
-          // terminalTheme may be absent on an older config; fall back.
-          const themeId = res.terminalTheme || "cobalt2";
-          setConfig({ ...res, terminalTheme: themeId });
-          setTerminalThemeId(themeId); // sync the terminal store on load
-          setLoaded(true);
-        }
+        if (!cancelled) setConfig(res);
       })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
-          setLoaded(true);
-        }
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const selectTheme = async (themeId: string) => {
-    const prev = config;
-    const next = { ...config, terminalTheme: themeId };
+  /** Persist config changes to backend + apply live effects. */
+  const updateConfig = async (patch: Partial<AppConfig>) => {
+    const next = { ...config, ...patch };
     setConfig(next);
-    setTerminalThemeId(themeId); // live-update open terminals
-    setSavingTheme(themeId);
+    // Apply live effects immediately.
+    if (patch.theme) applyTheme(patch.theme);
+    if (patch.uiFont !== undefined || patch.cjkFont !== undefined || patch.fontSize) {
+      applyFonts(next.uiFont, next.cjkFont, next.fontSize);
+    }
+    // Persist.
+    setSaving(true);
     try {
       await ConfigService.SetAppConfig(next);
-    } catch (e) {
-      // Revert on failure.
-      setConfig(prev);
-      setTerminalThemeId(prev.terminalTheme);
-      setError(e instanceof Error ? e.message : String(e));
+    } catch {
+      // revert on failure
+      setConfig(config);
     } finally {
-      setSavingTheme(null);
+      setSaving(false);
     }
   };
 
-  const activeTheme = getTerminalTheme(config.terminalTheme);
+  const categories: { id: SettingsCategory; label: string; icon: typeof Palette }[] = [
+    { id: "appearance", label: t("settings.appearance"), icon: Palette },
+    { id: "language", label: t("settings.language"), icon: Languages },
+    { id: "models", label: t("settings.models.title"), icon: Bot },
+    { id: "advanced", label: t("settings.advanced"), icon: Settings2 },
+    { id: "about", label: t("settings.about"), icon: Info },
+  ];
 
   return (
-    <div className="mx-auto max-w-2xl p-8">
-      <h1 className="text-xl font-semibold tracking-tight">{t("settings.title")}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Application configuration, stored locally.
-      </p>
+    <div className="flex h-full overflow-hidden">
+      {/* Left sidebar: category navigation */}
+      <nav className="flex w-48 shrink-0 flex-col gap-0.5 border-r border-border bg-card p-2">
+        {categories.map((cat) => {
+          const Icon = cat.icon;
+          return (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setCategory(cat.id)}
+              className={cn(
+                "flex items-center gap-2 rounded-[var(--radius)] px-3 py-2 text-sm transition-colors",
+                category === cat.id
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {cat.label}
+            </button>
+          );
+        })}
+      </nav>
 
-      <Card className="mt-6">
+      {/* Right: content area */}
+      <div className="min-w-0 flex-1 overflow-auto p-6">
+        <div className="mx-auto max-w-2xl">
+          {category === "appearance" && <AppearanceSection config={config} update={updateConfig} saving={saving} />}
+          {category === "language" && <LanguageSection i18n={i18n} />}
+          {category === "models" && <ModelSettingsSection />}
+          {category === "advanced" && <AdvancedSection config={config} />}
+          {category === "about" && <AboutSection />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Appearance ───────────────────────────────────────────────────────
+
+function AppearanceSection({
+  config,
+  update,
+  saving,
+}: {
+  config: AppConfig;
+  update: (patch: Partial<AppConfig>) => void;
+  saving: boolean;
+}) {
+  const { t } = useTranslation();
+  const themeOptions = [
+    { value: "light", label: t("settings.themeLight"), icon: Sun },
+    { value: "dark", label: t("settings.themeDark"), icon: Moon },
+    { value: "auto", label: t("settings.themeAuto"), icon: Monitor },
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <h2 className="text-lg font-semibold">{t("settings.appearance")}</h2>
+
+      {/* Theme mode */}
+      <Card>
         <CardHeader>
-          <CardTitle className="text-base">{t("settings.securityMode")}</CardTitle>
-          <CardDescription>{t("settings.securityModeDesc")}</CardDescription>
+          <CardTitle className="text-sm">{t("settings.themeMode")}</CardTitle>
+          <CardDescription>{t("settings.themeModeDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <span className="inline-flex rounded-full border border-border bg-muted px-3 py-1 text-sm">
-            {t(`security.${config.securityMode}`)}
-          </span>
-        </CardContent>
-      </Card>
-
-      {/* Terminal colour scheme */}
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle className="text-base">{t("settings.terminalScheme")}</CardTitle>
-          <CardDescription>{t("settings.terminalSchemeDesc")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {TERMINAL_THEMES.map((def) => {
-              const selected = config.terminalTheme === def.id;
+          <div className="flex gap-2">
+            {themeOptions.map((opt) => {
+              const Icon = opt.icon;
+              const active = (config.theme || "dark") === opt.value;
               return (
                 <button
-                  key={def.id}
+                  key={opt.value}
                   type="button"
-                  onClick={() => selectTheme(def.id)}
-                  disabled={savingTheme !== null}
+                  onClick={() => update({ theme: opt.value })}
                   className={cn(
-                    "group relative flex flex-col gap-2 rounded-[var(--radius)] border p-2 text-left transition-colors",
-                    selected
-                      ? "border-primary ring-1 ring-primary"
-                      : "border-border hover:border-primary/40",
+                    "flex flex-1 flex-col items-center gap-1.5 rounded-[var(--radius)] border p-3 transition-colors",
+                    active
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:border-primary/40",
                   )}
                 >
-                  {/* Preview swatch using the theme's ANSI palette. */}
-                  <div
-                    className="flex h-12 items-center justify-center gap-1 rounded-[calc(var(--radius)-2px)] font-mono text-[10px] font-bold"
-                    style={{ background: def.theme.background }}
-                  >
-                    <span style={{ color: def.theme.red }}>●</span>
-                    <span style={{ color: def.theme.green }}>●</span>
-                    <span style={{ color: def.theme.yellow }}>●</span>
-                    <span style={{ color: def.theme.blue }}>●</span>
-                    <span style={{ color: def.theme.magenta }}>●</span>
-                    <span style={{ color: def.theme.cyan }}>●</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium">{def.label}</span>
-                    {selected && (
-                      <Check className="h-3.5 w-3.5 text-primary" />
-                    )}
-                  </div>
+                  <Icon className="h-5 w-5" />
+                  <span className="text-xs font-medium">{opt.label}</span>
+                  {active && <Check className="h-3 w-3" />}
                 </button>
               );
             })}
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            {t("settings.selected")}: <span className="font-medium">{activeTheme.label}</span>
-            {activeTheme.light && " (light)"}
-          </p>
         </CardContent>
       </Card>
 
-      {/* Language */}
-      <Card className="mt-4">
+      {/* Font settings */}
+      <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Languages className="h-4 w-4 text-primary" />
-            {t("settings.language")}
-          </CardTitle>
-          <CardDescription>{t("settings.languageDesc")}</CardDescription>
+          <CardTitle className="text-sm">{t("settings.fontTitle")}</CardTitle>
+          <CardDescription>{t("settings.fontDesc")}</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => i18n.changeLanguage("zh")}
-              className={cn(
-                "rounded-[var(--radius)] border px-3 py-1.5 text-sm transition-colors",
-                i18n.language?.startsWith("zh")
-                  ? "border-primary text-primary"
-                  : "border-border text-muted-foreground hover:border-primary/40",
-              )}
+        <CardContent className="flex flex-col gap-4">
+          {/* UI font */}
+          <div className="grid grid-cols-[8rem_1fr] items-center gap-3">
+            <Label htmlFor="uiFont">{t("settings.uiFont")}</Label>
+            <Select
+              id="uiFont"
+              value={config.uiFont}
+              onChange={(e) => update({ uiFont: e.target.value })}
             >
-              {t("settings.chinese")}
-            </button>
-            <button
-              type="button"
-              onClick={() => i18n.changeLanguage("en")}
-              className={cn(
-                "rounded-[var(--radius)] border px-3 py-1.5 text-sm transition-colors",
-                i18n.language?.startsWith("en")
-                  ? "border-primary text-primary"
-                  : "border-border text-muted-foreground hover:border-primary/40",
-              )}
+              {UI_FONTS.map((f) => (
+                <option key={f.value} value={f.value}>{f.label}</option>
+              ))}
+            </Select>
+          </div>
+
+          {/* CJK font */}
+          <div className="grid grid-cols-[8rem_1fr] items-center gap-3">
+            <Label htmlFor="cjkFont">{t("settings.cjkFont")}</Label>
+            <Select
+              id="cjkFont"
+              value={config.cjkFont}
+              onChange={(e) => update({ cjkFont: e.target.value })}
             >
-              {t("settings.english")}
-            </button>
+              {CJK_FONTS.map((f) => (
+                <option key={f.value} value={f.value}>{f.label}</option>
+              ))}
+            </Select>
+          </div>
+
+          {/* Font size */}
+          <div className="grid grid-cols-[8rem_1fr] items-center gap-3">
+            <Label htmlFor="fontSize">{t("settings.fontSize")}</Label>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={11}
+                max={20}
+                value={config.fontSize || 13}
+                onChange={(e) => update({ fontSize: Number(e.target.value) })}
+                className="flex-1 accent-primary"
+              />
+              <span className="w-10 text-center text-sm font-mono">
+                {config.fontSize || 13}px
+              </span>
+            </div>
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
 
-      <Card className="mt-4">
+// ── Language ─────────────────────────────────────────────────────────
+
+function LanguageSection({ i18n }: { i18n: ReturnType<typeof useTranslation>["i18n"] }) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col gap-4">
+      <h2 className="text-lg font-semibold">{t("settings.language")}</h2>
+      <Card>
         <CardHeader>
-          <CardTitle className="text-base">{t("settings.runtime")}</CardTitle>
+          <CardTitle className="text-sm">{t("settings.interfaceLanguage")}</CardTitle>
+          <CardDescription>{t("settings.languageDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-[8rem_1fr] items-center gap-3">
+            <Label>{t("settings.language")}</Label>
+            <Select
+              value={i18n.language?.split("-")[0] ?? "en"}
+              onChange={(e) => i18n.changeLanguage(e.target.value)}
+              className="max-w-xs"
+            >
+              <option value="en">English</option>
+              <option value="zh">简体中文</option>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Advanced ─────────────────────────────────────────────────────────
+
+function AdvancedSection({ config }: { config: AppConfig }) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col gap-4">
+      <h2 className="text-lg font-semibold">{t("settings.advanced")}</h2>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">{t("settings.securityMode")}</CardTitle>
+          <CardDescription>{t("settings.securityModeDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Badge variant="secondary">
+            {t(`security.${config.securityMode}`)}
+          </Badge>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">{t("settings.runtime")}</CardTitle>
           <CardDescription>{t("settings.runtimeDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-2 gap-y-2 text-sm">
             <dt className="text-muted-foreground">{t("settings.defaultShell")}</dt>
             <dd className="font-mono">{config.defaultShell}</dd>
-            <dt className="text-muted-foreground">Theme</dt>
-            <dd>{config.theme}</dd>
           </dl>
         </CardContent>
       </Card>
+    </div>
+  );
+}
 
-      <p className="mt-6 text-xs text-muted-foreground">
-        {error
-          ? t("settings.loadError", { error })
-          : loaded
-            ? t("settings.loaded")
-            : t("common.loading")}
-      </p>
+// ── About ────────────────────────────────────────────────────────────
+
+function AboutSection() {
+  const { t } = useTranslation();
+  const [info, setInfo] = useState<{
+    appName: string;
+    version: string;
+    platform: string;
+    goVersion: string;
+  } | null>(null);
+
+  useEffect(() => {
+    SystemService.SystemInfo()
+      .then(setInfo)
+      .catch(() => {});
+  }, []);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <h2 className="text-lg font-semibold">{t("settings.about")}</h2>
+      <Card>
+        <CardContent className="pt-6">
+          <dl className="grid grid-cols-[8rem_1fr] gap-y-3 text-sm">
+            <dt className="text-muted-foreground">{t("settings.appName")}</dt>
+            <dd className="font-medium">{info?.appName ?? "AI Remote Workspace"}</dd>
+            <dt className="text-muted-foreground">{t("settings.version")}</dt>
+            <dd className="font-mono">{info?.version ?? "—"}</dd>
+            <dt className="text-muted-foreground">{t("settings.platform")}</dt>
+            <dd className="font-mono">{info?.platform ?? "—"}</dd>
+            <dt className="text-muted-foreground">{t("settings.goVersion")}</dt>
+            <dd className="font-mono">{info?.goVersion ?? "—"}</dd>
+          </dl>
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -60,6 +60,14 @@ export function SaveCredentials(hostID: string, creds: $models.CredentialsDTO, r
 }
 
 /**
+ * SetAgentModel persists the host's last-used agent provider + model (hidden
+ * preference; written by the agent panel, not the host edit form).
+ */
+export function SetAgentModel(hostID: string, providerID: string, model: string): $CancellablePromise<void> {
+    return $Call.ByID(2353598437, hostID, providerID, model);
+}
+
+/**
  * TestConnection dials the host with the given credentials and reports
  * success/failure without keeping the session open. If the caller sends empty
  * credentials, remembered secrets from the OS vault are filled in first

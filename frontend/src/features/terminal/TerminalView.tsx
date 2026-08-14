@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   TerminalSquare,
   X,
@@ -10,6 +10,9 @@ import {
   ChevronsLeft,
   ChevronsRight,
   CircleX,
+  FolderTree,
+  Bot,
+  Check,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -17,6 +20,8 @@ import { useTerminalStore } from "@/features/terminal/terminal.store";
 import { useUIStore } from "@/stores/ui.store";
 import { TerminalPanel } from "@/features/terminal/TerminalPanel";
 import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabMenu";
+import { AgentView } from "@/features/agent/AgentView";
+import { SftpView } from "@/features/sftp/SftpView";
 import { useOpenTerminal, useHosts } from "@/features/hosts/hooks";
 import { useHostsUIStore } from "@/features/hosts/store";
 import { osInfo } from "@/features/hosts/osIcons";
@@ -39,6 +44,8 @@ export function TerminalView() {
   const removeSession = useTerminalStore((s) => s.removeSession);
   const removeSessions = useTerminalStore((s) => s.removeSessions);
   const clearSessions = useTerminalStore((s) => s.clearSessions);
+  const addPane = useTerminalStore((s) => s.addPane);
+  const removePane = useTerminalStore((s) => s.removePane);
   const setView = useUIStore((s) => s.setView);
   const openEditor = useHostsUIStore((s) => s.openEditor);
   const openTerminal = useOpenTerminal();
@@ -49,6 +56,11 @@ export function TerminalView() {
     x: number;
     y: number;
   } | null>(null);
+
+  // Right panel visibility + active tab (SFTP / Agent share one panel).
+  const [rightOpen, setRightOpen] = useState(false);
+  const [rightTab, setRightTab] = useState<"sftp" | "agent">("agent");
+  const [copied, setCopied] = useState(false);
 
   // Host list (for per-tab OS icon). OS is auto-detected at connect time on
   // the backend; polling the hosts query keeps the tab icon in sync until the
@@ -70,13 +82,79 @@ export function TerminalView() {
   const hostOs = (hostID: string): string | undefined =>
     (hosts ?? []).find((h) => h.id === hostID)?.os;
 
-  // closeSession tears down a session end to end: close the backend PTY, then
-  // drop it from the store. Called only when the user explicitly closes a tab.
-  const closeSession = (id: string) => {
-    TerminalService.CloseSession(id).catch(() => {
-      /* session may already be gone on the backend */
-    });
-    removeSession(id);
+  // Active session info for the toolbar.
+  const activeSession = sessions.find((s) => s.id === activeId);
+  const activeHost = activeSession
+    ? (hosts ?? []).find((h) => h.id === activeSession.hostID)
+    : undefined;
+
+  const handleCopyAddr = async () => {
+    if (!activeHost) return;
+    const addr = `${activeHost.username}@${activeHost.host}:${activeHost.port}`;
+    try {
+      await navigator.clipboard.writeText(addr);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard blocked */
+    }
+  };
+
+  const handleReconnect = () => {
+    if (activeSession) reconnectSession(activeSession);
+  };
+
+  // closeSession closes a single pane. If it's the last pane in the tab, the
+  // tab is removed too. All panes are equal — no hierarchy.
+  const closeSession = (tabId: string, paneId: string) => {
+    TerminalService.CloseSession(paneId).catch(() => {});
+    removePane(tabId, paneId);
+  };
+
+  // closeAllPanes closes every pane in a tab (used by tab right-click "close").
+  const closeAllPanes = (tabId: string) => {
+    const sess = sessions.find((s) => s.id === tabId);
+    if (!sess) return;
+    for (const pid of sess.paneIds) {
+      TerminalService.CloseSession(pid).catch(() => {});
+    }
+    removeSession(tabId);
+  };
+
+  // handleSplit opens a new backend session on the same host and adds it as a
+  // new pane to the tab.
+  const handleSplit = async (tabId: string, direction: "horizontal" | "vertical") => {
+    const sess = sessions.find((s) => s.id === tabId);
+    if (!sess) return;
+    try {
+      const res = await TerminalService.OpenSession({
+        hostId: sess.hostID,
+        creds: {},
+        size: { cols: 80, rows: 24 },
+      });
+      addPane(tabId, res.sessionId, direction);
+    } catch {
+      /* failed to open split — silent */
+    }
+  };
+
+  // reconnectPane closes and reopens a single pane.
+  const reconnectPane = async (tabId: string, paneId: string) => {
+    const sess = sessions.find((s) => s.id === tabId);
+    if (!sess) return;
+    TerminalService.CloseSession(paneId).catch(() => {});
+    try {
+      const res = await TerminalService.OpenSession({
+        hostId: sess.hostID,
+        creds: {},
+        size: { cols: 80, rows: 24 },
+      });
+      // Replace paneId with new session ID in the store.
+      removePane(tabId, paneId);
+      addPane(tabId, res.sessionId, sess.splitDirection ?? "horizontal");
+    } catch {
+      /* silent */
+    }
   };
 
   // duplicateSession opens a new terminal on the same host as an existing tab.
@@ -93,11 +171,10 @@ export function TerminalView() {
       });
   };
 
-  // reconnectSession closes the current tab and opens a fresh session on the
-  // same host (effectively re-establishing the connection).
+  // reconnectSession closes all panes in the tab and opens a fresh tab.
   const reconnectSession = (sess: (typeof sessions)[number]) => {
     const { hostID, hostName, terminalTheme } = sess;
-    closeSession(sess.id);
+    closeAllPanes(sess.id);
     duplicateSession({ hostID, hostName, terminalTheme });
   };
 
@@ -148,7 +225,7 @@ export function TerminalView() {
         label: t("terminal.close"),
         icon: XCircle,
         danger: true,
-        onClick: () => closeSession(sess.id),
+        onClick: () => closeAllPanes(sess.id),
       },
       {
         label: t("terminal.closeLeft"),
@@ -232,7 +309,7 @@ export function TerminalView() {
                 src={osInfo(hostOs(sess.hostID))!.icon}
                 alt=""
                 title={osInfo(hostOs(sess.hostID))!.label}
-                className="h-3 w-3 shrink-0 invert"
+                className="os-icon h-3 w-3 shrink-0"
               />
             )}
             <span className="max-w-[12rem] truncate">{sess.hostName}</span>
@@ -251,7 +328,7 @@ export function TerminalView() {
               aria-label="Close tab"
               onClick={(e) => {
                 e.stopPropagation();
-                closeSession(sess.id);
+                closeAllPanes(sess.id);
               }}
               className="rounded p-0.5 opacity-0 transition-opacity hover:bg-background/60 group-hover:opacity-100"
             >
@@ -261,19 +338,193 @@ export function TerminalView() {
         ))}
       </div>
 
-      {/* Panels: only active is visible, all stay mounted for scrollback. */}
-      <div className="relative min-h-0 flex-1">
-        {sessions.map((sess) => (
-          <div
-            key={sess.id}
-            className={cn(
-              "absolute inset-0",
-              sess.id === activeId ? "visible" : "hidden",
-            )}
-          >
-            <TerminalPanel session={sess} />
+      {/* Two-column workspace: [Terminal+Toolbar] [Right Panel] */}
+      <div className="flex min-h-0 flex-1">
+        {/* Center: toolbar + terminal panels */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/* Quick-action toolbar */}
+          <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-card px-2">
+            {/* SFTP toggle — opens right panel on the SFTP tab */}
+            <button
+              type="button"
+              onClick={() => {
+                if (rightOpen && rightTab === "sftp") {
+                  setRightOpen(false);
+                } else {
+                  setRightTab("sftp");
+                  setRightOpen(true);
+                }
+              }}
+              title={t("terminal.toggleSftp")}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
+                rightOpen && rightTab === "sftp"
+                  ? "bg-accent text-primary"
+                  : "text-muted-foreground hover:bg-accent/50",
+              )}
+            >
+              <FolderTree className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={handleCopyAddr}
+              disabled={!activeHost}
+              title={t("terminal.copyAddr")}
+              className="flex h-7 w-7 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-accent/50 disabled:opacity-40"
+            >
+              {copied ? (
+                <Check className="h-4 w-4 text-success" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={handleReconnect}
+              disabled={!activeSession}
+              title={t("terminal.reconnect")}
+              className="flex h-7 w-7 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-accent/50 disabled:opacity-40"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
+            {/* Agent toggle — opens right panel on the Agent tab. Model
+                selection lives inline in the agent panel's input area. */}
+            <button
+              type="button"
+              onClick={() => {
+                if (rightOpen && rightTab === "agent") {
+                  setRightOpen(false);
+                } else {
+                  setRightTab("agent");
+                  setRightOpen(true);
+                }
+              }}
+              title={t("terminal.toggleAgent")}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
+                rightOpen && rightTab === "agent"
+                  ? "bg-accent text-primary"
+                  : "text-muted-foreground hover:bg-accent/50",
+              )}
+            >
+              <Bot className="h-4 w-4" />
+            </button>
           </div>
-        ))}
+
+          {/* Terminal panels: only active tab is visible, all stay mounted. */}
+          <div className="relative min-h-0 flex-1">
+            {sessions.map((sess) => (
+              <div
+                key={sess.id}
+                className={cn(
+                  "absolute inset-0",
+                  sess.id === activeId ? "visible" : "hidden",
+                )}
+              >
+                {sess.paneIds.length > 1 ? (
+                  /* Split layout: panes side by side or stacked, all equal. */
+                  <div
+                    className={cn(
+                      "flex h-full w-full",
+                      sess.splitDirection === "horizontal"
+                        ? "flex-row"
+                        : "flex-col",
+                    )}
+                  >
+                    {sess.paneIds.map((paneId, idx) => (
+                      <React.Fragment key={paneId}>
+                        {idx > 0 && (
+                          <div
+                            className={cn(
+                              "shrink-0 bg-foreground/15",
+                              sess.splitDirection === "horizontal"
+                                ? "w-[3px] h-full cursor-col-resize"
+                                : "h-[3px] w-full cursor-row-resize",
+                            )}
+                          />
+                        )}
+                        <div className="relative min-h-0 min-w-0 flex-1">
+                          <TerminalPanel
+                            session={{ ...sess, id: paneId }}
+                            paneCount={sess.paneIds.length}
+                            onDisconnect={() => closeSession(sess.id, paneId)}
+                            onReconnect={() => reconnectPane(sess.id, paneId)}
+                          />
+                        </div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                ) : (
+                  <TerminalPanel
+                    session={sess}
+                    onDisconnect={() => closeSession(sess.id, sess.paneIds[0])}
+                    onReconnect={() => reconnectPane(sess.id, sess.paneIds[0])}
+                    onSplitHorizontal={() => handleSplit(sess.id, "horizontal")}
+                    onSplitVertical={() => handleSplit(sess.id, "vertical")}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right panel: tabbed (SFTP / Agent) — hidden when closed. */}
+        {rightOpen && activeSession && (
+          <div className="flex w-80 shrink-0 flex-col border-l border-border bg-card">
+            {/* Tab strip */}
+            <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2">
+              <button
+                type="button"
+                onClick={() => setRightTab("sftp")}
+                className={cn(
+                  "flex h-7 items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-xs transition-colors",
+                  rightTab === "sftp"
+                    ? "bg-accent text-foreground"
+                    : "text-muted-foreground hover:bg-accent/50",
+                )}
+              >
+                <FolderTree className="h-3.5 w-3.5" />
+                {t("nav.files")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightTab("agent")}
+                className={cn(
+                  "flex h-7 items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-xs transition-colors",
+                  rightTab === "agent"
+                    ? "bg-accent text-foreground"
+                    : "text-muted-foreground hover:bg-accent/50",
+                )}
+              >
+                <Bot className="h-3.5 w-3.5" />
+                {t("nav.agent")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightOpen(false)}
+                className="ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                title={t("common.close")}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {/* Tab content */}
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {rightTab === "sftp" ? (
+                <SftpView
+                  embeddedHostID={activeSession.hostID}
+                  embeddedHostName={activeSession.hostName}
+                />
+              ) : (
+                <AgentView
+                  embeddedSessionID={activeSession.id}
+                  embeddedSessionName={activeSession.hostName}
+                />
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Context menu */}

@@ -43,14 +43,43 @@ func (r *ConfigRepo) Get() (domain.AppConfig, error) {
 
 // Set persists cfg as JSON under the 'app' key (upsert).
 func (r *ConfigRepo) Set(cfg domain.AppConfig) error {
-	raw, err := json.Marshal(cfg)
+	return r.setSetting("app", cfg)
+}
+
+// GetProviders returns the stored LLM model providers, or an empty list.
+func (r *ConfigRepo) GetProviders() ([]domain.ModelProvider, error) {
+	var providers []domain.ModelProvider
+	var m settingModel
+	err := r.store.db.First(&m, "key = ?", "providers").Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return providers, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if jsonErr := json.Unmarshal([]byte(m.Value), &providers); jsonErr != nil {
+		return nil, jsonErr
+	}
+	return providers, nil
+}
+
+// SetProviders persists the LLM model providers as JSON under the 'providers'
+// key (upsert). Kept separate from 'app' so whole-config saves never clobber
+// provider edits made through ModelProviderService.
+func (r *ConfigRepo) SetProviders(providers []domain.ModelProvider) error {
+	return r.setSetting("providers", providers)
+}
+
+// setSetting upserts an arbitrary JSON-serialisable value under a settings key.
+func (r *ConfigRepo) setSetting(key string, value any) error {
+	raw, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
 	var m settingModel
-	err = r.store.db.First(&m, "key = ?", "app").Error
+	err = r.store.db.First(&m, "key = ?", key).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return r.store.db.Create(&settingModel{Key: "app", Value: string(raw)}).Error
+		return r.store.db.Create(&settingModel{Key: key, Value: string(raw)}).Error
 	}
 	if err != nil {
 		return err

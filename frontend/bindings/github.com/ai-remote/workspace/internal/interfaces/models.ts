@@ -49,6 +49,13 @@ export interface HostDTO {
      * detected distro id; read-only, never editable
      */
     "os": string;
+
+    /**
+     * Last-used agent model preference; read-only for the host form, written
+     * via SetAgentModel by the agent panel.
+     */
+    "agentProviderId": string;
+    "agentModel": string;
 }
 
 /**
@@ -67,15 +74,21 @@ export interface HostInputDTO {
 }
 
 /**
- * LLMConfigDTO carries the non-sensitive LLM settings to the frontend.
+ * LocalIPResult carries the machine's primary local IP address.
  */
-export interface LLMConfigDTO {
-    "baseUrl": string;
-    "model": string;
+export interface LocalIPResult {
+    "ip": string;
+}
 
-    /**
-     * never the key itself
-     */
+/**
+ * ModelProviderDTO carries a provider to the frontend — never the API key.
+ */
+export interface ModelProviderDTO {
+    "id": string;
+    "name": string;
+    "baseUrl": string;
+    "models": string[] | null;
+    "enabled": boolean;
     "hasApiKey": boolean;
 }
 
@@ -114,11 +127,17 @@ export interface RememberedCredentialsDTO {
 }
 
 /**
- * SetLLMConfigInput is what the frontend sends to configure the provider.
+ * SaveProviderInput is what the frontend sends to create/update a provider.
  */
-export interface SetLLMConfigInput {
+export interface SaveProviderInput {
+    /**
+     * empty = create
+     */
+    "id": string;
+    "name": string;
     "baseUrl": string;
-    "model": string;
+    "models": string[] | null;
+    "enabled": boolean;
 
     /**
      * empty = keep existing; " " = clear
@@ -143,4 +162,19 @@ export interface SystemInfoResult {
 export interface TestConnectionResult {
     "ok": boolean;
     "msg": string;
+}
+
+/**
+ * TestProviderInput addresses a provider for testing / model fetching. Empty
+ * BaseURL or APIKey with an ID present falls back to the stored values.
+ */
+export interface TestProviderInput {
+    "id": string;
+    "baseUrl": string;
+    "apiKey": string;
+
+    /**
+     * optional; defaults to the first recorded model
+     */
+    "model": string;
 }
