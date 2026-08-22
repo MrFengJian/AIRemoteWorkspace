@@ -56,7 +56,9 @@ dev_mode:
       type: blocking
     - cmd: wails3 task common:dev:frontend
       type: background
-    - cmd: wails3 task run
+    # DEV=true makes the run task wait for the dev server and point the app at
+    # 127.0.0.1 instead of "localhost".
+    - cmd: wails3 task run DEV=true
       type: primary
 
 # File Associations

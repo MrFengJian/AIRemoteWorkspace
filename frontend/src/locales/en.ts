@@ -64,6 +64,7 @@ export const en = {
     description:
       "Configure a remote machine. Credentials are used only for this session unless you tick \u201CRemember\u201D — then they\u2019re stored in the OS credential vault, never in the database.",
     connection: "Connection",
+    appearance: "Appearance",
     name: "Name",
     host: "Host",
     username: "Username",
@@ -74,8 +75,7 @@ export const en = {
     group: "Group",
     customGroup: "Custom group",
     terminalScheme: "Terminal colour scheme",
-    schemeDefault: "Default (settings)",
-    termFontOverride: "Override terminal font for this host",
+    schemeDefault: "Default",
     termFont: "Terminal font",
     termFontSize: "Terminal font size",
     tags: "Tags",
@@ -192,6 +192,14 @@ export const en = {
     insertHint: "Insert into terminal session",
     cancelled: "cancelled",
     errorPrefix: "\u26A0\uFE0F",
+    retry: "Retry",
+    scrollDown: "Scroll to bottom",
+    truncated: "truncated",
+    copyResult: "Copy result",
+    clearTitle: "Clear conversation",
+    clearConfirm:
+      "Clear this conversation? The agent will also lose its memory of this chat.",
+    pendingApprovals: "{{count}} more pending",
   },
 
   // ── Settings ────────────────────────────────────────────────
@@ -214,12 +222,6 @@ export const en = {
     uiFont: "Interface font",
     cjkFont: "CJK font",
     fontSize: "Font size",
-    termFontTitle: "Terminal font",
-    termFontDesc:
-      "Defaults for every terminal. Individual hosts can override these in their edit form.",
-    terminalFont: "Font",
-    terminalFontSize: "Size",
-    termFontPreview: "user@host:~$ echo preview 0123",
     securityMode: "Security mode",
     securityModeDesc: "Controls how credentials are stored and whether connections auto-connect.",
     runtime: "Runtime",

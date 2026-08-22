@@ -1,14 +1,16 @@
 import { create } from "zustand";
 
 /**
- * Agent feature state. Per-session message history + streaming state + pending
- * approval requests. The activeSessionId ties the agent to a terminal tab.
+ * Agent feature state. Per-session message history + streaming state.
+ * The activeSessionId ties the agent to a terminal tab. Approval requests
+ * live in their own global store (approval.store.ts) rendered by ApprovalHost.
  */
-
 export interface ChatMessage {
   /** Stable identity for list keys — survives streaming appends/reorders. */
   id: number;
   role: "user" | "assistant" | "tool";
+  /** Assistant-only presentation hint: errors (retryable) vs user cancels. */
+  variant?: "error" | "cancelled";
   content: string;
   toolName?: string;
   toolArgs?: string;
@@ -18,21 +20,11 @@ export interface ChatMessage {
   running?: boolean;
 }
 
-export interface PendingApproval {
-  reqId: string;
-  sessionId: string;
-  toolName: string;
-  permission: string;
-  args: string;
-}
-
 interface AgentState {
   /** Messages keyed by sessionID. */
   histories: Record<string, ChatMessage[]>;
   /** Sessions currently streaming a response. */
   streaming: Record<string, boolean>;
-  /** Pending approval requests (only one at a time per session). */
-  approvals: PendingApproval[];
 
   addMessage: (sessionID: string, msg: Omit<ChatMessage, "id">) => void;
   appendToLast: (sessionID: string, text: string) => void;
@@ -42,8 +34,11 @@ interface AgentState {
   setToolResult: (sessionID: string, callId: string, result: string) => void;
   /** Mark every still-running tool step finished (chat ended). */
   finishToolSteps: (sessionID: string) => void;
-  addApproval: (a: PendingApproval) => void;
-  removeApproval: (reqId: string) => void;
+  /** Remove the trailing assistant message if it is still empty (stream died
+   *  before any text arrived — avoids a stray empty bubble above the error). */
+  dropTrailingEmptyAssistant: (sessionID: string) => void;
+  /** Remove the trailing error/cancelled notice (before a retry resends). */
+  dropTrailingNotice: (sessionID: string) => void;
   clearHistory: (sessionID: string) => void;
 }
 
@@ -53,7 +48,6 @@ let nextMessageId = 1;
 export const useAgentStore = create<AgentState>((set) => ({
   histories: {},
   streaming: {},
-  approvals: [],
 
   addMessage: (sessionID, msg) =>
     set((s) => ({
@@ -82,8 +76,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       };
     }),
 
-  setStreaming: (sessionID, v) =>
-    set((s) => ({ streaming: { ...s.streaming, [sessionID]: v } })),
+  setStreaming: (sessionID, v) => set((s) => ({ streaming: { ...s.streaming, [sessionID]: v } })),
 
   setToolResult: (sessionID, callId, result) =>
     set((s) => {
@@ -115,9 +108,27 @@ export const useAgentStore = create<AgentState>((set) => ({
       };
     }),
 
-  addApproval: (a) => set((s) => ({ approvals: [...s.approvals, a] })),
-  removeApproval: (reqId) =>
-    set((s) => ({ approvals: s.approvals.filter((a) => a.reqId !== reqId) })),
+  dropTrailingEmptyAssistant: (sessionID) =>
+    set((s) => {
+      const hist = s.histories[sessionID] ?? [];
+      if (hist.length === 0) return s;
+      const last = hist[hist.length - 1];
+      if (last.role === "assistant" && last.content === "" && !last.variant) {
+        return { histories: { ...s.histories, [sessionID]: hist.slice(0, -1) } };
+      }
+      return s;
+    }),
+
+  dropTrailingNotice: (sessionID) =>
+    set((s) => {
+      const hist = s.histories[sessionID] ?? [];
+      if (hist.length === 0) return s;
+      const last = hist[hist.length - 1];
+      if (last.role === "assistant" && last.variant) {
+        return { histories: { ...s.histories, [sessionID]: hist.slice(0, -1) } };
+      }
+      return s;
+    }),
 
   clearHistory: (sessionID) =>
     set((s) => {

@@ -7,7 +7,10 @@ import path from "node:path";
 // https://vitejs.dev/config/
 export default defineConfig({
   server: {
-    host: "127.0.0.1",
+    // Bind all stacks: wails3's dev asset server proxies "localhost", which
+    // Windows resolves to ::1 first — an IPv4-only bind makes it fail with
+    // "unable to connect to frontend server".
+    host: true,
     port: Number(process.env.WAILS_VITE_PORT) || 9245,
     strictPort: true,
   },

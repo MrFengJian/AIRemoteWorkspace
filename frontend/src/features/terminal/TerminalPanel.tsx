@@ -28,7 +28,6 @@ import {
 import { TerminalService, SystemService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { useTerminalStore, type TerminalSession } from "@/features/terminal/terminal.store";
 import { useUIStore } from "@/stores/ui.store";
-import { useAppConfig } from "@/features/settings/useAppConfig";
 import { terminalFontFamily } from "@/features/terminal/fonts";
 import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabMenu";
 import { TerminalThemeDialog } from "@/features/terminal/TerminalThemeDialog";
@@ -71,8 +70,6 @@ export function TerminalPanel({
   const activeView = useUIStore((s) => s.activeView);
   const activeTabId = useTerminalStore((s) => s.activeId);
   const { data: hosts } = useHosts();
-  // Global terminal font settings; the host's own override wins when set.
-  const { data: appConfig } = useAppConfig();
 
   // Context menu + search bar state.
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -87,12 +84,10 @@ export function TerminalPanel({
   // getTerminalTheme. The context-menu pick overrides it for this pane.
   const resolvedTheme = getTerminalTheme(liveThemeId ?? session.terminalTheme);
 
-  // Resolved font: per-host override → global setting → built-in default.
-  const resolvedFontFamily = terminalFontFamily(
-    session.terminalFont || appConfig?.terminalFont || "",
-  );
-  const resolvedFontSize =
-    session.terminalFontSize || appConfig?.terminalFontSize || 13;
+  // Resolved font: per-host value (host edit → 外观 tab) or built-in default.
+  // Empty font / 0 size fall back to the defaults inside terminalFontFamily.
+  const resolvedFontFamily = terminalFontFamily(session.terminalFont || "");
+  const resolvedFontSize = session.terminalFontSize || 13;
 
   // Resolve the remote host IP for the "paste remote IP" action.
   const remoteIP = (hosts ?? []).find((h) => h.id === session.hostID)?.host ?? "";
@@ -114,20 +109,9 @@ export function TerminalPanel({
     }
   }, [activeView, activeTabId, tabId]);
 
-  // Live-update the terminal font when the global settings change (per-host
-  // overrides are fixed for the session's lifetime, like the theme). Font
-  // metrics change the cell size, so refit afterwards.
-  const fitRef = useRef<FitAddon | null>(null);
-  useEffect(() => {
-    if (!termRef.current) return;
-    termRef.current.options.fontFamily = resolvedFontFamily;
-    termRef.current.options.fontSize = resolvedFontSize;
-    try {
-      fitRef.current?.fit();
-    } catch {
-      /* container not laid out yet */
-    }
-  }, [resolvedFontFamily, resolvedFontSize]);
+  // Note: the resolved font/theme are snapshotted at session start (the
+  // session's TerminalPanel mounts once). Editing the host's appearance
+  // applies to newly opened sessions — reconnect to refresh an open one.
 
   // Mount xterm + wire events (runs once per session).
   useEffect(() => {
@@ -148,7 +132,6 @@ export function TerminalPanel({
     term.loadAddon(fit);
     term.loadAddon(search);
     term.open(container);
-    fitRef.current = fit;
     try {
       fit.fit();
     } catch {
@@ -233,7 +216,6 @@ export function TerminalPanel({
       term.dispose();
       termRef.current = null;
       searchAddonRef.current = null;
-      fitRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id]);

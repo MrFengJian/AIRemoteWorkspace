@@ -7,6 +7,8 @@ export const agentApi = {
   startChat: (sessionID: string, providerID: string, model: string, message: string) =>
     AgentService.StartChat(sessionID, providerID, model, message),
   cancelChat: (sessionID: string) => AgentService.CancelChat(sessionID),
+  /** Forget the backend's conversation memory for a session (multi-turn replay). */
+  clearHistory: (sessionID: string) => AgentService.ClearHistory(sessionID),
   approveToolCall: (reqID: string, approved: boolean) =>
     AgentService.ApproveToolCall(reqID, approved),
 };

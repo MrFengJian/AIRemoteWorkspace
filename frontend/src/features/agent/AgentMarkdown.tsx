@@ -23,10 +23,14 @@ export function AgentMarkdown({ content, canInsert, onInsert }: AgentMarkdownPro
   const components = useMemo(
     () => ({
       // Block code: the <pre> wrapper is replaced entirely by CodeBlock; the
-      // inner <code> renderer is never invoked for block content.
-      pre: ({ children }: { children?: ReactNode }) => (
-        <CodeBlock code={nodeText(children)} canInsert={canInsert} onInsert={onInsert} />
-      ),
+      // inner <code> renderer is never invoked for block content. The fence
+      // language (```bash …) is recovered from the code child's className.
+      pre: ({ children }: { children?: ReactNode }) => {
+        const { text, language } = nodeTextAndLang(children);
+        return (
+          <CodeBlock code={text} language={language} canInsert={canInsert} onInsert={onInsert} />
+        );
+      },
       code: ({ children }: { children?: ReactNode }) => (
         <code className="rounded-[4px] border border-border/60 bg-background/80 px-1 py-0.5 font-mono text-[0.85em]">
           {children}
@@ -81,13 +85,23 @@ export function AgentMarkdown({ content, canInsert, onInsert }: AgentMarkdownPro
   );
 }
 
-/** nodeText flattens a rendered markdown node tree to plain text (used to
- *  extract the source of a fenced code block). */
-function nodeText(node: ReactNode): string {
-  if (node == null || node === false || node === true) return "";
-  if (typeof node === "string" || typeof node === "number") return String(node);
-  if (Array.isArray(node)) return node.map(nodeText).join("");
-  const el = node as { props?: { children?: ReactNode } };
-  if (el.props?.children !== undefined) return nodeText(el.props.children);
-  return "";
+/** Flattens a rendered markdown node tree to plain text (used to extract the
+ *  source of a fenced code block), also recovering the fence language from a
+ *  code element's `language-xxx` className when present. */
+function nodeTextAndLang(node: ReactNode): { text: string; language?: string } {
+  let language: string | undefined;
+  const walk = (n: ReactNode): string => {
+    if (n == null || n === false || n === true) return "";
+    if (typeof n === "string" || typeof n === "number") return String(n);
+    if (Array.isArray(n)) return n.map(walk).join("");
+    const el = n as { props?: { children?: ReactNode; className?: string } };
+    if (typeof el.props?.className === "string" && !language) {
+      const m = /language-([\w+-]+)/.exec(el.props.className);
+      if (m) language = m[1];
+    }
+    if (el.props?.children !== undefined) return walk(el.props.children);
+    return "";
+  };
+  const text = walk(node);
+  return { text, language };
 }

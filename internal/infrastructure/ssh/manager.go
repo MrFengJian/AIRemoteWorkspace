@@ -143,6 +143,14 @@ func (m *Manager) Close(sessionID string) error {
 // (opens a fresh non-interactive session — does not disturb the PTY). Returns
 // combined stdout+stderr. Used by the Agent's ssh_exec tool.
 func (m *Manager) ExecInSession(sessionID, cmd string) (string, error) {
+	return m.ExecInSessionCtx(context.Background(), sessionID, cmd)
+}
+
+// ExecInSessionCtx is ExecInSession with cancellation: when ctx is done the
+// exec session is closed, which terminates the remote command (the same way
+// closing an interactive session does). Used so the agent's Stop button can
+// interrupt long-running remote commands.
+func (m *Manager) ExecInSessionCtx(ctx context.Context, sessionID, cmd string) (string, error) {
 	ms, ok := m.session(sessionID)
 	if !ok {
 		return "", errSessionNotFound(sessionID)
@@ -152,8 +160,26 @@ func (m *Manager) ExecInSession(sessionID, cmd string) (string, error) {
 		return "", fmt.Errorf("new exec session: %w", err)
 	}
 	defer sess.Close()
-	out, err := sess.CombinedOutput(cmd)
-	return string(out), err
+
+	type execResult struct {
+		out []byte
+		err error
+	}
+	done := make(chan execResult, 1)
+	go func() {
+		out, err := sess.CombinedOutput(cmd)
+		done <- execResult{out, err}
+	}()
+	select {
+	case r := <-done:
+		return string(r.out), r.err
+	case <-ctx.Done():
+		// Closing the session kills the remote command; wait for the reader
+		// goroutine so the session isn't used after Close returns.
+		_ = sess.Close()
+		<-done
+		return "", ctx.Err()
+	}
 }
 
 // HostOfSession returns the domain.Host associated with a session.

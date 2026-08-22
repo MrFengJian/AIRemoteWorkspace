@@ -94,6 +94,15 @@ func (a *AgentService) CancelChat(sessionID string) error {
 	return nil
 }
 
+// ClearHistory forgets a session's conversation memory (the frontend also
+// clears its local message list when the user clears the chat).
+func (a *AgentService) ClearHistory(sessionID string) error {
+	if a.runtime != nil {
+		a.runtime.ClearHistory(sessionID)
+	}
+	return nil
+}
+
 // ApproveToolCall resolves a pending approval request.
 func (a *AgentService) ApproveToolCall(reqID string, approved bool) error {
 	return a.gate.Resolve(reqID, approved)

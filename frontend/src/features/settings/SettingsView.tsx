@@ -30,8 +30,6 @@ import {
 import { applyTheme, applyFonts } from "@/app/providers/ThemeProvider";
 import { useUIStore, type SettingsCategory } from "@/stores/ui.store";
 import { ModelSettingsSection } from "@/features/settings/ModelSettingsSection";
-import { useSetAppConfig } from "@/features/settings/useAppConfig";
-import { TERMINAL_FONTS, terminalFontFamily } from "@/features/terminal/fonts";
 import { cn } from "@/lib/utils";
 import { toast, errorMessage } from "@/lib/toast";
 
@@ -42,12 +40,11 @@ const DEFAULT_CONFIG: AppConfig = {
   uiFont: "",
   fontSize: 13,
   cjkFont: "",
-  terminalFont: "",
-  terminalFontSize: 13,
   llm: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o" },
 };
 
-/** Common sans-serif font options. */
+/** Common sans-serif font options. Terminal font/size live per-host (host
+ *  edit dialog → 外观 tab), Xshell-style — not here. */
 const UI_FONTS = [
   { value: "", label: "System Default" },
   { value: "Inter", label: "Inter" },
@@ -58,8 +55,6 @@ const UI_FONTS = [
   { value: "Helvetica Neue", label: "Helvetica Neue" },
   { value: "Arial", label: "Arial" },
 ];
-
-/** Common monospace font options for the terminal (shared list). */
 
 /** Common CJK font options. */
 const CJK_FONTS = [
@@ -75,7 +70,6 @@ const CJK_FONTS = [
 export function SettingsView() {
   const { t, i18n } = useTranslation();
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
-  const setCachedConfig = useSetAppConfig();
   // Category lives in the global UI store so other views can deep-link into a
   // specific settings section (e.g. the agent's "open model settings").
   const category = useUIStore((s) => s.settingsCategory);
@@ -107,9 +101,6 @@ export function SettingsView() {
     setSaving(true);
     try {
       await ConfigService.SetAppConfig(next);
-      // Keep the shared query cache in sync so live consumers (terminal
-      // font/size) pick the new value up.
-      setCachedConfig(next);
     } catch (e) {
       // Revert and tell the user — otherwise the change looks saved but isn't.
       setConfig(config);
@@ -277,58 +268,6 @@ function AppearanceSection({
               </span>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Terminal font settings — per-host overrides sit in the host form. */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">{t("settings.termFontTitle")}</CardTitle>
-          <CardDescription>{t("settings.termFontDesc")}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {/* Terminal font */}
-          <div className="grid grid-cols-[8rem_1fr] items-center gap-3">
-            <Label htmlFor="terminalFont">{t("settings.terminalFont")}</Label>
-            <Select
-              id="terminalFont"
-              value={config.terminalFont}
-              onChange={(e) => update({ terminalFont: e.target.value })}
-            >
-              {TERMINAL_FONTS.map((f) => (
-                <option key={f.value} value={f.value} className="font-mono">{f.label}</option>
-              ))}
-            </Select>
-          </div>
-
-          {/* Terminal font size */}
-          <div className="grid grid-cols-[8rem_1fr] items-center gap-3">
-            <Label htmlFor="terminalFontSize">{t("settings.terminalFontSize")}</Label>
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={10}
-                max={22}
-                value={config.terminalFontSize || 13}
-                onChange={(e) => update({ terminalFontSize: Number(e.target.value) })}
-                className="flex-1 accent-primary"
-              />
-              <span className="w-10 text-center text-sm font-mono">
-                {config.terminalFontSize || 13}px
-              </span>
-            </div>
-          </div>
-
-          {/* Live preview of the monospace settings. */}
-          <p
-            className="truncate rounded-[var(--radius)] border border-border bg-background/30 px-3 py-1.5 text-sm"
-            style={{
-              fontFamily: terminalFontFamily(config.terminalFont),
-              fontSize: `${config.terminalFontSize || 13}px`,
-            }}
-          >
-            {t("settings.termFontPreview")}
-          </p>
         </CardContent>
       </Card>
     </div>

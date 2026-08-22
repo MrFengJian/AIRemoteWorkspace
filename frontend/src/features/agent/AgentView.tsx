@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Events } from "@wailsio/runtime";
 import { useTranslation } from "react-i18next";
 import {
@@ -9,26 +9,20 @@ import {
   Settings2,
   Loader2,
   Wrench,
-  ShieldAlert,
   Check,
   ChevronRight,
-  X,
+  ArrowDown,
+  Copy as CopyIcon,
+  RotateCcw,
+  Trash2,
+  Scissors,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { agentApi } from "@/features/agent/api";
-import { useAgentStore } from "@/features/agent/store";
+import { useAgentStore, type ChatMessage } from "@/features/agent/store";
 import { useTerminalStore } from "@/features/terminal/terminal.store";
 import { useModelProviders } from "@/features/settings/hooks";
 import { useHosts } from "@/features/hosts/hooks";
@@ -36,18 +30,17 @@ import { AgentMarkdown } from "@/features/agent/AgentMarkdown";
 import { HostService, TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { useUIStore } from "@/stores/ui.store";
 import { decodeBase64, encodeBase64 } from "@/lib/base64";
+import { useConfirm } from "@/lib/useConfirm";
 import { cn } from "@/lib/utils";
+
+/** Input-history cap (↑ recall of previously sent messages). */
+const MAX_INPUT_HISTORY = 50;
 
 /**
  * AI Agent view. Bound to the active terminal session — the agent operates on
  * that session's connected host. Streams LLM responses, shows tool calls
- * inline, and gates WRITE/DANGEROUS tools behind an approval dialog.
- *
- * In embedded mode (embeddedSessionID set), it binds directly to that session
- * instead of reading the global activeId — for embedding inside the session
- * page's right panel. The provider + model used for chats are chosen per
- * session from the inline selector above the input box; with no usable
- * provider configured, the user is pointed at Settings → Models.
+ * inline, and gates WRITE/DANGEROUS tools behind the global ApprovalHost
+ * (mounted in AppShell, works even when this panel is closed).
  */
 interface AgentViewProps {
   embeddedSessionID?: string;
@@ -61,23 +54,32 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
   const setAgentModel = useTerminalStore((s) => s.setAgentModel);
   const setView = useUIStore((s) => s.setView);
   const setSettingsCategory = useUIStore((s) => s.setSettingsCategory);
+  const { askConfirm } = useConfirm();
   // Embedded mode overrides the global active session.
   const activeSessionId = embeddedSessionID ?? storeActiveId;
 
   const {
     histories,
     streaming,
-    approvals,
     addMessage,
     appendToLast,
     setStreaming,
     setToolResult,
     finishToolSteps,
-    addApproval,
-    removeApproval,
+    dropTrailingEmptyAssistant,
+    dropTrailingNotice,
+    clearHistory,
   } = useAgentStore();
 
   const [input, setInput] = useState("");
+  const [inputHistory, setInputHistory] = useState<string[]>([]);
+  const [historyIdx, setHistoryIdx] = useState<number | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // Follow-scroll flag: only auto-scroll while the user is at the bottom.
+  const atBottomRef = useRef(true);
+  const [showJumpDown, setShowJumpDown] = useState(false);
+
   // Shared provider query (same cache as Settings → Models), filtered to
   // enabled providers for the inline selector.
   const { data: allProviders, isLoading: providersLoading } = useModelProviders();
@@ -86,7 +88,6 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
     [allProviders],
   );
   const providersLoaded = !providersLoading;
-  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const sessionName = embeddedSessionName
     ?? (activeSessionId
@@ -114,10 +115,6 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
     HostService.SetAgentModel(hostID, providerId, model).catch(() => {});
   };
 
-  // Enabled providers for the inline selector come from the shared
-  // useModelProviders query — the panel re-reads on each open and stays in
-  // sync with Settings → Models through the shared query cache.
-
   // Seed the session's selection from the host's saved preference once, when
   // the session has no selection yet and the hosts query has loaded.
   // agentProviderId === undefined marks an unseeded session; "" means seeded
@@ -130,12 +127,18 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
 
   // Default/self-heal the session's selection: pick the first available
   // provider when none is set, or when the stored one was deleted or disabled.
-  // Waits for the host-preference seeding above so it doesn't clobber it.
+  // Manual model ids (provider without a fetched model list) are trusted and
+  // never clobbered. Waits for the host-preference seeding above.
   useEffect(() => {
     if (!providersLoaded || !activeSessionId || providers.length === 0) return;
     if (session?.agentProviderId === undefined) return;
     const cur = providers.find((p) => p.id === agentProviderId);
-    if (cur && agentModel && cur.models?.includes(agentModel)) return;
+    if (cur && agentModel) {
+      // Trust a valid selection, and equally a hand-typed model id on a
+      // provider that has no fetched model list.
+      if ((cur.models?.length ?? 0) === 0) return;
+      if (cur.models?.includes(agentModel)) return;
+    }
     const target =
       (cur && (cur.models?.length ?? 0) > 0
         ? cur
@@ -166,12 +169,36 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
     persistModel(agentProviderId, model);
   };
 
-  // Auto-scroll to bottom on new messages.
+  // ── Smart scroll: follow only while the user is at the bottom ─────────
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    atBottomRef.current = near;
+    setShowJumpDown(!near);
+  };
+
+  const jumpToBottom = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    atBottomRef.current = true;
+    setShowJumpDown(false);
+  };
+
   useEffect(() => {
-    if (scrollRef.current) {
+    if (atBottomRef.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [histories, activeSessionId]);
+
+  // Auto-grow the textarea with its content (up to ~8 lines).
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [input]);
 
   // Subscribe to agent events for the active session.
   useEffect(() => {
@@ -221,9 +248,14 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
     const errorCancel = Events.On(`agent:${sid}:error`, (e: unknown) => {
       const data = (e as { data?: unknown }).data;
       setStreaming(sid, false);
+      finishToolSteps(sid);
+      // A user-initiated stop is not an error — render it as a quiet notice.
+      const cancelled = typeof data === "string" && data === "cancelled";
+      dropTrailingEmptyAssistant(sid);
       addMessage(sid, {
         role: "assistant",
-        content: `${t("agent.errorPrefix")} ${typeof data === "string" ? data : "error"}`,
+        variant: cancelled ? "cancelled" : "error",
+        content: cancelled ? t("agent.cancelled") : `${t("agent.errorPrefix")} ${typeof data === "string" ? data : "error"}`,
       });
     });
 
@@ -234,49 +266,47 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
       if (typeof doneCancel === "function") doneCancel();
       if (typeof errorCancel === "function") errorCancel();
     };
-  }, [activeSessionId, addMessage, appendToLast, setStreaming, setToolResult, finishToolSteps]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId]);
 
-  // Subscribe to approval requests (global, not per-session).
-  useEffect(() => {
-    const cancel = Events.On("agent:approval", (e: unknown) => {
-      const data = (e as { data?: unknown }).data as
-        | { reqId?: string; sessionId?: string; toolName?: string; permission?: string; args?: string }
-        | undefined;
-      if (data?.reqId) {
-        addApproval({
-          reqId: data.reqId,
-          sessionId: data.sessionId ?? "",
-          toolName: data.toolName ?? "",
-          permission: data.permission ?? "",
-          args: data.args ?? "",
-        });
-      }
-    });
-    return () => {
-      if (typeof cancel === "function") cancel();
-    };
-  }, [addApproval]);
+  // ── Sending ──────────────────────────────────────────────────────────
 
-  const handleSend = async () => {
-    if (!activeSessionId || !input.trim()) return;
-    // Chats require a provider + model selection (the inline selector above
-    // the input defaults to the first available one; send stays disabled
-    // until something is selectable).
+  const send = async (text: string) => {
+    if (!activeSessionId || !text.trim() || streaming[activeSessionId]) return;
     if (!modelChosen) return;
-    const msg = input.trim();
+    setInputHistory((h) => [...h.slice(-MAX_INPUT_HISTORY + 1), text.trim()]);
+    setHistoryIdx(null);
     setInput("");
-    addMessage(activeSessionId, { role: "user", content: msg });
+    addMessage(activeSessionId, { role: "user", content: text.trim() });
     setStreaming(activeSessionId, true);
     // Seed an empty assistant message for streaming append.
     addMessage(activeSessionId, { role: "assistant", content: "" });
+    atBottomRef.current = true;
     try {
-      await agentApi.startChat(activeSessionId, agentProviderId, agentModel, msg);
+      await agentApi.startChat(activeSessionId, agentProviderId, agentModel, text.trim());
     } catch (e) {
       setStreaming(activeSessionId, false);
+      dropTrailingEmptyAssistant(activeSessionId);
       addMessage(activeSessionId, {
         role: "assistant",
+        variant: "error",
         content: `${t("agent.errorPrefix")} ${e instanceof Error ? e.message : String(e)}`,
       });
+    }
+  };
+
+  const handleSend = () => send(input);
+
+  /** Retry: drop the trailing notice and resend the last user message. */
+  const handleRetry = () => {
+    if (!activeSessionId) return;
+    const hist = histories[activeSessionId] ?? [];
+    for (let i = hist.length - 1; i >= 0; i--) {
+      if (hist[i].role === "user") {
+        dropTrailingNotice(activeSessionId);
+        send(hist[i].content);
+        return;
+      }
     }
   };
 
@@ -284,20 +314,37 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
     if (activeSessionId) agentApi.cancelChat(activeSessionId);
   };
 
+  /** Clear this session's conversation (local UI + backend memory). */
+  const handleClear = async () => {
+    if (!activeSessionId) return;
+    const ok = await askConfirm({
+      title: t("agent.clearTitle"),
+      message: t("agent.clearConfirm"),
+      danger: true,
+      confirmLabel: t("common.delete"),
+    });
+    if (!ok) return;
+    clearHistory(activeSessionId);
+    agentApi.clearHistory(activeSessionId).catch(() => {});
+  };
+
   // handleInsert sends a code/command block to the active terminal's stdin.
   // The text appears in the terminal as if the user typed it — NO trailing
   // newline is added, so nothing executes until the user presses Enter. This
   // lets the user review the inserted content and decide whether to run it.
-  const handleInsert = (code: string) => {
-    if (!activeSessionId) return;
-    TerminalService.WriteStdin(activeSessionId, encodeBase64(code)).catch(() => {
-      /* session may have closed */
-    });
-  };
+  // Stable identity keeps memoized message bubbles from re-rendering.
+  const handleInsert = useCallback(
+    (code: string) => {
+      if (!activeSessionId) return;
+      TerminalService.WriteStdin(activeSessionId, encodeBase64(code)).catch(() => {
+        /* session may have closed */
+      });
+    },
+    [activeSessionId],
+  );
 
   const messages = activeSessionId ? histories[activeSessionId] ?? [] : [];
   const isStreaming = activeSessionId ? streaming[activeSessionId] : false;
-  const currentApproval = approvals[0];
 
   // No active session.
   if (!activeSessionId || !sessionName) {
@@ -318,17 +365,34 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border bg-card px-4 py-2">
-        <div className="flex items-center gap-2">
-          <Bot className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium">{t("agent.title")} · {sessionName}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <Bot className="h-4 w-4 shrink-0 text-primary" />
+          <span className="truncate text-sm font-medium">{t("agent.title")} · {sessionName}</span>
           {isStreaming && (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
           )}
         </div>
+        {messages.length > 0 && (
+          <button
+            type="button"
+            onClick={handleClear}
+            aria-label={t("agent.clearTitle")}
+            title={t("agent.clearTitle")}
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto p-4">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        role="log"
+        aria-live="polite"
+        className="relative min-h-0 flex-1 overflow-auto p-4"
+      >
         {messages.length === 0 ? (
           <div className="flex h-full items-center justify-center text-center">
             <div>
@@ -346,9 +410,23 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
                 msg={msg}
                 canInsert={!!activeSessionId}
                 onInsert={handleInsert}
+                onRetry={handleRetry}
               />
             ))}
           </div>
+        )}
+
+        {/* Jump-to-bottom affordance when the user scrolled up mid-stream */}
+        {showJumpDown && (
+          <button
+            type="button"
+            onClick={jumpToBottom}
+            aria-label={t("agent.scrollDown")}
+            title={t("agent.scrollDown")}
+            className="sticky bottom-0 left-full flex h-7 w-7 -translate-x-1 items-center justify-center rounded-full border border-border bg-popover text-muted-foreground shadow-md transition-colors hover:text-foreground"
+          >
+            <ArrowDown className="h-3.5 w-3.5" />
+          </button>
         )}
       </div>
 
@@ -362,6 +440,7 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
               onChange={(e) => handleProviderChange(e.target.value)}
               className="h-7 w-auto max-w-[45%] text-xs"
               title={t("agent.provider")}
+              aria-label={t("agent.provider")}
             >
               {providers.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
@@ -373,6 +452,7 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
                 onChange={(e) => handleModelChange(e.target.value)}
                 className="h-7 min-w-0 flex-1 font-mono text-xs"
                 title={t("agent.model")}
+                aria-label={t("agent.model")}
               >
                 {currentProvider!.models!.map((m) => (
                   <option key={m} value={m}>{m}</option>
@@ -385,6 +465,7 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
                 onChange={(e) => handleModelChange(e.target.value)}
                 placeholder={t("agent.modelManualPlaceholder")}
                 className="h-7 flex-1 border-transparent bg-transparent px-1 font-mono text-xs focus-visible:border-input"
+                aria-label={t("agent.model")}
               />
             )}
           </div>
@@ -399,7 +480,9 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
         ) : null}
         <div className="flex items-end gap-2">
           <textarea
-            className="min-h-[40px] max-h-32 flex-1 resize-none rounded-[var(--radius)] border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            ref={textareaRef}
+            rows={1}
+            className="max-h-40 min-h-[40px] flex-1 resize-none rounded-[var(--radius)] border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             placeholder={
               modelChosen
                 ? t("agent.placeholderConfigured")
@@ -407,60 +490,121 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
             }
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            aria-label={t("agent.placeholderConfigured")}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              // IME safety: Enter during composition confirms the candidate,
+              // it must not send the message.
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 handleSend();
+                return;
+              }
+              // ↑/↓ recall previously sent messages while at the start of
+              // the line or already navigating history.
+              if (e.key === "ArrowUp" && (input === "" || historyIdx !== null)) {
+                if (inputHistory.length === 0) return;
+                e.preventDefault();
+                const idx = historyIdx === null ? inputHistory.length - 1 : Math.max(0, historyIdx - 1);
+                setHistoryIdx(idx);
+                setInput(inputHistory[idx]);
+                return;
+              }
+              if (e.key === "ArrowDown" && historyIdx !== null) {
+                e.preventDefault();
+                const idx = historyIdx + 1;
+                if (idx >= inputHistory.length) {
+                  setHistoryIdx(null);
+                  setInput("");
+                } else {
+                  setHistoryIdx(idx);
+                  setInput(inputHistory[idx]);
+                }
               }
             }}
-            disabled={isStreaming}
-            rows={1}
           />
           {isStreaming ? (
-            <Button variant="destructive" size="icon" onClick={handleCancel} title={t("agent.stop")}>
+            <Button
+              type="button"
+              variant="destructive"
+              size="icon"
+              onClick={handleCancel}
+              aria-label={t("agent.stop")}
+              title={t("agent.stop")}
+              className="h-9 w-9 shrink-0"
+            >
               <Square className="h-4 w-4" />
             </Button>
           ) : (
             <Button
+              type="button"
               size="icon"
               onClick={handleSend}
               disabled={!input.trim() || !modelChosen}
+              aria-label={t("agent.send")}
               title={t("agent.send")}
+              className="h-9 w-9 shrink-0"
             >
               <Send className="h-4 w-4" />
             </Button>
           )}
         </div>
       </div>
-
-      {/* Approval dialog */}
-      {currentApproval && (
-        <ApprovalDialog
-          approval={currentApproval}
-          onResolve={(approved) => {
-            agentApi.approveToolCall(currentApproval.reqId, approved);
-            removeApproval(currentApproval.reqId);
-          }}
-        />
-      )}
     </div>
   );
 }
 
-function MessageBubble({
+/**
+ * Memoized: during streaming only the changing message re-renders — completed
+ * messages keep their identity in the store, so their markdown is not
+ * re-parsed on every chunk.
+ */
+const MessageBubble = memo(function MessageBubble({
   msg,
   canInsert,
   onInsert,
+  onRetry,
 }: {
-  msg: { role: string; content: string; toolName?: string; toolArgs?: string; callId?: string; running?: boolean };
+  msg: ChatMessage;
   canInsert: boolean;
   onInsert: (code: string) => void;
+  onRetry: () => void;
 }) {
+  const { t } = useTranslation();
+
   if (msg.role === "tool") {
     return <ToolStep msg={msg} />;
   }
 
   const isUser = msg.role === "user";
+
+  // Notices: errors (retryable) and user cancels (quiet).
+  if (msg.variant === "error") {
+    return (
+      <div className="flex justify-start">
+        <div className="flex max-w-[90%] flex-col gap-1.5 rounded-[var(--radius)] border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
+          <p className="whitespace-pre-wrap break-words text-destructive">{msg.content}</p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="inline-flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <RotateCcw className="h-3 w-3" />
+            {t("agent.retry")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+  if (msg.variant === "cancelled") {
+    return (
+      <div className="flex justify-start">
+        <p className="inline-flex max-w-[90%] items-center gap-1.5 rounded-full border border-border bg-secondary/50 px-2.5 py-1 text-xs text-muted-foreground">
+          <Scissors className="h-3 w-3" />
+          {msg.content}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
@@ -480,24 +624,45 @@ function MessageBubble({
       </div>
     </div>
   );
-}
+});
 
 /**
  * ToolStep shows one tool invocation as a collapsible step: the header always
  * carries the tool name plus a one-line argument summary; expanding reveals
- * the full arguments and (when the runtime reports one) the result.
+ * the formatted arguments and the result. Running steps auto-expand and stay
+ * open unless the user closes them.
  */
-function ToolStep({
-  msg,
-}: {
-  msg: { role: string; content: string; toolName?: string; toolArgs?: string; callId?: string; running?: boolean };
-}) {
+function ToolStep({ msg }: { msg: ChatMessage }) {
   const { t } = useTranslation();
-  const summary = toolSummary(msg.toolArgs);
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const running = msg.running === true;
 
+  // Auto-expand while the tool runs (user toggles still win).
+  useEffect(() => {
+    if (running) setOpen(true);
+  }, [running]);
+
+  const summary = toolSummary(msg.toolArgs);
+  const prettyArgs = prettyJSON(msg.toolArgs);
+  const truncated = msg.content.includes("[truncated");
+
+  const copyResult = async () => {
+    try {
+      await navigator.clipboard.writeText(msg.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard may be blocked */
+    }
+  };
+
   return (
-    <details className="group rounded-[var(--radius)] border border-border bg-secondary/30 text-xs">
+    <details
+      open={open}
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+      className="group rounded-[var(--radius)] border border-border bg-secondary/30 text-xs"
+    >
       <summary className="flex cursor-pointer select-none items-center gap-2 p-2.5 hover:bg-accent/30 [&::-webkit-details-marker]:hidden">
         {running ? (
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
@@ -509,25 +674,48 @@ function ToolStep({
         {summary && (
           <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground">{summary}</span>
         )}
+        {truncated && (
+          <span className="shrink-0 rounded-full border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning">
+            {t("agent.truncated")}
+          </span>
+        )}
         {running && (
-          <span className="shrink-0 text-[10px] text-muted-foreground">{t("agent.toolRunning")}</span>
+          <span className="shrink-0 text-[10px] text-muted-foreground" role="status">
+            {t("agent.toolRunning")}
+          </span>
         )}
       </summary>
       <div className="flex flex-col gap-2 border-t border-border/60 p-2.5">
-        {msg.toolArgs && (
+        {prettyArgs && (
           <div>
             <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
               {t("agent.approvalArgs")}
             </div>
             <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-background/80 p-2 font-mono text-muted-foreground">
-              {msg.toolArgs}
+              {prettyArgs}
             </pre>
           </div>
         )}
         {msg.content && (
           <div>
-            <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-              {t("agent.toolResult")}
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                {t("agent.toolResult")}
+              </span>
+              <button
+                type="button"
+                onClick={copyResult}
+                aria-label={t("agent.copyResult")}
+                title={t("agent.copyResult")}
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                {copied ? (
+                  <Check className="h-3 w-3 text-success" />
+                ) : (
+                  <CopyIcon className="h-3 w-3" />
+                )}
+                {copied ? t("agent.copied") : t("agent.copyResult")}
+              </button>
             </div>
             <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-background/80 p-2 font-mono text-foreground/80">
               {msg.content}
@@ -555,93 +743,12 @@ function toolSummary(argsJSON: string | undefined): string {
   return line.length > 120 ? `${line.slice(0, 120)}…` : line;
 }
 
-function ApprovalDialog({
-  approval,
-  onResolve,
-}: {
-  approval: { toolName: string; permission: string; args: string };
-  onResolve: (approved: boolean) => void;
-}) {
-  const { t } = useTranslation();
-  const isDangerous = approval.permission === "dangerous";
-
-  // Parse the args JSON to extract the command/path for prominent display.
-  let commandText = approval.args;
-  let argLabel = t("agent.approvalArgs");
+/** prettyJSON formats JSON arguments for display; non-JSON falls back raw. */
+function prettyJSON(argsJSON: string | undefined): string {
+  if (!argsJSON) return "";
   try {
-    const parsed = JSON.parse(approval.args);
-    if (parsed.command) {
-      commandText = parsed.command;
-      argLabel = t("agent.approvalCommand");
-    } else if (parsed.path) {
-      commandText = parsed.path;
-      argLabel = t("agent.approvalPath");
-    } else if (parsed.remotePath) {
-      commandText = `${parsed.remotePath}${parsed.localPath ? " ← " + parsed.localPath : ""}`;
-      argLabel = t("agent.approvalFile");
-    }
+    return JSON.stringify(JSON.parse(argsJSON), null, 2);
   } catch {
-    // not JSON; show raw
+    return argsJSON;
   }
-
-  return (
-    <Dialog open onOpenChange={() => onResolve(false)}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ShieldAlert className={cn("h-5 w-5", isDangerous ? "text-destructive" : "text-warning")} />
-            {isDangerous ? t("agent.approvalDangerous") : t("agent.approvalTitle")}
-          </DialogTitle>
-          <DialogDescription>
-            {t("agent.approvalDesc", { permission: approval.permission })}
-          </DialogDescription>
-        </DialogHeader>
-
-        {/* The command/operation — displayed prominently */}
-        <div
-          className={cn(
-            "rounded-[var(--radius)] border p-3",
-            isDangerous
-              ? "border-destructive/40 bg-destructive/10"
-              : "border-warning/40 bg-warning/10",
-          )}
-        >
-          <div className="mb-1.5 flex items-center gap-2">
-            <Wrench className={cn("h-4 w-4", isDangerous ? "text-destructive" : "text-warning")} />
-            <span className="font-mono text-sm font-medium">{approval.toolName}</span>
-            <Badge variant={isDangerous ? "destructive" : "warning"}>
-              {approval.permission}
-            </Badge>
-          </div>
-          <div className="text-xs text-muted-foreground">{argLabel}</div>
-          <pre
-            className={cn(
-              "mt-1 overflow-auto whitespace-pre-wrap break-all rounded bg-background/80 p-2.5 font-mono text-sm",
-              isDangerous ? "text-destructive" : "text-foreground",
-            )}
-          >
-            {commandText}
-          </pre>
-        </div>
-
-        {isDangerous && (
-          <p className="text-xs text-destructive">
-            {t("agent.approvalDanger")}
-          </p>
-        )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onResolve(false)}>
-            <X className="h-4 w-4" /> {t("agent.deny")}
-          </Button>
-          <Button
-            variant={isDangerous ? "destructive" : "default"}
-            onClick={() => onResolve(true)}
-          >
-            <Check className="h-4 w-4" /> {t("agent.approve")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }

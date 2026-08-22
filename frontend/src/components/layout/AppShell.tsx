@@ -7,6 +7,7 @@ import { StatusBar } from "@/components/layout/StatusBar";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Toaster } from "@/components/ui/Toaster";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ApprovalHost } from "@/features/agent/ApprovalHost";
 import { HostsView } from "@/features/hosts/HostsView";
 import { TerminalView } from "@/features/terminal/TerminalView";
 import { SftpView } from "@/features/sftp/SftpView";
@@ -63,6 +64,8 @@ export function AppShell() {
       <ConfirmDialog />
       {/* Single toast notification host (driven by lib/toast.ts). */}
       <Toaster />
+      {/* Global agent-approval dialog — works regardless of the active view. */}
+      <ApprovalHost />
     </div>
   );
 }

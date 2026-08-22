@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 interface CodeBlockProps {
   /** The code/script text. */
   code: string;
+  /** Fence language from the markdown source (```bash …), when present. */
+  language?: string;
   /** Whether a terminal session is available for "insert". */
   canInsert: boolean;
   /** Insert the code into the active terminal session (WriteStdin). */
@@ -20,7 +22,7 @@ interface CodeBlockProps {
  * so the user can review an agent-suggested command and run it with one click
  * instead of copy-pasting manually.
  */
-export function CodeBlock({ code, canInsert, onInsert }: CodeBlockProps) {
+export function CodeBlock({ code, language, canInsert, onInsert }: CodeBlockProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [inserted, setInserted] = useState(false);
@@ -49,7 +51,7 @@ export function CodeBlock({ code, canInsert, onInsert }: CodeBlockProps) {
       <div className="flex items-center justify-between border-b border-border/60 bg-secondary/40 px-2 py-1">
         <span className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
           <TerminalIcon className="h-3 w-3" />
-          {detectKind(trimmed, t)}
+          {language || detectKind(trimmed, t)}
         </span>
         <div className="flex items-center gap-0.5">
           <button

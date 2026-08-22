@@ -21,6 +21,8 @@ import { useUIStore } from "@/stores/ui.store";
 import { TerminalPanel } from "@/features/terminal/TerminalPanel";
 import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabMenu";
 import { AgentView } from "@/features/agent/AgentView";
+import { useAgentStore } from "@/features/agent/store";
+import { agentApi } from "@/features/agent/api";
 import { SftpView } from "@/features/sftp/SftpView";
 import { useOpenTerminal, useHosts } from "@/features/hosts/hooks";
 import { useHostsUIStore } from "@/features/hosts/store";
@@ -50,6 +52,16 @@ export function TerminalView() {
   const setView = useUIStore((s) => s.setView);
   const openEditor = useHostsUIStore((s) => s.openEditor);
   const openTerminal = useOpenTerminal();
+  const clearAgentHistory = useAgentStore((s) => s.clearHistory);
+
+  // Dropping a tab's session also forgets its agent conversation (local UI +
+  // backend memory) — the history is unreachable afterwards either way.
+  const cleanupAgentHistory = (ids: string[]) => {
+    for (const id of ids) {
+      clearAgentHistory(id);
+      agentApi.clearHistory(id).catch(() => {});
+    }
+  };
 
   // Context menu state: the tab it was opened on + cursor position.
   const [menu, setMenu] = useState<{
@@ -167,6 +179,7 @@ export function TerminalView() {
       TerminalService.CloseSession(pid).catch(() => {});
     }
     removeSession(tabId);
+    cleanupAgentHistory([tabId]);
   };
 
   // handleSplit opens a new backend session on the same host and adds it as a
@@ -254,6 +267,7 @@ export function TerminalView() {
       TerminalService.CloseSession(id).catch(() => {});
     }
     removeSessions(ids);
+    cleanupAgentHistory(ids);
   };
 
   const buildMenuItems = (sess: (typeof sessions)[number]): MenuItem[] => {
@@ -310,6 +324,7 @@ export function TerminalView() {
             TerminalService.CloseSession(id).catch(() => {});
           }
           clearSessions();
+          cleanupAgentHistory(allIds);
         },
       },
     ];

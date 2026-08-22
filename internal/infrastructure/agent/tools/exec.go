@@ -2,10 +2,13 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"time"
+
+	cryptossh "golang.org/x/crypto/ssh"
 
 	"github.com/ai-remote/workspace/internal/domain"
 )
@@ -44,8 +47,15 @@ func (ss *sessionToolSet) sshExec(ctx context.Context, a sshExecArgs) (string, e
 	if ss.ssh == nil {
 		return "", fmt.Errorf("ssh manager not available")
 	}
-	out, err := ss.ssh.ExecInSession(ss.sessionID, a.Command)
+	out, err := ss.ssh.ExecInSessionCtx(ctx, ss.sessionID, a.Command)
 	if err != nil {
+		// A non-zero exit is a valid diagnostic result (stderr usually
+		// explains it), not a tool failure — returning it as an error would
+		// terminate the whole conversation.
+		var exitErr *cryptossh.ExitError
+		if errors.As(err, &exitErr) {
+			return fmt.Sprintf("%s\n[exit status %d]", out, exitErr.ExitStatus()), nil
+		}
 		return out, fmt.Errorf("ssh exec: %w", err)
 	}
 	return out, nil
@@ -129,7 +139,15 @@ func runLocal(ctx context.Context, command string) (string, error) {
 		cmd = exec.CommandContext(cctx, "cmd", "/c", command)
 	}
 	out, err := cmd.CombinedOutput()
-	return string(out), err
+	if err != nil {
+		// Non-zero exit = valid diagnostic output, not a failure (see sshExec).
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return fmt.Sprintf("%s\n[exit status %d]", out, exitErr.ExitCode()), nil
+		}
+		return string(out), err
+	}
+	return string(out), nil
 }
 
 func isWindows() bool {

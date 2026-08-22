@@ -30,6 +30,14 @@ export function CancelChat(sessionID: string): $CancellablePromise<void> {
 }
 
 /**
+ * ClearHistory forgets a session's conversation memory (the frontend also
+ * clears its local message list when the user clears the chat).
+ */
+export function ClearHistory(sessionID: string): $CancellablePromise<void> {
+    return $Call.ByID(2792127093, sessionID);
+}
+
+/**
  * EmitApproval sends an approval request to the frontend (implements
  * application.ApprovalEmitter). The frontend shows a dialog and calls
  * ApproveToolCall(reqID, approved).

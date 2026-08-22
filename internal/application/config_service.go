@@ -34,9 +34,6 @@ func (s *configService) GetAppConfig() (domain.AppConfig, error) {
 	if cfg.FontSize == 0 {
 		cfg.FontSize = 13
 	}
-	if cfg.TerminalFontSize == 0 {
-		cfg.TerminalFontSize = 13
-	}
 	return cfg, nil
 }
 

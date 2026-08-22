@@ -53,15 +53,18 @@ type ToolSet struct {
 	ssh      *ssh.Manager
 	sftp     SftpFileOps
 	gate     PermissionGate
+	observer RunObserver
 }
 
-// NewToolSet builds the 7 tools, each capturing sessionID at call time.
-func NewToolSet(deps Deps, resolver CredsResolver, gate PermissionGate) (*ToolSet, error) {
+// NewToolSet builds the 7 tools, each capturing sessionID at call time. The
+// observer (may be nil) receives per-invocation start/end events.
+func NewToolSet(deps Deps, resolver CredsResolver, gate PermissionGate, observer RunObserver) (*ToolSet, error) {
 	ts := &ToolSet{
 		resolver: resolver,
 		ssh:      deps.SSH,
 		sftp:     deps.SFTP,
 		gate:     gate,
+		observer: observer,
 	}
 	if err := ts.build(); err != nil {
 		return nil, err
@@ -114,7 +117,7 @@ func (ss *sessionToolSet) build() ([]tool.BaseTool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build local_exec: %w", err)
 	}
-	built = append(built, t1)
+	built = append(built, observe(t1, ss.sessionID, "local_exec", ss.observer))
 
 	// 2. local_read_file
 	t2, err := utils.InferTool(
@@ -125,7 +128,7 @@ func (ss *sessionToolSet) build() ([]tool.BaseTool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build local_read_file: %w", err)
 	}
-	built = append(built, t2)
+	built = append(built, observe(t2, ss.sessionID, "local_read_file", ss.observer))
 
 	// 3. ssh_exec
 	t3, err := utils.InferTool(
@@ -136,7 +139,7 @@ func (ss *sessionToolSet) build() ([]tool.BaseTool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build ssh_exec: %w", err)
 	}
-	built = append(built, t3)
+	built = append(built, observe(t3, ss.sessionID, "ssh_exec", ss.observer))
 
 	// 4. ssh_read_file
 	t4, err := utils.InferTool(
@@ -147,7 +150,7 @@ func (ss *sessionToolSet) build() ([]tool.BaseTool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build ssh_read_file: %w", err)
 	}
-	built = append(built, t4)
+	built = append(built, observe(t4, ss.sessionID, "ssh_read_file", ss.observer))
 
 	// 5. ssh_write_file
 	t5, err := utils.InferTool(
@@ -158,7 +161,7 @@ func (ss *sessionToolSet) build() ([]tool.BaseTool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build ssh_write_file: %w", err)
 	}
-	built = append(built, t5)
+	built = append(built, observe(t5, ss.sessionID, "ssh_write_file", ss.observer))
 
 	// 6. upload
 	t6, err := utils.InferTool(
@@ -169,7 +172,7 @@ func (ss *sessionToolSet) build() ([]tool.BaseTool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build upload: %w", err)
 	}
-	built = append(built, t6)
+	built = append(built, observe(t6, ss.sessionID, "upload", ss.observer))
 
 	// 7. download
 	t7, err := utils.InferTool(
@@ -180,7 +183,7 @@ func (ss *sessionToolSet) build() ([]tool.BaseTool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build download: %w", err)
 	}
-	built = append(built, t7)
+	built = append(built, observe(t7, ss.sessionID, "download", ss.observer))
 
 	return built, nil
 }

@@ -161,7 +161,14 @@ tasks:
       - wails3 tool msix-install-tools
 
   run:
+    # In dev mode (DEV=true, set by `wails3 dev`), point the app at the dev
+    # server by literal loopback IP — "localhost" may resolve to ::1 or be
+    # affected by proxy/DNS tooling — and wait for it to answer first: the
+    # app's built-in check only retries ~5s, which npm's cold start beats.
+    env:
+      FRONTEND_DEVSERVER_URL: '{{if eq (.DEV | default "") "true"}}http://127.0.0.1:{{.VITE_PORT}}{{end}}'
     cmds:
+      - '{{if eq (.DEV | default "") "true"}}powershell -NoProfile -ExecutionPolicy Bypass -File build/wait-devserver.ps1 -Port {{.VITE_PORT}}{{end}}'
       - '{{.BIN_DIR}}/{{.APP_NAME}}.exe'
 
   sign:
