@@ -11,6 +11,10 @@
  * Input flows via bound methods (WriteStdin/Resize) — more controllable than
  * events for low-latency keystrokes. This matches the hybrid pattern the Wails
  * v3 streaming research recommended (output via events, input via bindings).
+ * 
+ * Sessions route by id: "local-"-prefixed ids go to the local PTY manager
+ * (interactive shell on the user's machine, no SSH); everything else to the
+ * SSH connection manager.
  * @module
  */
 
@@ -23,10 +27,19 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
- * CloseSession ends a session and frees its connection.
+ * CloseSession ends a session and frees its resources (local or SSH).
  */
 export function CloseSession(sessionID: string): $CancellablePromise<void> {
     return $Call.ByID(4180780447, sessionID);
+}
+
+/**
+ * OpenLocalSession starts an interactive shell on the user's machine over a
+ * local PTY (Windows: PowerShell/cmd via ConPTY; Unix: the login shell via
+ * openpty). Same event contract as OpenSession.
+ */
+export function OpenLocalSession(size: $models.PtySizeDTO): $CancellablePromise<$models.OpenSessionResult> {
+    return $Call.ByID(3464489582, size);
 }
 
 /**
@@ -39,14 +52,14 @@ export function OpenSession(req: $models.OpenSessionRequest): $CancellablePromis
 }
 
 /**
- * ResizeSession updates the remote PTY dimensions.
+ * ResizeSession updates the PTY dimensions (local or SSH).
  */
 export function ResizeSession(sessionID: string, size: $models.PtySizeDTO): $CancellablePromise<void> {
     return $Call.ByID(483318041, sessionID, size);
 }
 
 /**
- * WriteStdin forwards a keystroke/line to the session's remote shell.
+ * WriteStdin forwards a keystroke/line to the session's shell (local or SSH).
  */
 export function WriteStdin(sessionID: string, data: string | null): $CancellablePromise<void> {
     return $Call.ByID(925434392, sessionID, data);

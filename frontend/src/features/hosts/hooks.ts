@@ -92,3 +92,22 @@ export function useOpenTerminal() {
     },
   });
 }
+
+/**
+ * useOpenLocalTerminal starts an interactive shell on the user's machine over
+ * a local PTY (no SSH) and registers it as a terminal tab.
+ */
+export function useOpenLocalTerminal() {
+  const addLocalSession = useTerminalStore((s) => s.addLocalSession);
+
+  return useMutation({
+    mutationFn: (name: string) =>
+      TerminalService.OpenLocalSession({ cols: 80, rows: 24 }).then((res) => ({
+        sessionId: res.sessionId,
+        name,
+      })),
+    onSuccess: ({ sessionId, name }) => {
+      addLocalSession(sessionId, name);
+    },
+  });
+}

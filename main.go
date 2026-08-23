@@ -12,6 +12,7 @@ import (
 	"github.com/ai-remote/workspace/internal/application"
 	"github.com/ai-remote/workspace/internal/domain"
 	"github.com/ai-remote/workspace/internal/infrastructure/agent"
+	"github.com/ai-remote/workspace/internal/infrastructure/localpty"
 	"github.com/ai-remote/workspace/internal/infrastructure/secret"
 	"github.com/ai-remote/workspace/internal/infrastructure/sftp"
 	"github.com/ai-remote/workspace/internal/infrastructure/sqlite"
@@ -91,7 +92,8 @@ func main() {
 	systemService := interfaces.NewSystemService(appName, appVersion)
 	configService := interfaces.NewConfigService(configSvc)
 	hostService := interfaces.NewHostService(hostSvc)
-	terminalService := interfaces.NewTerminalService(hostSvc, connManager)
+	localPtyMgr := localpty.NewManager()
+	terminalService := interfaces.NewTerminalService(hostSvc, connManager, localPtyMgr)
 	sftpService := interfaces.NewSftpService(sftpSvc)
 	providerService := interfaces.NewModelProviderService(providerSvc)
 	agentService := interfaces.NewAgentService(agentRuntime, permGate)

@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/cloudwego/eino/compose"
+	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/flow/agent/react"
 	"github.com/cloudwego/eino/schema"
 	openaimodel "github.com/cloudwego/eino-ext/components/model/openai"
@@ -140,7 +141,14 @@ func (r *Runtime) Chat(ctx context.Context, sessionID, providerID, model, userMe
 	if err != nil {
 		return fmt.Errorf("build toolset: %w", err)
 	}
-	toolList, err := ts.BuildForSession(sessionID)
+	// Local terminal sessions (id prefix "local-") have no SSH host behind
+	// them: expose only the local tools.
+	var toolList []tool.BaseTool
+	if strings.HasPrefix(sessionID, "local-") {
+		toolList, err = ts.BuildLocalForSession(sessionID)
+	} else {
+		toolList, err = ts.BuildForSession(sessionID)
+	}
 	if err != nil {
 		return fmt.Errorf("build session tools: %w", err)
 	}
@@ -295,7 +303,18 @@ func hybridToolCallChecker(_ context.Context, sr *schema.StreamReader[*schema.Me
 
 // systemPrompt is the LLM-facing contract: tools, workflow, and approval
 // semantics (a DENIED result must change the plan, never be retried).
+// Local terminal sessions get a local-only variant.
 func (r *Runtime) systemPrompt(sessionID string) string {
+	if strings.HasPrefix(sessionID, "local-") {
+		return "You are an AI operations assistant working on the user's LOCAL machine (a local terminal session, no remote host).\n\n" +
+			"Tools:\n" +
+			"- local_exec(command): run a shell command locally. Returns combined stdout+stderr; a non-zero exit is reported as " +
+			"[exit status N] — diagnostic output, not a failure.\n" +
+			"- local_read_file(path): read a local file as text.\n\n" +
+			"Workflow: start with read-only diagnostics, analyze, then summarize findings in concise markdown and propose fixes.\n\n" +
+			"Permissions: state-changing operations (file writes, package/service mutations, destructive commands) require the " +
+			"user's approval. If a tool result says the user DENIED the operation, do NOT retry it — explain and propose an alternative."
+	}
 	host, ok := r.sshMgr.HostOfSession(sessionID)
 	name := "unknown"
 	if ok {

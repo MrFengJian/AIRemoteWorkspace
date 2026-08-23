@@ -11,6 +11,7 @@ import (
 	wailsapp "github.com/wailsapp/wails/v3/pkg/application"
 
 	appsvc "github.com/ai-remote/workspace/internal/application"
+	"github.com/ai-remote/workspace/internal/infrastructure/localpty"
 	ssh "github.com/ai-remote/workspace/internal/infrastructure/ssh"
 )
 
@@ -41,18 +42,23 @@ type OpenSessionResult struct {
 // Input flows via bound methods (WriteStdin/Resize) — more controllable than
 // events for low-latency keystrokes. This matches the hybrid pattern the Wails
 // v3 streaming research recommended (output via events, input via bindings).
+//
+// Sessions route by id: "local-"-prefixed ids go to the local PTY manager
+// (interactive shell on the user's machine, no SSH); everything else to the
+// SSH connection manager.
 type TerminalService struct {
 	app         *wailsapp.App
 	hostSvc     *appsvc.HostService
 	connManager appsvc.ConnectionManager
+	localMgr    *localpty.Manager
 
 	mu sync.Mutex
 }
 
 // NewTerminalService wires the TerminalService. The *Application is injected
 // via ServiceStartup (Wails constructs the app after services are registered).
-func NewTerminalService(hostSvc *appsvc.HostService, connManager appsvc.ConnectionManager) *TerminalService {
-	return &TerminalService{hostSvc: hostSvc, connManager: connManager}
+func NewTerminalService(hostSvc *appsvc.HostService, connManager appsvc.ConnectionManager, localMgr *localpty.Manager) *TerminalService {
+	return &TerminalService{hostSvc: hostSvc, connManager: connManager, localMgr: localMgr}
 }
 
 // ServiceName lets Wails register the service under a stable name.
@@ -66,9 +72,14 @@ func (t *TerminalService) ServiceStartup(_ context.Context, _ wailsapp.ServiceOp
 	return nil
 }
 
-// ServiceShutdown closes all live sessions on app exit.
+// ServiceShutdown closes all live sessions on app exit (SSH + local).
 func (t *TerminalService) ServiceShutdown() error {
-	return t.connManager.CloseAll()
+	sshErr := t.connManager.CloseAll()
+	localErr := t.localMgr.CloseAll()
+	if sshErr != nil {
+		return sshErr
+	}
+	return localErr
 }
 
 // OpenSession dials the host and starts an interactive PTY shell. Output is
@@ -106,10 +117,28 @@ func (t *TerminalService) OpenSession(req OpenSessionRequest) (OpenSessionResult
 	return OpenSessionResult{SessionID: sessionID}, nil
 }
 
-// WriteStdin forwards a keystroke/line to the session's remote shell.
+// OpenLocalSession starts an interactive shell on the user's machine over a
+// local PTY (Windows: PowerShell/cmd via ConPTY; Unix: the login shell via
+// openpty). Same event contract as OpenSession.
+func (t *TerminalService) OpenLocalSession(size PtySizeDTO) (OpenSessionResult, error) {
+	events := &terminalEvents{app: t.app}
+	sessionID, err := t.localMgr.Open(size.Cols, size.Rows, events)
+	if err != nil {
+		return OpenSessionResult{}, err
+	}
+	return OpenSessionResult{SessionID: sessionID}, nil
+}
+
+// WriteStdin forwards a keystroke/line to the session's shell (local or SSH).
 func (t *TerminalService) WriteStdin(sessionID string, data []byte) error {
-	if err := t.connManager.WriteStdin(sessionID, data); err != nil {
-		if errors.Is(err, ssh.ErrSessionNotFound) {
+	var err error
+	if localpty.IsLocal(sessionID) {
+		err = t.localMgr.WriteStdin(sessionID, data)
+	} else {
+		err = t.connManager.WriteStdin(sessionID, data)
+	}
+	if err != nil {
+		if errors.Is(err, ssh.ErrSessionNotFound) || errors.Is(err, localpty.ErrSessionNotFound) {
 			log.Printf("WriteStdin: session %s not found, ignoring", sessionID)
 			return nil
 		}
@@ -118,10 +147,16 @@ func (t *TerminalService) WriteStdin(sessionID string, data []byte) error {
 	return nil
 }
 
-// ResizeSession updates the remote PTY dimensions.
+// ResizeSession updates the PTY dimensions (local or SSH).
 func (t *TerminalService) ResizeSession(sessionID string, size PtySizeDTO) error {
-	if err := t.connManager.Resize(sessionID, size.Cols, size.Rows); err != nil {
-		if errors.Is(err, ssh.ErrSessionNotFound) {
+	var err error
+	if localpty.IsLocal(sessionID) {
+		err = t.localMgr.Resize(sessionID, size.Cols, size.Rows)
+	} else {
+		err = t.connManager.Resize(sessionID, size.Cols, size.Rows)
+	}
+	if err != nil {
+		if errors.Is(err, ssh.ErrSessionNotFound) || errors.Is(err, localpty.ErrSessionNotFound) {
 			log.Printf("ResizeSession: session %s not found, ignoring", sessionID)
 			return nil
 		}
@@ -130,10 +165,16 @@ func (t *TerminalService) ResizeSession(sessionID string, size PtySizeDTO) error
 	return nil
 }
 
-// CloseSession ends a session and frees its connection.
+// CloseSession ends a session and frees its resources (local or SSH).
 func (t *TerminalService) CloseSession(sessionID string) error {
-	if err := t.connManager.Close(sessionID); err != nil {
-		if errors.Is(err, ssh.ErrSessionNotFound) {
+	var err error
+	if localpty.IsLocal(sessionID) {
+		err = t.localMgr.Close(sessionID)
+	} else {
+		err = t.connManager.Close(sessionID)
+	}
+	if err != nil {
+		if errors.Is(err, ssh.ErrSessionNotFound) || errors.Is(err, localpty.ErrSessionNotFound) {
 			log.Printf("CloseSession: session %s not found, ignoring", sessionID)
 			return nil
 		}

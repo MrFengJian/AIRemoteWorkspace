@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/adrg/xdg v0.5.3
+	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/cloudwego/eino v0.9.13
 	github.com/cloudwego/eino-ext/components/model/openai v0.1.13
 	github.com/danieljoos/wincred v1.2.3
@@ -26,6 +27,7 @@ require (
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/cloudwego/eino-ext/libs/acl/openai v0.1.17 // indirect
 	github.com/coder/websocket v1.8.14 // indirect
+	github.com/creack/pty v1.1.24 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/eino-contrib/jsonschema v1.0.3 // indirect
 	github.com/evanphx/json-patch v0.5.2 // indirect
@@ -53,6 +55,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/slongfield/pyfmt v0.0.0-20220222012616-ea85ff4c361f // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
+	github.com/u-root/u-root v0.16.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/yargevad/filepathx v1.0.0 // indirect
 	golang.org/x/arch v0.11.0 // indirect

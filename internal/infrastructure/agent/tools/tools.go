@@ -95,6 +95,35 @@ func (ts *ToolSet) BuildForSession(sessionID string) ([]tool.BaseTool, error) {
 	return ss.build()
 }
 
+// BuildLocalForSession returns only the two LOCAL tools, for agent chats on
+// a local terminal session (no SSH host behind it). Same observer wiring.
+func (ts *ToolSet) BuildLocalForSession(sessionID string) ([]tool.BaseTool, error) {
+	ss := ts.withSession(sessionID)
+	var built []tool.BaseTool
+
+	t1, err := utils.InferTool(
+		"local_exec",
+		"Execute a shell command on the LOCAL machine and return combined stdout+stderr. Use for local diagnostics.",
+		ss.localExec,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("build local_exec: %w", err)
+	}
+	built = append(built, observe(t1, ss.sessionID, "local_exec", ss.observer))
+
+	t2, err := utils.InferTool(
+		"local_read_file",
+		"Read a file from the LOCAL machine and return its contents as text.",
+		ss.localReadFile,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("build local_read_file: %w", err)
+	}
+	built = append(built, observe(t2, ss.sessionID, "local_read_file", ss.observer))
+
+	return built, nil
+}
+
 // gateCheck is the shorthand every tool calls before executing.
 func (ss *sessionToolSet) gateCheck(ctx context.Context, name string, perm domain.Permission, args any) error {
 	if ss.gate == nil {

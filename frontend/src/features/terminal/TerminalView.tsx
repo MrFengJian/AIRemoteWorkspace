@@ -13,10 +13,11 @@ import {
   FolderTree,
   Bot,
   Check,
+  Monitor,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { useTerminalStore } from "@/features/terminal/terminal.store";
+import { useTerminalStore, isLocalSession } from "@/features/terminal/terminal.store";
 import { useUIStore } from "@/stores/ui.store";
 import { TerminalPanel } from "@/features/terminal/TerminalPanel";
 import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabMenu";
@@ -24,7 +25,7 @@ import { AgentView } from "@/features/agent/AgentView";
 import { useAgentStore } from "@/features/agent/store";
 import { agentApi } from "@/features/agent/api";
 import { SftpView } from "@/features/sftp/SftpView";
-import { useOpenTerminal, useHosts } from "@/features/hosts/hooks";
+import { useOpenTerminal, useOpenLocalTerminal, useHosts } from "@/features/hosts/hooks";
 import { useHostsUIStore } from "@/features/hosts/store";
 import { osInfo } from "@/features/hosts/osIcons";
 import { TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
@@ -52,6 +53,7 @@ export function TerminalView() {
   const setView = useUIStore((s) => s.setView);
   const openEditor = useHostsUIStore((s) => s.openEditor);
   const openTerminal = useOpenTerminal();
+  const openLocal = useOpenLocalTerminal();
   const clearAgentHistory = useAgentStore((s) => s.clearHistory);
 
   // Dropping a tab's session also forgets its agent conversation (local UI +
@@ -218,9 +220,9 @@ export function TerminalView() {
     }
   };
 
-  // duplicateSession opens a new terminal on the same host as an existing tab.
-  // The backend resolves remembered credentials from the OS vault, so no
-  // password entry is needed here.
+  // duplicateSession opens a new terminal on the same host as an existing tab
+  // (or a fresh local terminal for local tabs). The backend resolves
+  // remembered credentials from the OS vault, so no password entry is needed.
   const duplicateSession = (sess: {
     hostID: string;
     hostName: string;
@@ -228,6 +230,10 @@ export function TerminalView() {
     terminalFont: string;
     terminalFontSize: number;
   }) => {
+    if (sess.hostID === "") {
+      openLocal.mutate(sess.hostName);
+      return;
+    }
     openTerminal
       .mutateAsync({
         host: {
@@ -292,6 +298,7 @@ export function TerminalView() {
       {
         label: t("terminal.editHost"),
         icon: Pencil,
+        disabled: isLocalSession(sess),
         onClick: () => editHostFor(sess.hostID),
       },
       { type: "separator" as const },
@@ -340,13 +347,23 @@ export function TerminalView() {
             {t("terminal.noTerminalsDesc")}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setView("hosts")}
-          className="mt-2 inline-flex items-center gap-1.5 rounded-[var(--radius)] bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4" /> {t("terminal.goToHosts")}
-        </button>
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setView("hosts")}
+            className="inline-flex items-center gap-1.5 rounded-[var(--radius)] bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4" /> {t("terminal.goToHosts")}
+          </button>
+          <button
+            type="button"
+            disabled={openLocal.isPending}
+            onClick={() => openLocal.mutate(t("terminal.localTab"))}
+            className="inline-flex items-center gap-1.5 rounded-[var(--radius)] border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+          >
+            <Monitor className="h-4 w-4" /> {t("terminal.openLocal")}
+          </button>
+        </div>
       </div>
     );
   }
@@ -395,15 +412,18 @@ export function TerminalView() {
             }}
             title={t("terminal.duplicateTab")}
           >
-            {/* Distro icon (left of title, once detected). */}
-            {osInfo(hostOs(sess.hostID)) && (
+            {/* Tab icon: local sessions get a monitor; SSH tabs show the
+                distro icon once detected. */}
+            {isLocalSession(sess) ? (
+              <Monitor className="h-3 w-3 shrink-0 text-primary" aria-hidden />
+            ) : osInfo(hostOs(sess.hostID)) ? (
               <img
                 src={osInfo(hostOs(sess.hostID))!.icon}
                 alt=""
                 title={osInfo(hostOs(sess.hostID))!.label}
                 className="os-icon h-3 w-3 shrink-0"
               />
-            )}
+            ) : null}
             <span className="max-w-[12rem] truncate">{sess.hostName}</span>
             {/* Online status dot (right of the title). */}
             <span
@@ -428,6 +448,22 @@ export function TerminalView() {
             </button>
           </div>
         ))}
+
+        {/* New local terminal tab (browser-style + button). */}
+        <button
+          type="button"
+          onClick={() => openLocal.mutate(t("terminal.localTab"))}
+          disabled={openLocal.isPending}
+          aria-label={t("terminal.newLocalTab")}
+          title={t("terminal.newLocalTab")}
+          className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        >
+          {openLocal.isPending ? (
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Plus className="h-3.5 w-3.5" />
+          )}
+        </button>
       </div>
 
       {/* Two-column workspace: [Terminal+Toolbar] [Right Panel] */}
@@ -436,9 +472,11 @@ export function TerminalView() {
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Quick-action toolbar */}
           <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-card px-2">
-            {/* SFTP toggle — opens right panel on the SFTP tab */}
+            {/* SFTP toggle — opens right panel on the SFTP tab. Local
+                sessions have no host to browse. */}
             <button
               type="button"
+              disabled={activeSession ? isLocalSession(activeSession) : false}
               onClick={() => {
                 if (rightOpen && rightTab === "sftp") {
                   setRightOpen(false);
@@ -447,9 +485,10 @@ export function TerminalView() {
                   setRightOpen(true);
                 }
               }}
-              title={t("terminal.toggleSftp")}
+              title={activeSession && isLocalSession(activeSession) ? t("terminal.sftpNeedsHost") : t("terminal.toggleSftp")}
               className={cn(
                 "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
+                "disabled:pointer-events-none disabled:opacity-40",
                 rightOpen && rightTab === "sftp"
                   ? "bg-accent text-primary"
                   : "text-muted-foreground hover:bg-accent/50",

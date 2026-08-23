@@ -7,6 +7,8 @@ import { create } from "zustand";
  */
 export interface TerminalSession {
   id: string; // tab identifier (also the first pane's backend session ID)
+  /** "" marks a LOCAL terminal session (shell on the user's machine, no SSH
+   *  host) — backend session ids carry the "local-" prefix. */
   hostID: string;
   hostName: string;
   status: "connecting" | "connected" | "closed" | "error";
@@ -26,11 +28,18 @@ export interface TerminalSession {
   agentModel?: string;
 }
 
+/** True when the session is a local terminal (no SSH host behind it). */
+export function isLocalSession(s: TerminalSession): boolean {
+  return s.hostID === "";
+}
+
 interface TerminalState {
   sessions: TerminalSession[];
   activeId: string | null;
 
   addSession: (id: string, hostID: string, hostName: string, terminalTheme: string, terminalFont: string, terminalFontSize: number) => void;
+  /** Register a LOCAL terminal session (no host; built-in appearance). */
+  addLocalSession: (id: string, name: string) => void;
   setSessionStatus: (id: string, status: TerminalSession["status"]) => void;
   removeSession: (id: string) => void;
   removeSessions: (ids: string[]) => void;
@@ -53,6 +62,15 @@ export const useTerminalStore = create<TerminalState>((set) => ({
       sessions: [
         ...s.sessions,
         { id, hostID, hostName, status: "connecting" as const, terminalTheme, terminalFont, terminalFontSize, paneIds: [id], splitDirection: null },
+      ],
+      activeId: id,
+    })),
+
+  addLocalSession: (id, name) =>
+    set((s) => ({
+      sessions: [
+        ...s.sessions,
+        { id, hostID: "", hostName: name, status: "connecting" as const, terminalTheme: "", terminalFont: "", terminalFontSize: 0, paneIds: [id], splitDirection: null },
       ],
       activeId: id,
     })),
