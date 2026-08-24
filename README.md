@@ -6,44 +6,36 @@ Go 原生（Wails v3 + React）的跨平台桌面应用，把 **SSH / Terminal /
 
 不替代传统 SSH Client，而是让 AI 在「Remote Context + Tools + Permission」之上真正完成运维与诊断工作。
 
-```
-AI
- ↓
-Remote Context
- ↓
-Tools
- ↓
-Execution
- ↓
-Diagnosis
-```
+> 受[Netcatty]([GitHub - binaricat/Netcatty: SSH workspace, SFTP, and terminals in one · GitHub](https://github.com/binaricat/Netcatty))启发，但是不喜欢electron的重量级依赖，改为使用wails3+golang的webview2方案。
+> 
+> 保持轻量级的工具实现，只增加必要的功能。
 
-## 核心特性（MVP 规划）
+## 核心特性
 
 - 🔌 **SSH Workspace** — 多 Host 管理、稳定终端（xterm.js + PTY）
 - 📁 **SFTP 文件管理** — 浏览、上传、下载
 - 🤖 **AI Agent** — LLM + Tool Calling，本地与远程统一执行
 - 🔐 **分层安全** — 系统密码库托管敏感数据，危险操作需用户授权
-- 🔗 **MCP Server** — 让 Claude / Codex / Cursor 等外部 Agent 复用本地能力
+- (TBD) 🔗 **MCP Server** — 让 Claude / Codex / Cursor 等外部 Agent 复用本地能力
 - 📦 **单 Binary** — 下载即用，无需复杂部署
 
 ## 技术栈
 
 桌面应用基于 **Wails v3**（Go 原生，单 Binary，跨平台）：
 
-| 层 | 技术 |
-| --- | --- |
-| Desktop Framework | Wails v3 |
-| Backend | Go 1.24+ |
-| Frontend | React 19 · TypeScript · Vite |
-| Styling | Tailwind CSS v4 · shadcn/ui · Radix UI |
-| State / Data | Zustand · TanStack Query |
-| Icons | Lucide |
-| Terminal | xterm.js（Phase 2） |
-| Storage | SQLite（纯 Go 驱动 modernc.org/sqlite，无 CGO） |
-| SSH | golang.org/x/crypto/ssh（认证 / keepalive / PTY / 已知主机校验） |
-| SFTP | github.com/pkg/sftp（远程文件操作，连接缓存） |
-| AI Agent | CloudWeGo eino（ReAct Agent + Tool Calling + 流式）+ eino-ext openai |
+| 层                 | 技术                                                               |
+| ----------------- | ---------------------------------------------------------------- |
+| Desktop Framework | Wails v3                                                         |
+| Backend           | Go 1.24+                                                         |
+| Frontend          | React 19 · TypeScript · Vite                                     |
+| Styling           | Tailwind CSS v4 · shadcn/ui · Radix UI                           |
+| State / Data      | Zustand · TanStack Query                                         |
+| Icons             | Lucide                                                           |
+| Terminal          | xterm.js（Phase 2）                                                |
+| Storage           | SQLite（纯 Go 驱动 modernc.org/sqlite，无 CGO）                         |
+| SSH               | golang.org/x/crypto/ssh（认证 / keepalive / PTY / 已知主机校验）           |
+| SFTP              | github.com/pkg/sftp（远程文件操作，连接缓存）                                 |
+| AI Agent          | CloudWeGo eino（ReAct Agent + Tool Calling + 流式）+ eino-ext openai |
 
 > 技术栈以 [`AGENT.md`](./AGENT.md)（Coding Agent Guide）为准。
 
@@ -65,11 +57,118 @@ wails3 task dev
 ### 构建
 
 ```bash
+# 跨平台构建准备
+wails3 task setup:docker
+
+
 # 生产构建，产出 bin/ai-remote-workspace.exe（Windows）
-wails3 task build
+# 构建 Windows (无需 Docker，直接编译)
+wails3 build GOOS=windows GOARCH=amd64
+
+# 构建 macOS (自动唤起 Docker)
+wails3 build GOOS=darwin GOARCH=arm64    # Apple Silicon
+wails3 build GOOS=darwin GOARCH=amd64    # Intel
+wails3 task darwin:build:universal       # 通用双架构 Universal Binary
+
+# 构建 Linux (自动唤起 Docker)
+wails3 build GOOS=linux GOARCH=amd64
+# 构建mac
 ```
 
 构建产出为**单 Binary**，前端已通过 `//go:embed` 嵌入。
+
+### 打包
+
+使用wail3自带能力，需要准备一些工具
+
+```bash
+# 为当前平台打包安装包
+wails3 package
+
+# 显式指定平台打包
+wails3 package GOOS=windows
+wails3 package GOOS=darwin
+wails3 package GOOS=linux
+```
+
+Wails v3 会根据平台自动输出对应的安装包格式：
+
+- **Windows**：生成 NSIS 单文件安装包（安装向导 `.exe`）
+
+- **macOS**：生成带图标的 `.dmg` / `.app` Bundle
+
+- **Linux**：生成 `.AppImage`、`.deb` 以及 `.rpm` 包
+
+#### 各平台打包及前提依赖条件
+
+#### 1. Windows 安装包 (`.exe` / NSIS)
+
+Wails 默认使用 **NSIS (Nullsoft Scriptable Install System)** 来封装 Windows 安装包。
+
+- **前置依赖**（需安装 NSIS 并加入系统环境变量）：
+  
+  - **Windows**：`winget install NSIS.NSIS` 或 `scoop install nsis`
+  
+  - **macOS**：`brew install nsis`
+  
+  - **Linux**：`sudo apt install nsis` (Ubuntu/Debian)
+
+- **打包指令**：
+  
+  Bash
+  
+  ```
+  wails3 task windows:package
+  ```
+
+- **配置文件**：打包信息（如公司名、产品版本、安装路径）取自 `build/windows/installer` 目录下的 NSIS 配置文件和 `build/config.yml`。
+
+#### 2. macOS 安装包 (`.app` / `.dmg` / `.pkg`)
+
+macOS 打包会自动进行图标嵌入、plist 配置，并可一键打包成双架构（Intel + Apple Silicon）通用镜像。
+
+- **打包指令**：
+  
+  Bash
+  
+  ```
+  # 为当前架构打包 .app / .dmg
+  wails3 task darwin:package
+  
+  # 打包 macOS Universal 通用二进制安装包（同时支持 M1/M2/M3 和 Intel Mac）
+  wails3 task darwin:package:universal
+  ```
+
+- **高级签名（用于分发）**：
+  
+  若需发布给大众用户，建议在环境变量中配置 Apple 证书，Taskfile 会在打包时自动唤起 `codesign` 和 `notarytool` 进行代码签名与苹果公证。
+
+#### 3. Linux 安装包 (`.AppImage` / `.deb` / `.rpm`)
+
+Linux 支持一次性生成主流的二进制安装包。
+
+- **前置依赖**：
+  
+  - 打包 `AppImage` 需要系统安装有 `appimagetool`。
+  
+  - 打包 `.deb` 需要系统内置 `dpkg-deb`。
+  
+  - 打包 `.rpm` 需要安装 `rpmbuild`。
+
+- **分步或针对性打包指令**：
+  
+  Bash
+  
+  ```
+  # 生成 DEB 安装包 (适用于 Ubuntu / Debian)
+  wails3 task linux:create:deb
+  
+  # 生成 AppImage 免安装镜像 (适用于绝大多数 Linux 发行版)
+  wails3 task linux:create:appimage
+  
+  # 执行完整的 Linux 打包流程
+  wails3 task linux:package
+  ```
 
 ## 项目结构
 
@@ -98,24 +197,3 @@ wails3 task build
 ├── build/                  # 各平台打包资源（Windows/macOS/Linux/iOS/Android）
 └── docs/                   # PRD / 架构 / 安全 / 路线图 / TODO
 ```
-
-## 文档导航
-
-| 文档 | 内容 |
-| --- | --- |
-| [AGENT.md](./AGENT.md) | Coding Agent 指南：技术栈、架构、编码规范（source of truth） |
-| [PRD.md](./docs/PRD.md) | 产品需求：定位、原则、MVP 范围、发布标准、护城河 |
-| [ARCHITECTURE.md](./docs/ARCHITECTURE.md) | 技术架构：总体架构、核心模块、Agent 架构、Tool 系统 |
-| [SECURITY.md](./docs/SECURITY.md) | 安全设计：数据分类、Security Mode、Tool Permission |
-| [ROADMAP.md](./docs/ROADMAP.md) | 开发路线图：7 个 Phase 与 MVP 里程碑 |
-| [TODO.md](./docs/TODO.md) | 开发任务清单：按阶段拆分的可勾选条目 |
-
-## 状态
-
-- ✅ **Phase 1 — 基础框架**：Wails v3 + React 19 + SQLite + Dark Developer Theme
-- ✅ **Phase 2 — SSH Workspace**：Host CRUD + 多 Tab xterm.js 终端 + SSH 连接/认证/keepalive/已知主机校验
-- ✅ **Phase 3 — 文件管理（SFTP）**：远程文件浏览器，上传/下载/删除/重命名/新建文件夹
-- ✅ **Phase 4 — AI Agent**：基于 CloudWeGo eino 的 ReAct Agent，7 个工具（ssh_exec/local_exec/文件操作），流式对话，Permission 门禁，关联终端会话
-- ✅ **Phase 5 — 安全增强（SecretStore）**：记住密码存入 OS 密码库（Windows Credential Manager / macOS Keychain / Linux Secret Service），三平台无 CGO
-- ✅ **增强 — OS 自动识别**：连接时自动检测主机操作系统（发行版），列表/编辑弹窗只读展示图标 + 名称（simple-icons SVG，18 个常见发行版）
-- 🚧 文件管理（SFTP）/ AI Agent / MCP 等后续阶段开发中 — 详见 [ROADMAP.md](./docs/ROADMAP.md)

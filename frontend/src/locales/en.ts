@@ -42,6 +42,8 @@ export const en = {
     ungrouped: "Ungrouped",
     newTab: "Open in new tab",
     openTerminal: "Open terminal",
+    collapseSidebar: "Collapse host list",
+    expandSidebar: "Expand host list",
     authType: {
       password: "Password",
       key: "Private key file",
@@ -102,6 +104,7 @@ export const en = {
   // ── Terminal ────────────────────────────────────────────────
   terminal: {
     title: "Terminal",
+    noTerminals: "No active terminals",
     emptyHint: "Pick a host on the left, or start a local terminal.",
     sessionClosed: "Session closed — dismiss",
     sessionExited: "[session exited]",

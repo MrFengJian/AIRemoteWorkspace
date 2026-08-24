@@ -9,6 +9,7 @@ import {
   Folder,
   ChevronRight,
   Monitor,
+  PanelLeftClose,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -28,9 +29,10 @@ import { cn } from "@/lib/utils";
  * workspace: searchable, grouped host list with live connection state.
  * Single-click activates the host's open tab (or connects); the context menu
  * forces a new tab / edits / deletes. Host CRUD lives entirely here — there
- * is no standalone hosts page anymore.
+ * is no standalone hosts page anymore. Collapsible via onClose to give the
+ * terminal area more room.
  */
-export function HostsSidebar() {
+export function HostsSidebar({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const { data: hosts, isLoading } = useHosts();
   const [query, setQuery] = useState("");
@@ -192,6 +194,15 @@ export function HostsSidebar() {
         >
           <Plus className="h-4 w-4" />
         </Button>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t("hosts.collapseSidebar")}
+          title={t("hosts.collapseSidebar")}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <PanelLeftClose className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Host list */}

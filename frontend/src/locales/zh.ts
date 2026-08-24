@@ -42,6 +42,8 @@ export const zh = {
     ungrouped: "未分组",
     newTab: "在新标签打开",
     openTerminal: "打开终端",
+    collapseSidebar: "折叠主机列表",
+    expandSidebar: "展开主机列表",
     authType: {
       password: "密码",
       key: "私钥文件",
@@ -102,6 +104,7 @@ export const zh = {
   // ── 终端 ────────────────────────────────────────────────────
   terminal: {
     title: "终端",
+    noTerminals: "没有活跃的终端",
     emptyHint: "从左侧选择主机，或打开一个本地终端。",
     sessionClosed: "会话已关闭 — 关闭",
     sessionExited: "[会话已退出]",

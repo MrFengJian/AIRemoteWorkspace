@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   TerminalSquare,
   X,
@@ -14,6 +14,7 @@ import {
   Bot,
   Check,
   Monitor,
+  PanelLeftOpen,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -76,6 +77,30 @@ export function TerminalView() {
   const [rightOpen, setRightOpen] = useState(false);
   const [rightTab, setRightTab] = useState<"sftp" | "agent">("agent");
   const [copied, setCopied] = useState(false);
+  // Hosts sidebar collapsed state — persisted so the preference survives
+  // restarts; collapsing gives the terminal area more room.
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => localStorage.getItem("hosts-sidebar-open") !== "false",
+  );
+  const toggleSidebar = () =>
+    setSidebarOpen((v) => {
+      localStorage.setItem("hosts-sidebar-open", String(!v));
+      return !v;
+    });
+
+  // On first launch with no sessions, open a local terminal by default so the
+  // workspace always starts in its full form (sidebar + tabs). Runs once per
+  // mount; closing all tabs afterwards intentionally leaves the empty state
+  // rather than silently reopening one.
+  const initialLocalOpened = useRef(false);
+  useEffect(() => {
+    if (initialLocalOpened.current) return;
+    initialLocalOpened.current = true;
+    if (sessions.length === 0) {
+      openLocal.mutate(t("terminal.localTab"));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Per-tab split ratio (first pane's share, 0–1) and the right panel width,
   // both draggable. Kept locally: TerminalView stays mounted for the app run.
   const [splitRatios, setSplitRatios] = useState<Record<string, number>>({});
@@ -340,10 +365,32 @@ export function TerminalView() {
   if (sessions.length === 0) {
     return (
       <div className="flex h-full">
-        <HostsSidebar />
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
-          <TerminalSquare className="h-8 w-8 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">{t("terminal.emptyHint")}</p>
+        {sidebarOpen && <HostsSidebar onClose={toggleSidebar} />}
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+          <TerminalSquare className="h-10 w-10 text-muted-foreground" />
+          <div>
+            <h2 className="text-base font-medium text-foreground">{t("terminal.noTerminals")}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t("terminal.emptyHint")}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={openLocal.isPending}
+              onClick={() => openLocal.mutate(t("terminal.localTab"))}
+              className="inline-flex items-center gap-1.5 rounded-[var(--radius)] bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              <Monitor className="h-4 w-4" /> {t("terminal.newLocalTab")}
+            </button>
+            {!sidebarOpen && (
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-[var(--radius)] border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                <PanelLeftOpen className="h-4 w-4" /> {t("hosts.expandSidebar")}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -351,14 +398,28 @@ export function TerminalView() {
 
   return (
     <div className="flex h-full">
-      {/* Hosts sidebar: the session manager (Xshell-style workspace). */}
-      <HostsSidebar />
+      {/* Hosts sidebar: the session manager (Xshell-style workspace).
+          Collapsible to give the terminal area more room. */}
+      {sidebarOpen && <HostsSidebar onClose={toggleSidebar} />}
       <div className="flex min-w-0 flex-1 flex-col">
       {/* Tab bar */}
+      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-card px-2">
+        {/* Re-open the collapsed hosts sidebar. */}
+        {!sidebarOpen && (
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            aria-label={t("hosts.expandSidebar")}
+            title={t("hosts.expandSidebar")}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </button>
+        )}
       <div
         role="tablist"
         aria-label={t("terminal.title")}
-        className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-card px-2"
+        className="flex min-w-0 flex-1 items-center gap-1"
         onKeyDown={(e) => {
           // Roving-tablist keyboard navigation: arrows move + activate.
           if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
@@ -448,6 +509,7 @@ export function TerminalView() {
             <Plus className="h-3.5 w-3.5" />
           )}
         </button>
+      </div>
       </div>
 
       {/* Two-column workspace: [Terminal+Toolbar] [Right Panel] */}
