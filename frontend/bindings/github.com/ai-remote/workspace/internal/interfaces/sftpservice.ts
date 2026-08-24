@@ -58,6 +58,16 @@ export function RenameFile(hostID: string, oldPath: string, newPath: string): $C
 }
 
 /**
+ * UploadClipboardImage decodes base64 image data and stores it as /tmp/<name>
+ * on the host, returning the path written. An empty hostID stores the file in
+ * the LOCAL temp dir instead (local terminal sessions) — the path is inserted
+ * into the terminal so the user can reference it right away.
+ */
+export function UploadClipboardImage(hostID: string, name: string, dataB64: string): $CancellablePromise<string> {
+    return $Call.ByID(3372244996, hostID, name, dataB64);
+}
+
+/**
  * UploadFile writes data to a remote path. Progress events are emitted on
  * "sftp:transfer:<transferID>" while the write runs.
  */

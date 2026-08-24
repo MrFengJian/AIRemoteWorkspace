@@ -318,6 +318,9 @@ export const en = {
     splitV: "Split vertical",
     closePane: "Close pane",
     terminalTheme: "Terminal colour scheme",
+    uploadImage: "Upload clipboard image",
+    imageUploaded: "Image saved to {{path}}",
+    noClipboardImage: "No image in the clipboard.",
   },
 
   // ── Terminal theme dialog ────────────────────────────────────

@@ -314,6 +314,9 @@ export const zh = {
     splitV: "垂直分屏",
     closePane: "关闭窗格",
     terminalTheme: "终端配色方案",
+    uploadImage: "上传剪贴板图片",
+    imageUploaded: "图片已保存到 {{path}}",
+    noClipboardImage: "剪贴板中没有图片。",
   },
 
   // ── 终端配色方案对话框 ───────────────────────────────────────

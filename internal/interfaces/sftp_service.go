@@ -2,7 +2,11 @@ package interfaces
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -112,6 +116,38 @@ func (s *SftpService) DownloadFile(hostID, remotePath, transferID string) ([]byt
 // "sftp:transfer:<transferID>" while the write runs.
 func (s *SftpService) UploadFile(hostID, remotePath string, data []byte, transferID string) error {
 	return s.svc.UploadFile(hostID, domain.Credentials{}, remotePath, data, s.progressEmitter(transferID))
+}
+
+// UploadClipboardImage decodes base64 image data and stores it as /tmp/<name>
+// on the host, returning the path written. An empty hostID stores the file in
+// the LOCAL temp dir instead (local terminal sessions) — the path is inserted
+// into the terminal so the user can reference it right away.
+func (s *SftpService) UploadClipboardImage(hostID, name, dataB64 string) (string, error) {
+	data, err := base64.StdEncoding.DecodeString(dataB64)
+	if err != nil {
+		return "", fmt.Errorf("decode image: %w", err)
+	}
+	if len(data) == 0 {
+		return "", fmt.Errorf("empty image data")
+	}
+	// Defend against path traversal in the caller-supplied name.
+	name = filepath.Base(strings.TrimSpace(name))
+	if name == "" || name == "." || name == ".." || strings.ContainsRune(name, '/') {
+		return "", fmt.Errorf("invalid image name %q", name)
+	}
+
+	if hostID == "" {
+		localPath := filepath.Join(os.TempDir(), name)
+		if err := os.WriteFile(localPath, data, 0o644); err != nil {
+			return "", fmt.Errorf("write local image: %w", err)
+		}
+		return localPath, nil
+	}
+	remotePath := "/tmp/" + name
+	if err := s.svc.UploadFile(hostID, domain.Credentials{}, remotePath, data, nil); err != nil {
+		return "", err
+	}
+	return remotePath, nil
 }
 
 // DeleteFile removes a remote file or empty directory.

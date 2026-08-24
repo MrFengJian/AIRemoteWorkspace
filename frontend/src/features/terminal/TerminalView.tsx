@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   TerminalSquare,
   X,
@@ -33,6 +33,14 @@ import { osInfo } from "@/features/hosts/osIcons";
 import { TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { cn } from "@/lib/utils";
 import { toast, errorMessage } from "@/lib/toast";
+
+/** Module-level guard for the default local terminal (StrictMode-safe). */
+let defaultSessionEnsured = false;
+function ensureDefaultLocalSession(open: () => void) {
+  if (defaultSessionEnsured) return;
+  defaultSessionEnsured = true;
+  open();
+}
 
 /**
  * Terminal view: a tab bar of live sessions above a stack of (hidden) panels.
@@ -88,16 +96,30 @@ export function TerminalView() {
       return !v;
     });
 
+  // Spinner on the "+" tab-button reflects THIS click only (not the mutation
+  // object's state): a stale pending flag from a strict-mode remount would
+  // otherwise spin forever with no meaningful work in flight.
+  const [openingLocal, setOpeningLocal] = useState(false);
+  const handleOpenLocal = async () => {
+    if (openingLocal) return;
+    setOpeningLocal(true);
+    try {
+      await openLocal.mutateAsync(t("terminal.localTab"));
+    } catch {
+      /* failure is toasted globally */
+    } finally {
+      setOpeningLocal(false);
+    }
+  };
+
   // On first launch with no sessions, open a local terminal by default so the
-  // workspace always starts in its full form (sidebar + tabs). Runs once per
-  // mount; closing all tabs afterwards intentionally leaves the empty state
-  // rather than silently reopening one.
-  const initialLocalOpened = useRef(false);
+  // workspace always starts in its full form (sidebar + tabs). The guard is a
+  // MODULE-level flag: React StrictMode's dev double-mount resets refs (and
+  // would open two terminals), but not module state. Closing all tabs
+  // afterwards intentionally leaves the empty state — no silent reopen.
   useEffect(() => {
-    if (initialLocalOpened.current) return;
-    initialLocalOpened.current = true;
     if (sessions.length === 0) {
-      openLocal.mutate(t("terminal.localTab"));
+      ensureDefaultLocalSession(() => openLocal.mutate(t("terminal.localTab")));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -151,12 +173,15 @@ export function TerminalView() {
 
   // Host list (for per-tab OS icon). OS is auto-detected at connect time on
   // the backend; polling the hosts query keeps the tab icon in sync until the
-  // detection result lands (usually within a couple of seconds).
+  // detection result lands (usually within a couple of seconds). Local
+  // sessions have no host and never resolve — exclude them or the poll
+  // would run forever.
   const { data: hosts, refetch: refetchHosts } = useHosts();
   useEffect(() => {
     if (sessions.length === 0) return;
-    // Only poll while at least one tab's host has no detected OS yet.
+    // Only poll while at least one SSH tab's host has no detected OS yet.
     const unknown = sessions.some((s) => {
+      if (isLocalSession(s)) return false;
       const h = (hosts ?? []).find((x) => x.id === s.hostID);
       return !h?.os;
     });
@@ -375,8 +400,8 @@ export function TerminalView() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              disabled={openLocal.isPending}
-              onClick={() => openLocal.mutate(t("terminal.localTab"))}
+              disabled={openingLocal}
+              onClick={handleOpenLocal}
               className="inline-flex items-center gap-1.5 rounded-[var(--radius)] bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               <Monitor className="h-4 w-4" /> {t("terminal.newLocalTab")}
@@ -497,13 +522,13 @@ export function TerminalView() {
         {/* New local terminal tab (browser-style + button). */}
         <button
           type="button"
-          onClick={() => openLocal.mutate(t("terminal.localTab"))}
-          disabled={openLocal.isPending}
+          onClick={handleOpenLocal}
+          disabled={openingLocal}
           aria-label={t("terminal.newLocalTab")}
           title={t("terminal.newLocalTab")}
           className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
         >
-          {openLocal.isPending ? (
+          {openingLocal ? (
             <RefreshCw className="h-3.5 w-3.5 animate-spin" />
           ) : (
             <Plus className="h-3.5 w-3.5" />

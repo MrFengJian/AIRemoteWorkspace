@@ -27,11 +27,12 @@ Go 原生（Wails v3 + React）的跨平台桌面应用，把 **SSH / Terminal /
 | ----------------- | ---------------------------------------------------------------- |
 | Desktop Framework | Wails v3                                                         |
 | Backend           | Go 1.24+                                                         |
+| LLM Agent         | [Eino](github.com/cloudwego/eino) from bytedance                 |
 | Frontend          | React 19 · TypeScript · Vite                                     |
 | Styling           | Tailwind CSS v4 · shadcn/ui · Radix UI                           |
 | State / Data      | Zustand · TanStack Query                                         |
 | Icons             | Lucide                                                           |
-| Terminal          | xterm.js（Phase 2）                                                |
+| Terminal          | xterm.js                                                         |
 | Storage           | SQLite（纯 Go 驱动 modernc.org/sqlite，无 CGO）                         |
 | SSH               | golang.org/x/crypto/ssh（认证 / keepalive / PTY / 已知主机校验）           |
 | SFTP              | github.com/pkg/sftp（远程文件操作，连接缓存）                                 |

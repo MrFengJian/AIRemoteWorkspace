@@ -39,7 +39,13 @@ export function AppShell() {
       <TitleBar title={t("app.title")} />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
-        <main className="relative min-w-0 flex-1 overflow-auto">
+        {/* overflow-hidden, not auto: main is the last scroll ancestor of the
+            terminal panes. During a fit() debounce the old (wider) xterm screen
+            transiently overflows its container; with overflow-auto that spilled
+            into a horizontal scrollbar here, stealing 10px of height → rows
+            resize → PTY repaint → reflow → scrollbar toggles again — a slow
+            self-sustaining flicker loop. Views scroll internally themselves. */}
+        <main className="relative min-w-0 flex-1 overflow-hidden">
           <View active={activeView === "terminal"}>
             <ErrorBoundary label={t("nav.terminal")} resetLabel={t("common.retry")}>
               <TerminalView />

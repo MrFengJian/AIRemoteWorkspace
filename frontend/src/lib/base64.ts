@@ -30,3 +30,13 @@ export function encodeBase64(text: string): string {
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
   return btoa(bin);
 }
+
+/** raw bytes → base64 (binary-safe, e.g. clipboard images). */
+export function bytesToBase64(bytes: Uint8Array): string {
+  let bin = "";
+  const chunk = 0x8000; // avoid arg-length limits on large buffers
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}

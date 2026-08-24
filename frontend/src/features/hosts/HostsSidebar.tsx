@@ -42,6 +42,7 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
   const openEditor = useHostsUIStore((s) => s.openEditor);
   const openTerminal = useOpenTerminal();
   const openLocal = useOpenLocalTerminal();
+  const [openingLocal, setOpeningLocal] = useState(false);
   const deleteHost = useDeleteHost();
   const sessions = useTerminalStore((s) => s.sessions);
   const setActive = useTerminalStore((s) => s.setActive);
@@ -268,12 +269,22 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
         )}
       </div>
 
-      {/* Footer: local terminal entry */}
+      {/* Footer: local terminal entry — spinner reflects this click only. */}
       <div className="border-t border-border p-1.5">
         <button
           type="button"
-          disabled={openLocal.isPending}
-          onClick={() => openLocal.mutate(t("terminal.localTab"))}
+          disabled={openingLocal}
+          onClick={async () => {
+            if (openingLocal) return;
+            setOpeningLocal(true);
+            try {
+              await openLocal.mutateAsync(t("terminal.localTab"));
+            } catch {
+              /* failure is toasted globally */
+            } finally {
+              setOpeningLocal(false);
+            }
+          }}
           className="flex w-full items-center gap-1.5 rounded-[var(--radius)] px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground disabled:opacity-50"
         >
           <Monitor className="h-3.5 w-3.5" />

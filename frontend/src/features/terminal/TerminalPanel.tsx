@@ -23,9 +23,10 @@ import {
   Columns2,
   Rows2,
   Palette,
+  ImageUp,
 } from "lucide-react";
 
-import { TerminalService, SystemService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
+import { TerminalService, SystemService, SftpService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { useTerminalStore, type TerminalSession } from "@/features/terminal/terminal.store";
 import { useUIStore } from "@/stores/ui.store";
 import { terminalFontFamily } from "@/features/terminal/fonts";
@@ -33,7 +34,7 @@ import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabM
 import { TerminalThemeDialog } from "@/features/terminal/TerminalThemeDialog";
 import { useHosts } from "@/features/hosts/hooks";
 import { getTerminalTheme } from "@/features/terminal/themes";
-import { base64ToBytes, encodeBase64 } from "@/lib/base64";
+import { base64ToBytes, encodeBase64, bytesToBase64 } from "@/lib/base64";
 import { toast } from "@/lib/toast";
 
 import "@xterm/xterm/css/xterm.css";
@@ -155,18 +156,46 @@ export function TerminalPanel({
     };
     container.addEventListener("contextmenu", onContext);
 
-    const applySize = () => {
-      try {
-        fit.fit();
-        TerminalService.ResizeSession(session.id, {
-          cols: term.cols,
-          rows: term.rows,
-        });
-      } catch {
-        /* session may have just closed */
+    // Debounced + change-gated resize. The scrollbar oscillation this used
+    // to fight (scrollbar toggling changes usable width → fit → PTY resize →
+    // repaint → scrollbar toggles again) is now structurally impossible: the
+    // xterm viewport scrollbar is hidden via CSS and takes no layout space.
+    // Debounce absorbs ResizeObserver jitter; the change gate skips no-op
+    // PTY resizes (ConPTY repaints are expensive).
+    let lastCols = 0;
+    let lastRows = 0;
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+    const applySize = (immediate = false) => {
+      const run = () => {
+        try {
+          fit.fit();
+          if (term.cols !== lastCols || term.rows !== lastRows) {
+            lastCols = term.cols;
+            lastRows = term.rows;
+            TerminalService.ResizeSession(session.id, {
+              cols: term.cols,
+              rows: term.rows,
+            }).catch(() => {
+              /* session may have just closed */
+            });
+          }
+        } catch {
+          /* container not laid out yet */
+        }
+      };
+      if (immediate) {
+        run();
+        return;
       }
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(run, 50);
     };
-    applySize();
+    applySize(true);
+    // Webfont metrics settle after load; re-fit once so the initial size is
+    // measured with the real character cell.
+    if (typeof document !== "undefined" && document.fonts?.ready) {
+      document.fonts.ready.then(() => applySize(true)).catch(() => {});
+    }
 
     const onDataDisp = term.onData((data) => {
       TerminalService.WriteStdin(session.id, encodeBase64(data)).catch(() => {});
@@ -206,6 +235,7 @@ export function TerminalPanel({
     ro.observe(container);
 
     return () => {
+      clearTimeout(resizeTimer);
       onDataDisp.dispose();
       selDisp.dispose();
       container.removeEventListener("contextmenu", onContext);
@@ -284,6 +314,35 @@ export function TerminalPanel({
     if (remoteIP) writeToStdin(remoteIP);
   };
 
+  /** Upload the clipboard image to /tmp (remote host via SFTP; local temp dir
+   *  for local sessions) and insert the resulting path at the cursor. */
+  const handleUploadClipboardImage = async () => {
+    try {
+      const items = await navigator.clipboard.read();
+      const item = items.find((i) => i.types.some((ty) => ty.startsWith("image/")));
+      if (!item) {
+        toast.info(t("termMenu.noClipboardImage"));
+        return;
+      }
+      const type = item.types.find((ty) => ty.startsWith("image/"))!;
+      const blob = await item.getType(type);
+      const buf = new Uint8Array(await blob.arrayBuffer());
+      const ext = (type.split("/")[1] || "png").replace(/[^a-z0-9]/gi, "") || "png";
+      const name = `clipboard-${Date.now()}.${ext}`;
+      const path = await SftpService.UploadClipboardImage(
+        session.hostID,
+        name,
+        bytesToBase64(buf),
+      );
+      // Insert the path at the cursor (no newline — nothing runs until the
+      // user presses Enter) and surface where the file landed.
+      writeToStdin(path);
+      toast.success(t("termMenu.imageUploaded", { path }));
+    } catch (e) {
+      toast.error(`${t("termMenu.uploadImage")}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
   const handleClear = () => termRef.current?.clear();
 
   const doSearch = (dir: "next" | "prev") => {
@@ -332,9 +391,16 @@ export function TerminalPanel({
         { label: t("termMenu.copy"), icon: CopyIcon, onClick: handleCopy },
         { label: t("termMenu.copyRtf"), icon: FileText, onClick: handleCopyRTF },
         { label: t("termMenu.pasteSelected"), icon: ClipboardList, onClick: handlePasteSelected },
-        { label: t("termMenu.paste"), icon: ClipboardPaste, onClick: handlePaste },
       );
     }
+
+    // Paste works with or without a selection; the clipboard image upload
+    // lands in /tmp (remote) or the local temp dir and inserts the path.
+    items.push({ type: "separator" });
+    items.push(
+      { label: t("termMenu.paste"), icon: ClipboardPaste, onClick: handlePaste },
+      { label: t("termMenu.uploadImage"), icon: ImageUp, onClick: handleUploadClipboardImage },
+    );
 
     items.push(
       { type: "separator" },
@@ -367,7 +433,10 @@ export function TerminalPanel({
   };
 
   return (
-    <div className="relative h-full w-full" style={{ background: resolvedTheme.theme.background }}>
+    <div
+      className="relative h-full w-full overflow-hidden"
+      style={{ background: resolvedTheme.theme.background }}
+    >
       {/* Search bar overlay */}
       {showSearch && (
         <div className="absolute right-2 top-2 z-20 flex items-center gap-1 rounded-[var(--radius)] border border-border bg-popover p-1.5 shadow-md">
@@ -408,7 +477,14 @@ export function TerminalPanel({
         </div>
       )}
 
-      <div ref={containerRef} className="h-full w-full p-2" />
+      {/* The theme background covers sub-cell leftover pixels (canvas is
+          sized in whole character cells) so no region ever shows through to
+          the app shell behind the pane. */}
+      <div
+        ref={containerRef}
+        className="h-full w-full p-2"
+        style={{ background: resolvedTheme.theme.background }}
+      />
 
       {/* Session-closed dismiss button */}
       {(session.status === "closed" || session.status === "error") && (
