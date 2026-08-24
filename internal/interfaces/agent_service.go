@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log"
 	"sync/atomic"
+	"time"
 
+	"github.com/cloudwego/eino/schema"
 	wailsapp "github.com/wailsapp/wails/v3/pkg/application"
 
 	appsvc "github.com/ai-remote/workspace/internal/application"
@@ -22,18 +24,35 @@ type ApprovalRequestDTO struct {
 	Args       string `json:"args"`
 }
 
+// ConversationDTO is a persisted agent conversation for the history list.
+type ConversationDTO struct {
+	ID           string `json:"id"`
+	HostID       string `json:"hostId"`
+	HostName     string `json:"hostName"`
+	Title        string `json:"title"`
+	UpdatedAt    string `json:"updatedAt"`
+	MessageCount int64  `json:"messageCount"`
+}
+
+// ConversationMessageDTO is one persisted user/assistant message.
+type ConversationMessageDTO struct {
+	Role    string `json:"role"` // "user" | "assistant"
+	Content string `json:"content"`
+}
+
 // AgentService exposes the AI agent to the frontend. Provider/model selection
 // is per chat call; provider management lives in ModelProviderService.
 type AgentService struct {
 	app     *wailsapp.App
 	runtime *agent.Runtime
 	gate    *appsvc.PermissionGate
+	convs   *appsvc.ConversationService
 }
 
 // NewAgentService wires the AgentService. The *Application is injected via
 // ServiceStartup.
-func NewAgentService(runtime *agent.Runtime, gate *appsvc.PermissionGate) *AgentService {
-	return &AgentService{runtime: runtime, gate: gate}
+func NewAgentService(runtime *agent.Runtime, gate *appsvc.PermissionGate, convs *appsvc.ConversationService) *AgentService {
+	return &AgentService{runtime: runtime, gate: gate, convs: convs}
 }
 
 func (a *AgentService) ServiceName() string { return "AgentService" }
@@ -70,6 +89,13 @@ func (a *AgentService) StartChat(sessionID, providerID, model, message string) e
 	if a.runtime == nil {
 		return fmt.Errorf("agent runtime not available")
 	}
+	// Bind the session to a persisted conversation (created on the first
+	// turn). Failure only means history isn't stored — chat continues.
+	if a.convs != nil {
+		if _, err := a.convs.EnsureMapping(sessionID, message); err != nil {
+			log.Printf("[AgentService] ensure conversation: %v", err)
+		}
+	}
 	sid := sessionID
 	events := &agentEventsEmitter{app: a.app, sessionID: sid}
 	// Run in the background — the stream is long-lived and event-driven.
@@ -95,10 +121,85 @@ func (a *AgentService) CancelChat(sessionID string) error {
 }
 
 // ClearHistory forgets a session's conversation memory (the frontend also
-// clears its local message list when the user clears the chat).
+// clears its local message list when the user clears the chat) and detaches
+// the session from its persisted conversation — the next turn starts a new
+// one.
 func (a *AgentService) ClearHistory(sessionID string) error {
 	if a.runtime != nil {
 		a.runtime.ClearHistory(sessionID)
+	}
+	if a.convs != nil {
+		a.convs.ClearMapping(sessionID)
+	}
+	return nil
+}
+
+// ListConversations returns all persisted agent conversations (newest
+// first); the frontend filters by host.
+func (a *AgentService) ListConversations() ([]ConversationDTO, error) {
+	list, err := a.convs.List()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ConversationDTO, 0, len(list))
+	for _, c := range list {
+		count, _ := a.convs.Messages(c.ID)
+		out = append(out, ConversationDTO{
+			ID:           c.ID,
+			HostID:       c.HostID,
+			HostName:     c.HostName,
+			Title:        c.Title,
+			UpdatedAt:    c.UpdatedAt.Format(time.RFC3339),
+			MessageCount: int64(len(count)),
+		})
+	}
+	return out, nil
+}
+
+// GetConversationMessages returns a conversation's user/assistant messages
+// in order.
+func (a *AgentService) GetConversationMessages(conversationID string) ([]ConversationMessageDTO, error) {
+	msgs, err := a.convs.Messages(conversationID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ConversationMessageDTO, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, ConversationMessageDTO{Role: m.Role, Content: m.Content})
+	}
+	return out, nil
+}
+
+// ResumeConversation points a terminal session at a persisted conversation
+// and replays it into the agent's multi-turn memory, so follow-up questions
+// keep context.
+func (a *AgentService) ResumeConversation(sessionID, conversationID string) error {
+	msgs, err := a.convs.Messages(conversationID)
+	if err != nil {
+		return err
+	}
+	hist := make([]*schema.Message, 0, len(msgs))
+	for _, m := range msgs {
+		if m.Role == "user" {
+			hist = append(hist, schema.UserMessage(m.Content))
+		} else {
+			hist = append(hist, schema.AssistantMessage(m.Content, nil))
+		}
+	}
+	a.runtime.RestoreHistory(sessionID, hist)
+	a.convs.SetActive(sessionID, conversationID)
+	return nil
+}
+
+// DeleteConversation removes a persisted conversation. If it was the active
+// conversation of a session, that session's in-memory context is cleared too.
+func (a *AgentService) DeleteConversation(conversationID string) error {
+	affected, err := a.convs.Delete(conversationID)
+	if err != nil {
+		return err
+	}
+	if affected != "" && a.runtime != nil {
+		a.runtime.ClearHistory(affected)
 	}
 	return nil
 }

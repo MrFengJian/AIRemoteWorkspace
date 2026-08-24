@@ -25,8 +25,11 @@ interface AgentState {
   histories: Record<string, ChatMessage[]>;
   /** Sessions currently streaming a response. */
   streaming: Record<string, boolean>;
+  /** Which persisted conversation each session is showing (history highlight). */
+  activeConvBySession: Record<string, string>;
 
   addMessage: (sessionID: string, msg: Omit<ChatMessage, "id">) => void;
+  setActiveConv: (sessionID: string, conversationID: string | null) => void;
   appendToLast: (sessionID: string, text: string) => void;
   setStreaming: (sessionID: string, v: boolean) => void;
   /** Attach a tool execution result to its step (matched by call id; an empty
@@ -48,6 +51,15 @@ let nextMessageId = 1;
 export const useAgentStore = create<AgentState>((set) => ({
   histories: {},
   streaming: {},
+  activeConvBySession: {},
+
+  setActiveConv: (sessionID, conversationID) =>
+    set((s) => {
+      const next = { ...s.activeConvBySession };
+      if (conversationID === null) delete next[sessionID];
+      else next[sessionID] = conversationID;
+      return { activeConvBySession: next };
+    }),
 
   addMessage: (sessionID, msg) =>
     set((s) => ({

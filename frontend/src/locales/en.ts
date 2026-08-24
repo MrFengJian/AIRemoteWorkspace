@@ -129,10 +129,6 @@ export const en = {
 
   // ── SFTP ────────────────────────────────────────────────────
   sftp: {
-    title: "Files",
-    subtitle: "Browse and manage remote files over SFTP.",
-    selectHost: "Select a host to browse its files:",
-    noHosts: "No hosts yet — add one in the Hosts panel first.",
     up: "Up",
     newFolder: "New Folder",
     upload: "Upload",
@@ -204,6 +200,14 @@ export const en = {
     clearConfirm:
       "Clear this conversation? The agent will also lose its memory of this chat.",
     pendingApprovals: "{{count}} more pending",
+    history: "Conversation history",
+    historyCurrent: "This host",
+    historyAll: "All hosts",
+    historyEmpty: "No conversations yet",
+    newChat: "New chat",
+    msgCount: "{{count}} msgs",
+    deleteConvTitle: "Delete conversation",
+    deleteConvConfirm: 'Delete the conversation "{{title}}"? This cannot be undone.',
   },
 
   // ── Settings ────────────────────────────────────────────────

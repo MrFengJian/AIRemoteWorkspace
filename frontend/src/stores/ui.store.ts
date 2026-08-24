@@ -4,11 +4,11 @@ import { create } from "zustand";
  * Top-level navigation views. Each maps to a feature area
  * (AGENT.md §6 Feature-Based Architecture).
  *
- * `hosts` is the landing view shown at startup. The agent is deliberately
- * absent: it lives as an embedded panel inside the terminal view, not as a
- * standalone page.
+ * `hosts` is the landing view shown at startup. The agent and the SFTP file
+ * browser are deliberately absent: both are session-scoped and live as
+ * embedded panels inside the terminal view, not as standalone pages.
  */
-export type AppView = "hosts" | "terminal" | "sftp" | "settings";
+export type AppView = "hosts" | "terminal" | "settings";
 
 /** Settings sidebar categories. Global so other views can deep-link into one. */
 export type SettingsCategory =

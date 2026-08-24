@@ -61,6 +61,13 @@ type LLMResolver interface {
 	ResolveLLM(providerID, model string) (domain.LLMEndpoint, error)
 }
 
+// TurnSink receives each completed conversation turn (persistence decoupled
+// from memory). Implemented by the application layer's ConversationService;
+// nil is allowed (no persistence).
+type TurnSink interface {
+	RecordTurn(sessionID, user, assistant string)
+}
+
 // CredsResolver returns host + credentials for a session (for SFTP tools).
 type CredsResolver = tools.CredsResolver
 
@@ -88,6 +95,7 @@ type Runtime struct {
 	sftp    SftpFileOps
 	gate    PermissionGate
 	secrets SecretsForResolver
+	sink    TurnSink
 
 	mu        sync.Mutex
 	cancelFns map[string]context.CancelFunc
@@ -99,14 +107,16 @@ type SecretsForResolver interface {
 	GetHostSecret(hostID string, kind string) ([]byte, error)
 }
 
-// NewRuntime wires the agent runtime.
-func NewRuntime(llm LLMResolver, sshMgr *ssh.Manager, sftp SftpFileOps, gate PermissionGate, secrets SecretsForResolver) *Runtime {
+// NewRuntime wires the agent runtime. sink (may be nil) persists completed
+// turns — the application layer's ConversationService.
+func NewRuntime(llm LLMResolver, sshMgr *ssh.Manager, sftp SftpFileOps, gate PermissionGate, secrets SecretsForResolver, sink TurnSink) *Runtime {
 	return &Runtime{
 		llm:       llm,
 		sshMgr:    sshMgr,
 		sftp:      sftp,
 		gate:      gate,
 		secrets:   secrets,
+		sink:      sink,
 		cancelFns: make(map[string]context.CancelFunc),
 		histories: make(map[string][]*schema.Message),
 	}
@@ -240,11 +250,29 @@ func (r *Runtime) ClearHistory(sessionID string) {
 	r.mu.Unlock()
 }
 
+// RestoreHistory replaces a session's conversation memory with persisted
+// messages (resuming a conversation). Pairs are expected to be user/assistant
+// turns; they are trimmed to the same budget as live recording.
+func (r *Runtime) RestoreHistory(sessionID string, msgs []*schema.Message) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	h := append([]*schema.Message(nil), msgs...)
+	total := 0
+	for _, m := range h {
+		total += len(m.Content)
+	}
+	i := 0
+	for i+2 <= len(h)-2 && (total > historyCharBudget || (len(h)-i)/2 > maxHistoryTurns) {
+		total -= len(h[i].Content) + len(h[i+1].Content)
+		i += 2
+	}
+	r.histories[sessionID] = h[i:]
+}
+
 // recordTurn appends a completed (user, assistant) turn and trims the oldest
 // turns to stay within the char/turn budget.
 func (r *Runtime) recordTurn(sessionID, user, assistant string) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	h := append(r.histories[sessionID],
 		schema.UserMessage(user),
 		schema.AssistantMessage(assistant, nil))
@@ -258,6 +286,12 @@ func (r *Runtime) recordTurn(sessionID, user, assistant string) {
 		i += 2
 	}
 	r.histories[sessionID] = h[i:]
+	r.mu.Unlock()
+
+	// Persist after unlocking (the sink hits the DB).
+	if r.sink != nil {
+		r.sink.RecordTurn(sessionID, user, assistant)
+	}
 }
 
 func (r *Runtime) registerCancel(sessionID string, cancel context.CancelFunc) {

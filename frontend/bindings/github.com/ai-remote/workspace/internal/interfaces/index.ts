@@ -19,6 +19,8 @@ export {
 };
 
 export type {
+    ConversationDTO,
+    ConversationMessageDTO,
     CredentialsDTO,
     FileEntryDTO,
     HostDTO,

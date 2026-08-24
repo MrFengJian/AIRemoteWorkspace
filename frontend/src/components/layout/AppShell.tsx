@@ -10,7 +10,6 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ApprovalHost } from "@/features/agent/ApprovalHost";
 import { HostsView } from "@/features/hosts/HostsView";
 import { TerminalView } from "@/features/terminal/TerminalView";
-import { SftpView } from "@/features/sftp/SftpView";
 import { SettingsView } from "@/features/settings/SettingsView";
 
 /**
@@ -45,11 +44,6 @@ export function AppShell() {
           <View active={activeView === "terminal"}>
             <ErrorBoundary label={t("nav.terminal")} resetLabel={t("common.retry")}>
               <TerminalView />
-            </ErrorBoundary>
-          </View>
-          <View active={activeView === "sftp"}>
-            <ErrorBoundary label={t("nav.files")} resetLabel={t("common.retry")}>
-              <SftpView />
             </ErrorBoundary>
           </View>
           <View active={activeView === "settings"}>

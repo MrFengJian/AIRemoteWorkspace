@@ -82,11 +82,14 @@ func main() {
 	// ModelProviderService takes the provider repo + legacy config repo (both
 	// implemented by ConfigRepo) and the vault for per-provider API keys.
 	providerSvc := application.NewModelProviderService(configRepo, configRepo, secretSvc)
+	// Agent conversation persistence (chat history, resumable).
+	convRepo := sqlite.NewConversationRepo(store)
+	convSvc := application.NewConversationService(convRepo, connManager)
 
 	// Agent: permission gate (emitter wired after AgentService is created),
-	// tool runtime (eino ReAct agent per session).
+	// tool runtime (eino ReAct agent per session; turns persisted via convSvc).
 	permGate := application.NewPermissionGate(nil)
-	agentRuntime := agent.NewRuntime(providerSvc, connManager, sftpMgr, permGate, &secretResolver{secretSvc})
+	agentRuntime := agent.NewRuntime(providerSvc, connManager, sftpMgr, permGate, &secretResolver{secretSvc}, convSvc)
 
 	// Wails-facing services (interface adapter layer).
 	systemService := interfaces.NewSystemService(appName, appVersion)
@@ -96,7 +99,7 @@ func main() {
 	terminalService := interfaces.NewTerminalService(hostSvc, connManager, localPtyMgr)
 	sftpService := interfaces.NewSftpService(sftpSvc)
 	providerService := interfaces.NewModelProviderService(providerSvc)
-	agentService := interfaces.NewAgentService(agentRuntime, permGate)
+	agentService := interfaces.NewAgentService(agentRuntime, permGate, convSvc)
 
 	// Wire the approval emitter now that AgentService exists.
 	permGate.SetEmitter(agentService)

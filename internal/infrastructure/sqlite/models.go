@@ -81,3 +81,28 @@ type secretRefModel struct {
 }
 
 func (secretRefModel) TableName() string { return "secret_refs" }
+
+// conversationModel is one persisted agent conversation (chat history),
+// scoped to the host (or local machine) it happened on. No DB-level foreign
+// key to conversationMessageModel — children are cleaned up in the repo.
+type conversationModel struct {
+	ID        string `gorm:"primaryKey;size:64"`
+	HostID    string `gorm:"not null;default:'';size:64;index"` // "" = local machine
+	HostName  string `gorm:"not null;default:'';size:200"`
+	Title     string `gorm:"not null;default:'';size:200"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (conversationModel) TableName() string { return "conversations" }
+
+// conversationMessageModel is one user/assistant message in a conversation.
+type conversationMessageModel struct {
+	ID             int64  `gorm:"primaryKey;autoIncrement"`
+	ConversationID string `gorm:"not null;size:64;index"`
+	Role           string `gorm:"not null;size:20"` // "user" | "assistant"
+	Content        string `gorm:"not null;type:text"`
+	CreatedAt      time.Time
+}
+
+func (conversationMessageModel) TableName() string { return "conversation_messages" }

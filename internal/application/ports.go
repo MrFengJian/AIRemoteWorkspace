@@ -84,6 +84,24 @@ type ToolRegistry interface {
 	Registered() []domain.Tool
 }
 
+// ConversationRepository persists agent chat history. Implemented by
+// infrastructure/sqlite.ConversationRepo. Children (messages) are cleaned up
+// with their conversation by the implementation.
+type ConversationRepository interface {
+	// List returns all conversations, newest first.
+	List() ([]domain.Conversation, error)
+	// Create stores a new conversation.
+	Create(c domain.Conversation) error
+	// Touch refreshes a conversation's UpdatedAt (after a new turn).
+	Touch(conversationID string) error
+	// ListMessages returns a conversation's user/assistant messages in order.
+	ListMessages(conversationID string) ([]domain.ConversationMessage, error)
+	// AppendMessage stores one message in a conversation.
+	AppendMessage(conversationID string, role, content string) error
+	// Delete removes a conversation and its messages.
+	Delete(conversationID string) error
+}
+
 // Sentinel errors shared across the application layer. Use errors.Is to test.
 var (
 	// ErrHostKeyNotFound indicates no recorded fingerprint exists yet.

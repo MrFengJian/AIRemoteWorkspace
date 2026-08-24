@@ -15,6 +15,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // @ts-ignore: Unused imports
 import * as application$0 from "../application/models.js";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
+
 /**
  * ApproveToolCall resolves a pending approval request.
  */
@@ -31,10 +35,20 @@ export function CancelChat(sessionID: string): $CancellablePromise<void> {
 
 /**
  * ClearHistory forgets a session's conversation memory (the frontend also
- * clears its local message list when the user clears the chat).
+ * clears its local message list when the user clears the chat) and detaches
+ * the session from its persisted conversation — the next turn starts a new
+ * one.
  */
 export function ClearHistory(sessionID: string): $CancellablePromise<void> {
     return $Call.ByID(2792127093, sessionID);
+}
+
+/**
+ * DeleteConversation removes a persisted conversation. If it was the active
+ * conversation of a session, that session's in-memory context is cleared too.
+ */
+export function DeleteConversation(conversationID: string): $CancellablePromise<void> {
+    return $Call.ByID(3848825678, conversationID);
 }
 
 /**
@@ -44,6 +58,31 @@ export function ClearHistory(sessionID: string): $CancellablePromise<void> {
  */
 export function EmitApproval(req: application$0.ApprovalRequest): $CancellablePromise<void> {
     return $Call.ByID(3705362646, req);
+}
+
+/**
+ * GetConversationMessages returns a conversation's user/assistant messages
+ * in order.
+ */
+export function GetConversationMessages(conversationID: string): $CancellablePromise<$models.ConversationMessageDTO[] | null> {
+    return $Call.ByID(4084462485, conversationID);
+}
+
+/**
+ * ListConversations returns all persisted agent conversations (newest
+ * first); the frontend filters by host.
+ */
+export function ListConversations(): $CancellablePromise<$models.ConversationDTO[] | null> {
+    return $Call.ByID(4124442514);
+}
+
+/**
+ * ResumeConversation points a terminal session at a persisted conversation
+ * and replays it into the agent's multi-turn memory, so follow-up questions
+ * keep context.
+ */
+export function ResumeConversation(sessionID: string, conversationID: string): $CancellablePromise<void> {
+    return $Call.ByID(4110104030, sessionID, conversationID);
 }
 
 /**

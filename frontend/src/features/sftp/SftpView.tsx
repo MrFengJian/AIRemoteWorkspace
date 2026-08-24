@@ -19,7 +19,6 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
   sftpApi,
@@ -28,16 +27,16 @@ import {
   type FileEntryDTO,
   type TransferProgress,
 } from "@/features/sftp/api";
-import { useHosts } from "@/features/hosts/hooks";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "@/lib/useConfirm";
 import { toast, errorMessage } from "@/lib/toast";
 
 interface SftpViewProps {
-  /** When set, the view operates on this host (embedded mode — skips host
-   * selection UI). When undefined, the standalone host-picker is shown. */
-  embeddedHostID?: string;
-  embeddedHostName?: string;
+  /** The host this browser operates on — bound to the terminal session's
+   *  host (the SFTP panel lives inside the terminal view; there is no
+   *  standalone mode anymore). Switching the prop resets the browser. */
+  embeddedHostID: string;
+  embeddedHostName: string;
 }
 
 /** One in-flight upload/download, shown as a progress bar in the status bar. */
@@ -49,21 +48,19 @@ interface TransferState extends TransferProgress {
 }
 
 /**
- * SFTP file browser. Lists a remote directory per host, with download/upload/
- * delete/rename/mkdir. Credentials are resolved by the backend from the OS
- * vault — no password entry here.
+ * SFTP file browser, embedded in the terminal view's right panel. Lists a
+ * remote directory of the session's host, with download/upload/delete/rename/
+ * mkdir. Credentials are resolved by the backend from the OS vault — no
+ * password entry here.
  *
- * All browse state lives in the component (not a global store): the standalone
- * Files view and the terminal's embedded panel each get an isolated browser,
- * so opening one never resets the other's directory. In embedded mode the
- * host comes from props and switching it resets the browser to "/".
+ * All browse state lives in the component (not a global store); switching the
+ * host prop (terminal tab switch) resets the browser to "/".
  */
-export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps = {}) {
+export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps) {
   const { t } = useTranslation();
-  const { data: hosts } = useHosts();
 
   // ── Browse state (component-local; see class comment) ──────────────
-  const [hostId, setHostId] = useState<string | null>(embeddedHostID ?? null);
+  const [hostId, setHostId] = useState<string>(embeddedHostID);
   const [cwd, setCwd] = useState("/");
   const [entries, setEntries] = useState<FileEntryDTO[]>([]);
   const [loading, setLoading] = useState(false);
@@ -77,9 +74,9 @@ export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps = {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { askConfirm, askPrompt } = useConfirm();
 
-  // Embedded mode: follow the host prop; switching hosts resets the browser.
+  // Follow the host prop; switching hosts resets the browser.
   useEffect(() => {
-    if (embeddedHostID && embeddedHostID !== hostId) {
+    if (embeddedHostID !== hostId) {
       setHostId(embeddedHostID);
       setCwd("/");
       setEntries([]);
@@ -256,60 +253,17 @@ export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps = {
   // filtered client-side so the toggle is instant — no refetch needed.
   const visibleEntries = showHidden ? entries : entries.filter((e) => !e.name.startsWith("."));
 
-  // No host selected yet (standalone mode only — embedded mode auto-sets it).
-  if (!hostId && !embeddedHostID) {
-    return (
-      <div className="mx-auto max-w-3xl p-6">
-        <h1 className="text-xl font-semibold tracking-tight">{t("sftp.title")}</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          {t("sftp.subtitle")}
-        </p>
-        <div className="mt-6 rounded-[var(--radius)] border border-dashed border-border p-8">
-          <p className="mb-3 text-sm text-muted-foreground">{t("sftp.selectHost")}</p>
-          <HostSelector hosts={hosts ?? []} onSelect={(id) => {
-            setHostId(id);
-            setCwd("/");
-            setEntries([]);
-            setError(null);
-          }} />
-          {(hosts ?? []).length === 0 && (
-            <p className="mt-3 text-xs text-muted-foreground">
-              {t("sftp.noHosts")}
-            </p>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex h-full flex-col">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-3 py-2">
-        {!embeddedHostID && (
-          <>
-            <HardDrive className="h-4 w-4 shrink-0 text-primary" />
-            <Select
-              className="h-8 w-44"
-              value={hostId ?? ""}
-              onChange={(e) => {
-                const h = (hosts ?? []).find((x) => x.id === e.target.value);
-                if (h) {
-                  setHostId(h.id);
-                  setCwd("/");
-                  setEntries([]);
-                  setError(null);
-                }
-              }}
-            >
-              {(hosts ?? []).map((h) => (
-                <option key={h.id} value={h.id}>
-                  {h.name}
-                </option>
-              ))}
-            </Select>
-          </>
-        )}
+        {/* The host this browser is bound to (the terminal session's host). */}
+        <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <HardDrive className="h-3.5 w-3.5 shrink-0 text-primary" />
+          <span className="max-w-[9rem] truncate" title={embeddedHostName}>
+            {embeddedHostName}
+          </span>
+        </div>
 
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goUp} title={t("sftp.up")}>
           <ArrowLeft className="h-4 w-4" />
@@ -547,7 +501,7 @@ export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps = {
       ) : (
         <div className="flex items-center justify-between border-t border-border bg-card px-3 py-1 text-xs text-muted-foreground">
           <span>
-            {(embeddedHostName ?? (hosts ?? []).find((h) => h.id === hostId)?.name ?? hostId)} · {visibleEntries.length} {t("sftp.items")}
+            {embeddedHostName} · {visibleEntries.length} {t("sftp.items")}
             {!showHidden && entries.length > visibleEntries.length && (
               <span className="ml-1">{t("sftp.hiddenCount", { count: entries.length - visibleEntries.length })}</span>
             )}
@@ -555,30 +509,6 @@ export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps = {
           {loading && <Badge variant="secondary">{t("sftp.refreshing")}</Badge>}
         </div>
       )}
-    </div>
-  );
-}
-
-function HostSelector({
-  hosts,
-  onSelect,
-}: {
-  hosts: { id: string; name: string }[];
-  onSelect: (id: string, name: string) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      {hosts.map((h) => (
-        <button
-          key={h.id}
-          type="button"
-          className="flex items-center gap-2 rounded-[var(--radius)] border border-border bg-card px-3 py-2 text-left text-sm hover:border-primary/40 hover:bg-accent/40"
-          onClick={() => onSelect(h.id, h.name)}
-        >
-          <HardDrive className="h-4 w-4 text-primary" />
-          {h.name}
-        </button>
-      ))}
     </div>
   );
 }

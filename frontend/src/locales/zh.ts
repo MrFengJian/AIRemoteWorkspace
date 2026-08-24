@@ -128,10 +128,6 @@ export const zh = {
 
   // ── 文件 ────────────────────────────────────────────────────
   sftp: {
-    title: "文件",
-    subtitle: "通过 SFTP 浏览和管理远程文件。",
-    selectHost: "选择一台主机浏览其文件：",
-    noHosts: "还没有主机——先在主机面板添加一台。",
     up: "上级",
     newFolder: "新建文件夹",
     upload: "上传",
@@ -202,6 +198,14 @@ export const zh = {
     clearTitle: "清空对话",
     clearConfirm: "清空此对话？智能体也会忘记本次对话的内容。",
     pendingApprovals: "还有 {{count}} 项待审批",
+    history: "会话历史",
+    historyCurrent: "当前主机",
+    historyAll: "全部主机",
+    historyEmpty: "暂无历史会话",
+    newChat: "新对话",
+    msgCount: "{{count}} 条",
+    deleteConvTitle: "删除会话",
+    deleteConvConfirm: "删除会话「{{title}}」？删除后不可恢复。",
   },
 
   // ── 设置 ────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Events } from "@wailsio/runtime";
 import { useTranslation } from "react-i18next";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bot,
   Send,
@@ -16,12 +17,14 @@ import {
   RotateCcw,
   Trash2,
   Scissors,
+  History as HistoryIcon,
+  MessageSquarePlus,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { agentApi } from "@/features/agent/api";
+import { agentApi, type ConversationDTO } from "@/features/agent/api";
 import { useAgentStore, type ChatMessage } from "@/features/agent/store";
 import { useTerminalStore } from "@/features/terminal/terminal.store";
 import { useModelProviders } from "@/features/settings/hooks";
@@ -31,10 +34,14 @@ import { HostService, TerminalService } from "@/../bindings/github.com/ai-remote
 import { useUIStore } from "@/stores/ui.store";
 import { decodeBase64, encodeBase64 } from "@/lib/base64";
 import { useConfirm } from "@/lib/useConfirm";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 /** Input-history cap (↑ recall of previously sent messages). */
-const MAX_INPUT_HISTORY = 50;
+const MAX_INPUT_HISTORY = 50
+
+/** Query key for the persisted conversation list. */
+const CONVERSATIONS_KEY = ["agent-conversations"] as const;
 
 /**
  * AI Agent view. Bound to the active terminal session — the agent operates on
@@ -61,7 +68,9 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
   const {
     histories,
     streaming,
+    activeConvBySession,
     addMessage,
+    setActiveConv,
     appendToLast,
     setStreaming,
     setToolResult,
@@ -70,10 +79,15 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
     dropTrailingNotice,
     clearHistory,
   } = useAgentStore();
+  const queryClient = useQueryClient();
 
   const [input, setInput] = useState("");
   const [inputHistory, setInputHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState<number | null>(null);
+  // Conversation-history panel: open state + host filter scope.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyAllHosts, setHistoryAllHosts] = useState(false);
+  const historyPanelRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   // Follow-scroll flag: only auto-scroll while the user is at the bottom.
@@ -168,6 +182,25 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
     setAgentModel(activeSessionId, agentProviderId, model);
     persistModel(agentProviderId, model);
   };
+
+  // Persisted conversation history (fetched when the panel opens).
+  const { data: conversations, isLoading: convsLoading } = useQuery({
+    queryKey: CONVERSATIONS_KEY,
+    queryFn: () => agentApi.listConversations(),
+    enabled: historyOpen,
+  });
+
+  // Close the history panel on outside clicks.
+  useEffect(() => {
+    if (!historyOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (historyPanelRef.current && !historyPanelRef.current.contains(e.target as Node)) {
+        setHistoryOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [historyOpen]);
 
   // ── Smart scroll: follow only while the user is at the bottom ─────────
   const onScroll = () => {
@@ -314,7 +347,8 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
     if (activeSessionId) agentApi.cancelChat(activeSessionId);
   };
 
-  /** Clear this session's conversation (local UI + backend memory). */
+  /** Clear this session's conversation (local UI + backend memory) and start
+   *  a fresh one — the previous chat stays in history, resumable. */
   const handleClear = async () => {
     if (!activeSessionId) return;
     const ok = await askConfirm({
@@ -325,7 +359,54 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
     });
     if (!ok) return;
     clearHistory(activeSessionId);
+    setActiveConv(activeSessionId, null);
     agentApi.clearHistory(activeSessionId).catch(() => {});
+    queryClient.invalidateQueries({ queryKey: CONVERSATIONS_KEY }).catch(() => {});
+    setHistoryOpen(false);
+  };
+
+  /** Resume a persisted conversation into this session (display + memory). */
+  const handleResume = async (conv: ConversationDTO) => {
+    if (!activeSessionId || streaming[activeSessionId]) return;
+    try {
+      const [msgs] = await Promise.all([
+        agentApi.getConversationMessages(conv.id),
+        agentApi.resumeConversation(activeSessionId, conv.id),
+      ]);
+      clearHistory(activeSessionId);
+      for (const m of msgs) {
+        addMessage(activeSessionId, {
+          role: m.role === "user" ? "user" : "assistant",
+          content: m.content,
+        });
+      }
+      setActiveConv(activeSessionId, conv.id);
+      atBottomRef.current = true;
+      setHistoryOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  /** Delete a persisted conversation (backend clears active context if needed). */
+  const handleDeleteConv = async (conv: ConversationDTO) => {
+    const ok = await askConfirm({
+      title: t("agent.deleteConvTitle"),
+      message: t("agent.deleteConvConfirm", { title: conv.title || conv.hostName }),
+      danger: true,
+      confirmLabel: t("common.delete"),
+    });
+    if (!ok) return;
+    try {
+      await agentApi.deleteConversation(conv.id);
+      if (activeSessionId && activeConvBySession[activeSessionId] === conv.id) {
+        clearHistory(activeSessionId);
+        setActiveConv(activeSessionId, null);
+      }
+      queryClient.invalidateQueries({ queryKey: CONVERSATIONS_KEY }).catch(() => {});
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
   };
 
   // handleInsert sends a code/command block to the active terminal's stdin.
@@ -372,17 +453,125 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
           )}
         </div>
-        {messages.length > 0 && (
+        <div className="relative flex shrink-0 items-center gap-0.5" ref={historyPanelRef}>
           <button
             type="button"
-            onClick={handleClear}
-            aria-label={t("agent.clearTitle")}
-            title={t("agent.clearTitle")}
-            className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => setHistoryOpen((v) => !v)}
+            aria-label={t("agent.history")}
+            title={t("agent.history")}
+            className={cn(
+              "rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              historyOpen && "bg-accent text-foreground",
+            )}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <HistoryIcon className="h-3.5 w-3.5" />
           </button>
-        )}
+          {messages.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClear}
+              aria-label={t("agent.newChat")}
+              title={t("agent.newChat")}
+              className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <MessageSquarePlus className="h-3.5 w-3.5" />
+            </button>
+          )}
+
+          {/* Conversation history panel */}
+          {historyOpen && (
+            <div className="absolute right-0 top-full z-30 mt-1.5 w-80 rounded-[var(--radius)] border border-border bg-popover shadow-lg">
+              <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                <span className="text-xs font-semibold text-foreground">{t("agent.history")}</span>
+                <div className="flex items-center gap-1 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setHistoryAllHosts(false)}
+                    className={cn(
+                      "rounded px-1.5 py-0.5 transition-colors",
+                      !historyAllHosts ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {t("agent.historyCurrent")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryAllHosts(true)}
+                    className={cn(
+                      "rounded px-1.5 py-0.5 transition-colors",
+                      historyAllHosts ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {t("agent.historyAll")}
+                  </button>
+                </div>
+              </div>
+              <div className="max-h-72 overflow-auto p-1.5">
+                {convsLoading ? (
+                  <div className="flex items-center justify-center py-6 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  </div>
+                ) : !conversations || conversations.length === 0 ? (
+                  <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+                    {t("agent.historyEmpty")}
+                  </p>
+                ) : (
+                  conversations
+                    .filter((c) => historyAllHosts || c.hostId === (session?.hostID ?? ""))
+                    .filter((c) => c.messageCount > 0)
+                    .map((c) => {
+                      const active = activeSessionId ? activeConvBySession[activeSessionId] === c.id : false;
+                      return (
+                        <div
+                          key={c.id}
+                          className={cn(
+                            "group flex cursor-pointer items-start gap-2 rounded-[calc(var(--radius)-2px)] px-2 py-1.5 transition-colors",
+                            active ? "bg-accent" : "hover:bg-accent/50",
+                          )}
+                          onClick={() => handleResume(c)}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-medium text-foreground">
+                              {c.title || c.hostName}
+                            </p>
+                            <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                              <span className="truncate">{c.hostName}</span>·
+                              <span className="shrink-0">{t("agent.msgCount", { count: c.messageCount })}</span>·
+                              <span className="shrink-0">
+                                {c.updatedAt ? new Date(c.updatedAt).toLocaleString() : ""}
+                              </span>
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteConv(c);
+                            }}
+                            aria-label={t("common.delete")}
+                            title={t("common.delete")}
+                            className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      );
+                    })
+                )}
+              </div>
+              <div className="border-t border-border p-1.5">
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className="flex w-full items-center gap-1.5 rounded-[calc(var(--radius)-2px)] px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+                >
+                  <MessageSquarePlus className="h-3.5 w-3.5" />
+                  {t("agent.newChat")}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Messages */}
