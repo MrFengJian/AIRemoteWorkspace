@@ -1,5 +1,10 @@
 /** English UI strings, grouped by feature. */
 export const en = {
+  // ── App (title bar) ─────────────────────────────────────────
+  app: {
+    title: "AI Remote Workspace",
+  },
+
   // ── Common ──────────────────────────────────────────────────
   common: {
     loading: "Loading…",
@@ -30,18 +35,12 @@ export const en = {
 
   // ── Hosts ───────────────────────────────────────────────────
   hosts: {
-    title: "Hosts",
-    subtitle: "Remote machines you can connect to.",
     addHost: "Add Host",
-    searchPlaceholder: "Search by name, IP, group, or tag…",
+    searchPlaceholder: "Search hosts…",
     noMatch: 'No hosts match "{{query}}".',
-    noHostsTitle: "No hosts yet",
-    noHostsDesc:
-      "Add a server to manage it — connect, open a terminal, and browse files.",
-    addFirst: "Add your first host",
+    sidebarEmpty: "No hosts yet — add one to connect.",
     ungrouped: "Ungrouped",
-    doubleClickHint: "double-click to open",
-    doubleClickTitle: "Double-click to open terminal",
+    newTab: "Open in new tab",
     openTerminal: "Open terminal",
     authType: {
       password: "Password",
@@ -103,9 +102,7 @@ export const en = {
   // ── Terminal ────────────────────────────────────────────────
   terminal: {
     title: "Terminal",
-    noTerminals: "No active terminals",
-    noTerminalsDesc: "Open a host in the Hosts panel to start an SSH terminal session.",
-    goToHosts: "Go to Hosts",
+    emptyHint: "Pick a host on the left, or start a local terminal.",
     sessionClosed: "Session closed — dismiss",
     sessionExited: "[session exited]",
     openSessionFailed: "Failed to open session",
@@ -115,7 +112,6 @@ export const en = {
     sftpNeedsHost: "File panel needs an SSH host",
     localTab: "Local",
     newLocalTab: "New local terminal",
-    openLocal: "Open local terminal",
     toggleAgent: "Toggle agent panel",
     copyAddr: "Copy host address",
     reconnect: "Reconnect",

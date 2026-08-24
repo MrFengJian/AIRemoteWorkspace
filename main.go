@@ -4,6 +4,7 @@ import (
 	"embed"
 	"log"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/adrg/xdg"
@@ -130,6 +131,10 @@ func main() {
 		Height:    800,
 		MinWidth:  900,
 		MinHeight: 600,
+		// Frameless on Windows/Linux: the frontend TitleBar draws the drag
+		// region and window controls (unified cross-platform look). macOS
+		// keeps the native hidden-inset title bar with system traffic lights.
+		Frameless: runtime.GOOS != "darwin",
 		Mac: wailsapp.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                wailsapp.MacBackdropTranslucent,

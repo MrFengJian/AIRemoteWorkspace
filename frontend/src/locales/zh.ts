@@ -1,5 +1,10 @@
 /** 简体中文 UI 文案，按功能模块分组。 */
 export const zh = {
+  // ── 应用（标题栏）─────────────────────────────────────────────
+  app: {
+    title: "AI 远程工作台",
+  },
+
   // ── 通用 ────────────────────────────────────────────────────
   common: {
     loading: "加载中…",
@@ -30,17 +35,12 @@ export const zh = {
 
   // ── 主机 ────────────────────────────────────────────────────
   hosts: {
-    title: "主机",
-    subtitle: "可连接的远程机器。",
     addHost: "添加主机",
-    searchPlaceholder: "按名称、IP、分组或标签搜索…",
+    searchPlaceholder: "搜索主机…",
     noMatch: '没有匹配 "{{query}}" 的主机。',
-    noHostsTitle: "还没有主机",
-    noHostsDesc: "添加一台服务器来管理它——连接、打开终端、浏览文件。",
-    addFirst: "添加第一台主机",
+    sidebarEmpty: "还没有主机——添加一台开始连接。",
     ungrouped: "未分组",
-    doubleClickHint: "双击打开",
-    doubleClickTitle: "双击打开终端",
+    newTab: "在新标签打开",
     openTerminal: "打开终端",
     authType: {
       password: "密码",
@@ -102,9 +102,7 @@ export const zh = {
   // ── 终端 ────────────────────────────────────────────────────
   terminal: {
     title: "终端",
-    noTerminals: "没有活跃的终端",
-    noTerminalsDesc: "在主机面板打开一台主机以启动 SSH 终端会话。",
-    goToHosts: "前往主机",
+    emptyHint: "从左侧选择主机，或打开一个本地终端。",
     sessionClosed: "会话已关闭 — 关闭",
     sessionExited: "[会话已退出]",
     openSessionFailed: "打开会话失败",
@@ -114,7 +112,6 @@ export const zh = {
     sftpNeedsHost: "文件面板需要 SSH 主机",
     localTab: "本地",
     newLocalTab: "新建本地终端",
-    openLocal: "打开本地终端",
     toggleAgent: "切换助手面板",
     copyAddr: "复制主机地址",
     reconnect: "重新连接",

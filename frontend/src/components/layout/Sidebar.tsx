@@ -1,5 +1,4 @@
 import {
-  Server,
   TerminalSquare,
   Settings,
   type LucideIcon,
@@ -15,10 +14,9 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-// Agent and SFTP are intentionally NOT in the nav — they are embedded panels
-// inside the terminal view (toolbar buttons), not standalone views.
+// Hosts, SFTP and the agent are intentionally NOT in the nav — they live
+// inside the terminal workspace (hosts sidebar / right panel).
 const NAV_ITEMS: NavItem[] = [
-  { view: "hosts", labelKey: "nav.hosts", icon: Server },
   { view: "terminal", labelKey: "nav.terminal", icon: TerminalSquare },
   { view: "settings", labelKey: "nav.settings", icon: Settings },
 ];

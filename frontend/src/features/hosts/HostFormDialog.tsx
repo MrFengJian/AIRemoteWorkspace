@@ -33,7 +33,6 @@ import {
   useOpenTerminal,
 } from "@/features/hosts/hooks";
 import { useHostsUIStore } from "@/features/hosts/store";
-import { useUIStore } from "@/stores/ui.store";
 import { TERMINAL_THEMES, getTerminalTheme } from "@/features/terminal/themes";
 import { TERMINAL_FONTS, terminalFontFamily } from "@/features/terminal/fonts";
 import { osInfo } from "@/features/hosts/osIcons";
@@ -75,7 +74,6 @@ export function HostFormDialog() {
   const editing = useHostsUIStore((s) => s.editing);
   const closeEditor = useHostsUIStore((s) => s.closeEditor);
   const openEditor = useHostsUIStore((s) => s.openEditor);
-  const setView = useUIStore((s) => s.setView);
   const { askConfirm } = useConfirm();
 
   const createHost = useCreateHost();
@@ -282,7 +280,6 @@ export function HostFormDialog() {
       });
       if (remember) await persistRemembered(existing.id);
       closeEditor();
-      setView("terminal");
     } catch {
       /* keep the dialog open; the failure is toasted globally */
     }

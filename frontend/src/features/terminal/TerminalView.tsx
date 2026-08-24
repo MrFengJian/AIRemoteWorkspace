@@ -18,7 +18,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { useTerminalStore, isLocalSession } from "@/features/terminal/terminal.store";
-import { useUIStore } from "@/stores/ui.store";
+
 import { TerminalPanel } from "@/features/terminal/TerminalPanel";
 import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabMenu";
 import { AgentView } from "@/features/agent/AgentView";
@@ -27,6 +27,7 @@ import { agentApi } from "@/features/agent/api";
 import { SftpView } from "@/features/sftp/SftpView";
 import { useOpenTerminal, useOpenLocalTerminal, useHosts } from "@/features/hosts/hooks";
 import { useHostsUIStore } from "@/features/hosts/store";
+import { HostsSidebar } from "@/features/hosts/HostsSidebar";
 import { osInfo } from "@/features/hosts/osIcons";
 import { TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { cn } from "@/lib/utils";
@@ -50,7 +51,6 @@ export function TerminalView() {
   const clearSessions = useTerminalStore((s) => s.clearSessions);
   const addPane = useTerminalStore((s) => s.addPane);
   const removePane = useTerminalStore((s) => s.removePane);
-  const setView = useUIStore((s) => s.setView);
   const openEditor = useHostsUIStore((s) => s.openEditor);
   const openTerminal = useOpenTerminal();
   const openLocal = useOpenLocalTerminal();
@@ -339,37 +339,21 @@ export function TerminalView() {
 
   if (sessions.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-        <TerminalSquare className="h-10 w-10 text-muted-foreground" />
-        <div>
-          <h2 className="text-lg font-medium text-foreground">{t("terminal.noTerminals")}</h2>
-          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            {t("terminal.noTerminalsDesc")}
-          </p>
-        </div>
-        <div className="mt-2 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setView("hosts")}
-            className="inline-flex items-center gap-1.5 rounded-[var(--radius)] bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            <Plus className="h-4 w-4" /> {t("terminal.goToHosts")}
-          </button>
-          <button
-            type="button"
-            disabled={openLocal.isPending}
-            onClick={() => openLocal.mutate(t("terminal.localTab"))}
-            className="inline-flex items-center gap-1.5 rounded-[var(--radius)] border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
-          >
-            <Monitor className="h-4 w-4" /> {t("terminal.openLocal")}
-          </button>
+      <div className="flex h-full">
+        <HostsSidebar />
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
+          <TerminalSquare className="h-8 w-8 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">{t("terminal.emptyHint")}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full">
+      {/* Hosts sidebar: the session manager (Xshell-style workspace). */}
+      <HostsSidebar />
+      <div className="flex min-w-0 flex-1 flex-col">
       {/* Tab bar */}
       <div
         role="tablist"
@@ -694,6 +678,7 @@ export function TerminalView() {
           items={buildMenuItems(sessions.find((s) => s.id === menu.sessId)!)}
         />
       )}
+      </div>
     </div>
   );
 }

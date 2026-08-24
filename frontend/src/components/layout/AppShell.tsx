@@ -4,28 +4,31 @@ import { useTranslation } from "react-i18next";
 import { useUIStore } from "@/stores/ui.store";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { StatusBar } from "@/components/layout/StatusBar";
+import { TitleBar } from "@/components/layout/TitleBar";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Toaster } from "@/components/ui/Toaster";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ApprovalHost } from "@/features/agent/ApprovalHost";
-import { HostsView } from "@/features/hosts/HostsView";
+import { HostFormDialog } from "@/features/hosts/HostFormDialog";
 import { TerminalView } from "@/features/terminal/TerminalView";
 import { SettingsView } from "@/features/settings/SettingsView";
 
 /**
- * Application chrome. All views stay mounted and are toggled via CSS
- * (hidden/visible) instead of conditional rendering. This matters most for
- * the terminal: unmounting TerminalView disposes the xterm instance and loses
- * scrollback, so switching away and back would show a blank terminal. Keeping
- * it mounted preserves the session view instantly.
+ * Application chrome. The terminal workspace is the app: a frameless-mode
+ * title bar on top, the icon rail + the active feature view in the middle,
+ * and the status bar at the bottom. All views stay mounted and are toggled
+ * via CSS (hidden/visible) instead of conditional rendering — unmounting
+ * TerminalView would dispose the xterm instances and lose scrollback.
  *
- *   ┌───┬──────────────────────────────────┐
- *   │ S │                                   │
- *   │ i │   Active feature view             │
- *   │ d │                                   │
- *   ├───┴──────────────────────────────────┤
- *   │ StatusBar                             │
- *   └──────────────────────────────────────┘
+ *   ┌──────────────────────────────┐
+ *   │ TitleBar (drag + win ctrl)   │
+ *   ├───┬──────────────────────────┤
+ *   │ S │ Active feature view      │
+ *   │ i │ (terminal hosts sidebar  │
+ *   │ d │  + tabs live inside it)  │
+ *   ├───┴──────────────────────────┤
+ *   │ StatusBar                    │
+ *   └──────────────────────────────┘
  */
 export function AppShell() {
   const activeView = useUIStore((s) => s.activeView);
@@ -33,14 +36,10 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+      <TitleBar title={t("app.title")} />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main className="relative min-w-0 flex-1 overflow-auto">
-          <View active={activeView === "hosts"}>
-            <ErrorBoundary label={t("nav.hosts")} resetLabel={t("common.retry")}>
-              <HostsView />
-            </ErrorBoundary>
-          </View>
           <View active={activeView === "terminal"}>
             <ErrorBoundary label={t("nav.terminal")} resetLabel={t("common.retry")}>
               <TerminalView />
@@ -54,6 +53,9 @@ export function AppShell() {
         </main>
       </div>
       <StatusBar />
+      {/* Host add/edit dialog — store-driven, reachable from the hosts
+          sidebar's context menu and action buttons. */}
+      <HostFormDialog />
       {/* Single confirmation/prompt dialog host (replaces window.confirm/prompt). */}
       <ConfirmDialog />
       {/* Single toast notification host (driven by lib/toast.ts). */}

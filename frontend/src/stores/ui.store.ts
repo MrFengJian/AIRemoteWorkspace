@@ -1,14 +1,11 @@
 import { create } from "zustand";
 
 /**
- * Top-level navigation views. Each maps to a feature area
- * (AGENT.md §6 Feature-Based Architecture).
- *
- * `hosts` is the landing view shown at startup. The agent and the SFTP file
- * browser are deliberately absent: both are session-scoped and live as
- * embedded panels inside the terminal view, not as standalone pages.
+ * Top-level navigation views. The terminal workspace IS the app — the hosts
+ * sidebar, session tabs, SFTP and the agent all live inside it. Settings is
+ * the only separate page.
  */
-export type AppView = "hosts" | "terminal" | "settings";
+export type AppView = "terminal" | "settings";
 
 /** Settings sidebar categories. Global so other views can deep-link into one. */
 export type SettingsCategory =
@@ -32,7 +29,7 @@ interface UIState {
  * Feature-local state lives in `features/<name>/store.ts`.
  */
 export const useUIStore = create<UIState>((set) => ({
-  activeView: "hosts",
+  activeView: "terminal",
   setView: (view) => set({ activeView: view }),
   settingsCategory: "appearance",
   setSettingsCategory: (category) => set({ settingsCategory: category }),
