@@ -12,6 +12,7 @@ export type SettingsCategory =
   | "appearance"
   | "language"
   | "models"
+  | "shortcuts"
   | "advanced"
   | "about";
 

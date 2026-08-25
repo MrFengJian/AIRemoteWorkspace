@@ -12,6 +12,10 @@ import { ApprovalHost } from "@/features/agent/ApprovalHost";
 import { HostFormDialog } from "@/features/hosts/HostFormDialog";
 import { TerminalView } from "@/features/terminal/TerminalView";
 import { SettingsView } from "@/features/settings/SettingsView";
+import {
+  useShortcutDispatcher,
+  useShortcutHandlers,
+} from "@/keybindings/useShortcutDispatcher";
 
 /**
  * Application chrome. The terminal workspace is the app: a frameless-mode
@@ -33,6 +37,14 @@ import { SettingsView } from "@/features/settings/SettingsView";
 export function AppShell() {
   const activeView = useUIStore((s) => s.activeView);
   const { t } = useTranslation();
+
+  // Global keyboard shortcuts: the dispatcher (capture-phase window listener)
+  // plus the app-level commands. Feature-level commands (terminal, tabs, …)
+  // register themselves in their views.
+  useShortcutDispatcher();
+  useShortcutHandlers({
+    "app.settings": () => useUIStore.getState().setView("settings"),
+  });
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">

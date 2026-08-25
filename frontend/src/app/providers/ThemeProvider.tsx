@@ -11,7 +11,7 @@ interface ThemeProviderProps {
  * document on app startup. It reads AppConfig once and sets:
  *
  *   - <html data-theme="light|dark|auto"> for CSS variable switching
- *   --app-font / --cjk-font / --app-font-size CSS variables on :root
+ *   - --app-font-stack / --app-font-size CSS variables on :root
  *
  * SettingsView updates these live when the user changes a setting.
  */
@@ -40,7 +40,15 @@ export function applyTheme(mode: string) {
 /** Apply font family + size via CSS custom properties. */
 export function applyFonts(uiFont: string, cjkFont: string, fontSize: number) {
   const root = document.documentElement.style;
-  root.setProperty("--app-font", uiFont || "var(--font-sans)");
-  root.setProperty("--cjk-font", cjkFont || "");
+  // Compose the FULL family stack here. The old scheme injected an empty
+  // string into the CSS font-family list when a font was unset — an empty
+  // quoted name is invalid and silently voided the entire declaration, so
+  // the setting never applied. Empty value = property removed = the
+  // stylesheet default (--font-sans) takes over again.
+  const families = [uiFont, cjkFont]
+    .map((f) => f.trim())
+    .filter((f) => f.length > 0)
+    .map((f) => `"${f.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`);
+  root.setProperty("--app-font-stack", families.join(", "));
   root.setProperty("--app-font-size", `${fontSize}px`);
 }

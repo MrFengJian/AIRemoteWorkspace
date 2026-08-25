@@ -36,6 +36,11 @@ export function isLocalSession(s: TerminalSession): boolean {
 interface TerminalState {
   sessions: TerminalSession[];
   activeId: string | null;
+  /** Backend session id of the pane that last had keyboard focus (drives
+   *  shortcut routing: copy/paste/zoom act on the focused pane of the
+   *  active tab, falling back to its first pane). */
+  activePaneId: string | null;
+  setActivePane: (paneId: string) => void;
 
   addSession: (id: string, hostID: string, hostName: string, terminalTheme: string, terminalFont: string, terminalFontSize: number) => void;
   /** Register a LOCAL terminal session (no host; built-in appearance). */
@@ -56,6 +61,9 @@ interface TerminalState {
 export const useTerminalStore = create<TerminalState>((set) => ({
   sessions: [],
   activeId: null,
+  activePaneId: null,
+
+  setActivePane: (paneId) => set({ activePaneId: paneId }),
 
   addSession: (id, hostID, hostName, terminalTheme, terminalFont, terminalFontSize) =>
     set((s) => ({
@@ -87,7 +95,7 @@ export const useTerminalStore = create<TerminalState>((set) => ({
       const sessions = s.sessions.filter((sess) => sess.id !== id);
       const activeId =
         s.activeId === id ? (sessions[0]?.id ?? null) : s.activeId;
-      return { sessions, activeId };
+      return { sessions, activeId, activePaneId: s.activePaneId === id ? null : s.activePaneId };
     }),
 
   removeSessions: (ids) =>
@@ -97,10 +105,10 @@ export const useTerminalStore = create<TerminalState>((set) => ({
       const activeId = idSet.has(s.activeId ?? "")
         ? (sessions[0]?.id ?? null)
         : s.activeId;
-      return { sessions, activeId };
+      return { sessions, activeId, activePaneId: s.activePaneId && idSet.has(s.activePaneId) ? null : s.activePaneId };
     }),
 
-  clearSessions: () => set({ sessions: [], activeId: null }),
+  clearSessions: () => set({ sessions: [], activeId: null, activePaneId: null }),
 
   setActive: (id) => set({ activeId: id }),
 

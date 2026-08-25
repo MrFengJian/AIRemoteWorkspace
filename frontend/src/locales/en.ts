@@ -217,6 +217,7 @@ export const en = {
     language: "Language",
     interfaceLanguage: "Interface language",
     languageDesc: "Interface texts switch immediately; the choice is remembered.",
+    shortcuts: "Shortcuts",
     advanced: "Advanced",
     about: "About",
     themeMode: "Colour scheme",
@@ -282,6 +283,69 @@ export const en = {
       deleteConfirm:
         'Delete provider "{{name}}"? Its stored API key will be removed too.',
       formIncomplete: "Name and base URL are required.",
+    },
+  },
+
+  // ── Keyboard shortcuts (Settings → Shortcuts, Xshell-style) ─
+  shortcuts: {
+    title: "Keyboard Shortcuts",
+    desc:
+      "Click a binding, then press the new combination. While recording, Backspace clears the binding and Esc cancels. Bindings need a Ctrl/Alt/⌘ modifier, or a function/navigation key.",
+    resetAll: "Reset All to Defaults",
+    reset: "Reset to default",
+    unbound: "None",
+    recording: "Press keys…",
+    conflictWith: "Conflicts with \u201C{{command}}\u201D",
+    invalid: "This key needs a Ctrl / Alt / ⌘ modifier (or use F1–F24, Insert, …)",
+    cat: {
+      terminal: "Terminal",
+      tab: "Tabs",
+      pane: "Split Panes",
+      view: "View",
+      app: "Application",
+    },
+    cmd: {
+      terminal: {
+        copy: "Copy",
+        paste: "Paste",
+        selectAll: "Select All",
+        find: "Find",
+        clear: "Clear",
+        reconnect: "Reconnect (current pane)",
+        zoomIn: "Zoom In",
+        zoomOut: "Zoom Out",
+        zoomReset: "Reset Zoom",
+      },
+      tab: {
+        newLocal: "New Local Terminal",
+        next: "Next Tab",
+        prev: "Previous Tab",
+        close: "Close Tab",
+        duplicate: "Duplicate Tab",
+        goto1: "Go to Tab 1",
+        goto2: "Go to Tab 2",
+        goto3: "Go to Tab 3",
+        goto4: "Go to Tab 4",
+        goto5: "Go to Tab 5",
+        goto6: "Go to Tab 6",
+        goto7: "Go to Tab 7",
+        goto8: "Go to Tab 8",
+        goto9: "Go to Tab 9 (last if fewer)",
+      },
+      pane: {
+        splitH: "Split Horizontal",
+        splitV: "Split Vertical",
+        close: "Close Pane",
+        focusOther: "Focus Other Pane",
+      },
+      view: {
+        toggleSftp: "Toggle Files Panel",
+        toggleAgent: "Toggle Agent Panel",
+        toggleSidebar: "Toggle Hosts Sidebar",
+      },
+      app: {
+        settings: "Open Settings",
+      },
     },
   },
 

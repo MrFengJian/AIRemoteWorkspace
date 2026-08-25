@@ -11,6 +11,8 @@ export interface MenuItem {
   disabled?: boolean;
   /** Show a check mark on the right when this item is the active choice. */
   checked?: boolean;
+  /** Right-aligned keybinding hint (e.g. "Ctrl+Shift+C"), Xshell-style. */
+  shortcut?: string;
   /** Separator between menu groups. */
   type?: "separator";
   onClick?: () => void;
@@ -94,6 +96,11 @@ export function TerminalTabMenu({ x, y, items, onClose }: TerminalTabMenuProps) 
         >
           {Icon && <Icon className="h-3.5 w-3.5 shrink-0" />}
           <span className="flex-1 truncate">{item.label}</span>
+          {item.shortcut && (
+            <span className="ml-3 shrink-0 font-mono text-[10px] leading-none tracking-wide text-muted-foreground">
+              {item.shortcut}
+            </span>
+          )}
           {item.checked && <Check className="h-3.5 w-3.5 shrink-0 text-foreground" />}
           {item.children?.length ? <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-60" /> : null}
         </button>

@@ -7,8 +7,9 @@
  * A light palette is defined under [data-theme="light"]. The "auto" mode
  * uses prefers-color-scheme to pick between them at runtime.
  *
- * Font settings (--app-font / --cjk-font / --app-font-size) are set
- * dynamically from AppConfig via ThemeProvider.
+ * Font settings (--app-font-stack / --app-font-size) are set
+ * dynamically from AppConfig via ThemeProvider; the root font-size scales
+ * with --app-font-size so rem-based utilities follow the setting.
  */
 
 @theme {
@@ -117,9 +118,18 @@
 
 /* ---- Font CSS variables (set dynamically by ThemeProvider) ---- */
 :root {
-  --app-font: var(--font-sans);
+  --app-font-stack: var(--font-sans);
   --app-font-size: 13px;
-  --cjk-font: "";
+}
+
+/* Scale the ROOT font-size with the interface font size: nearly all UI text
+   uses rem-based Tailwind utilities (text-sm, text-xs, …) which resolve
+   against html, not body — setting body alone (as before) changed almost
+   nothing visible. The ×16/13 factor keeps the 13px default pixel-identical
+   to the original design (root at the 16px browser default, body text 13px);
+   other values scale the whole interface proportionally, spacing included. */
+html {
+  font-size: calc(var(--app-font-size) * 16 / 13);
 }
 
 /* ---- OS distro icons ----
@@ -154,7 +164,7 @@
     margin: 0;
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-family: var(--app-font), var(--cjk-font), var(--font-sans);
+    font-family: var(--app-font-stack);
     font-size: var(--app-font-size);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;

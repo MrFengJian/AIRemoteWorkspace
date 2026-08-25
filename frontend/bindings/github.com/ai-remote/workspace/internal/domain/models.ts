@@ -34,6 +34,13 @@ export interface AppConfig {
      * AI agent provider config (API key in SecretStore)
      */
     "llm": LLMConfig;
+
+    /**
+     * Keyboard shortcut overrides (Xshell-style). Key = command id
+     * ("terminal.copy"), value = binding string ("Ctrl+Shift+C"). Only entries
+     * the user changed from the default are stored; nil/empty = all defaults.
+     */
+    "shortcuts"?: { [_ in string]?: string } | null;
 }
 
 /**

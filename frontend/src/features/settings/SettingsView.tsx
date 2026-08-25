@@ -7,6 +7,7 @@ import {
   Info,
   Bot,
   Check,
+  Keyboard,
   Sun,
   Moon,
   Monitor,
@@ -30,6 +31,7 @@ import {
 import { applyTheme, applyFonts } from "@/app/providers/ThemeProvider";
 import { useUIStore, type SettingsCategory } from "@/stores/ui.store";
 import { ModelSettingsSection } from "@/features/settings/ModelSettingsSection";
+import { ShortcutSettingsSection } from "@/features/settings/ShortcutSettingsSection";
 import { cn } from "@/lib/utils";
 import { toast, errorMessage } from "@/lib/toast";
 
@@ -88,8 +90,9 @@ export function SettingsView() {
     };
   }, []);
 
-  /** Persist config changes to backend + apply live effects. */
-  const updateConfig = async (patch: Partial<AppConfig>) => {
+  /** Persist config changes to backend + apply live effects. Returns whether
+   *  the save succeeded (callers with extra runtime state can roll back). */
+  const updateConfig = async (patch: Partial<AppConfig>): Promise<boolean> => {
     const next = { ...config, ...patch };
     setConfig(next);
     // Apply live effects immediately.
@@ -101,6 +104,7 @@ export function SettingsView() {
     setSaving(true);
     try {
       await ConfigService.SetAppConfig(next);
+      return true;
     } catch (e) {
       // Revert and tell the user — otherwise the change looks saved but isn't.
       setConfig(config);
@@ -109,6 +113,7 @@ export function SettingsView() {
         applyFonts(config.uiFont, config.cjkFont, config.fontSize);
       }
       toast.error(`${t("settings.saveFailed")}: ${errorMessage(e)}`);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -118,6 +123,7 @@ export function SettingsView() {
     { id: "appearance", label: t("settings.appearance"), icon: Palette },
     { id: "language", label: t("settings.language"), icon: Languages },
     { id: "models", label: t("settings.models.title"), icon: Bot },
+    { id: "shortcuts", label: t("settings.shortcuts"), icon: Keyboard },
     { id: "advanced", label: t("settings.advanced"), icon: Settings2 },
     { id: "about", label: t("settings.about"), icon: Info },
   ];
@@ -153,6 +159,7 @@ export function SettingsView() {
           {category === "appearance" && <AppearanceSection config={config} update={updateConfig} saving={saving} />}
           {category === "language" && <LanguageSection i18n={i18n} />}
           {category === "models" && <ModelSettingsSection />}
+          {category === "shortcuts" && <ShortcutSettingsSection config={config} update={updateConfig} />}
           {category === "advanced" && <AdvancedSection config={config} />}
           {category === "about" && <AboutSection />}
         </div>

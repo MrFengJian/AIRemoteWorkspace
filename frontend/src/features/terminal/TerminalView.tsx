@@ -19,6 +19,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { useTerminalStore, isLocalSession } from "@/features/terminal/terminal.store";
+import { useUIStore } from "@/stores/ui.store";
 
 import { TerminalPanel } from "@/features/terminal/TerminalPanel";
 import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabMenu";
@@ -31,6 +32,9 @@ import { useHostsUIStore } from "@/features/hosts/store";
 import { HostsSidebar } from "@/features/hosts/HostsSidebar";
 import { osInfo } from "@/features/hosts/osIcons";
 import { TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
+import { useKeybindingStore } from "@/keybindings/store";
+import { getPaneActions } from "@/keybindings/registry";
+import { useShortcutHandlers } from "@/keybindings/useShortcutDispatcher";
 import { cn } from "@/lib/utils";
 import { toast, errorMessage } from "@/lib/toast";
 
@@ -54,12 +58,14 @@ export function TerminalView() {
   const { t } = useTranslation();
   const sessions = useTerminalStore((s) => s.sessions);
   const activeId = useTerminalStore((s) => s.activeId);
+  const activePaneId = useTerminalStore((s) => s.activePaneId);
   const setActive = useTerminalStore((s) => s.setActive);
   const removeSession = useTerminalStore((s) => s.removeSession);
   const removeSessions = useTerminalStore((s) => s.removeSessions);
   const clearSessions = useTerminalStore((s) => s.clearSessions);
   const addPane = useTerminalStore((s) => s.addPane);
   const removePane = useTerminalStore((s) => s.removePane);
+  const bindings = useKeybindingStore((s) => s.resolved);
   const openEditor = useHostsUIStore((s) => s.openEditor);
   const openTerminal = useOpenTerminal();
   const openLocal = useOpenLocalTerminal();
@@ -343,6 +349,7 @@ export function TerminalView() {
       {
         label: t("terminal.duplicate"),
         icon: Copy,
+        shortcut: bindings["tab.duplicate"] ?? undefined,
         onClick: () => duplicateSession(sess),
       },
       {
@@ -356,6 +363,7 @@ export function TerminalView() {
         label: t("terminal.close"),
         icon: XCircle,
         danger: true,
+        shortcut: bindings["tab.close"] ?? undefined,
         onClick: () => closeAllPanes(sess.id),
       },
       {
@@ -386,6 +394,119 @@ export function TerminalView() {
       },
     ];
   };
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────
+  // Terminal/tab/pane/view commands live here (app.* commands register in
+  // AppShell). They only respond while the terminal workspace is the
+  // active view; handlers re-register every render so closures stay fresh.
+
+  /** No-op unless the terminal workspace is on screen. */
+  const inTerminal = (fn: () => void) => () => {
+    if (useUIStore.getState().activeView !== "terminal") return;
+    fn();
+  };
+
+  /** Run fn with the focused pane of the active tab (fallback: first pane). */
+  const withActivePane = (fn: (paneId: string) => void) =>
+    inTerminal(() => {
+      if (!activeSession) return;
+      const paneId =
+        activePaneId && activeSession.paneIds.includes(activePaneId)
+          ? activePaneId
+          : activeSession.paneIds[0];
+      if (paneId) fn(paneId);
+    });
+
+  const gotoTab = (index: number, lastFallback = false) => {
+    const target =
+      sessions[index] ?? (lastFallback ? sessions[sessions.length - 1] : undefined);
+    if (target) setActive(target.id);
+  };
+
+  useShortcutHandlers({
+    "terminal.copy": withActivePane((paneId) => getPaneActions(paneId)?.copy()),
+    "terminal.paste": withActivePane((paneId) => getPaneActions(paneId)?.paste()),
+    "terminal.selectAll": withActivePane((paneId) => getPaneActions(paneId)?.selectAll()),
+    "terminal.find": withActivePane((paneId) => getPaneActions(paneId)?.find()),
+    "terminal.clear": withActivePane((paneId) => getPaneActions(paneId)?.clear()),
+    "terminal.zoomIn": withActivePane((paneId) => getPaneActions(paneId)?.zoomIn()),
+    "terminal.zoomOut": withActivePane((paneId) => getPaneActions(paneId)?.zoomOut()),
+    "terminal.zoomReset": withActivePane((paneId) => getPaneActions(paneId)?.zoomReset()),
+    "terminal.reconnect": withActivePane((paneId) => {
+      if (activeSession) reconnectPane(activeSession.id, paneId);
+    }),
+
+    "tab.newLocal": inTerminal(() => void handleOpenLocal()),
+    "tab.next": inTerminal(() => {
+      const idx = sessions.findIndex((s) => s.id === activeId);
+      if (idx >= 0 && sessions.length > 0) {
+        setActive(sessions[(idx + 1) % sessions.length].id);
+      }
+    }),
+    "tab.prev": inTerminal(() => {
+      const idx = sessions.findIndex((s) => s.id === activeId);
+      if (idx >= 0 && sessions.length > 0) {
+        setActive(sessions[(idx - 1 + sessions.length) % sessions.length].id);
+      }
+    }),
+    "tab.close": inTerminal(() => {
+      if (activeSession) closeAllPanes(activeSession.id);
+    }),
+    "tab.duplicate": inTerminal(() => {
+      if (activeSession) duplicateSession(activeSession);
+    }),
+    "tab.goto1": inTerminal(() => gotoTab(0)),
+    "tab.goto2": inTerminal(() => gotoTab(1)),
+    "tab.goto3": inTerminal(() => gotoTab(2)),
+    "tab.goto4": inTerminal(() => gotoTab(3)),
+    "tab.goto5": inTerminal(() => gotoTab(4)),
+    "tab.goto6": inTerminal(() => gotoTab(5)),
+    "tab.goto7": inTerminal(() => gotoTab(6)),
+    "tab.goto8": inTerminal(() => gotoTab(7)),
+    // Browser convention: Ctrl+9 jumps to the LAST tab when fewer exist.
+    "tab.goto9": inTerminal(() => gotoTab(8, true)),
+
+    "pane.splitH": inTerminal(() => {
+      if (activeSession && activeSession.paneIds.length === 1) {
+        void handleSplit(activeSession.id, "horizontal");
+      }
+    }),
+    "pane.splitV": inTerminal(() => {
+      if (activeSession && activeSession.paneIds.length === 1) {
+        void handleSplit(activeSession.id, "vertical");
+      }
+    }),
+    "pane.close": withActivePane((paneId) => {
+      if (activeSession) closeSession(activeSession.id, paneId);
+    }),
+    "pane.focusOther": inTerminal(() => {
+      if (!activeSession || activeSession.paneIds.length < 2) return;
+      const current =
+        activePaneId && activeSession.paneIds.includes(activePaneId)
+          ? activePaneId
+          : activeSession.paneIds[0];
+      const other = activeSession.paneIds.find((p) => p !== current);
+      if (other) getPaneActions(other)?.focus();
+    }),
+
+    "view.toggleSftp": inTerminal(() => {
+      if (!activeSession || isLocalSession(activeSession)) return;
+      if (rightOpen && rightTab === "sftp") setRightOpen(false);
+      else {
+        setRightTab("sftp");
+        setRightOpen(true);
+      }
+    }),
+    "view.toggleAgent": inTerminal(() => {
+      if (!activeSession) return;
+      if (rightOpen && rightTab === "agent") setRightOpen(false);
+      else {
+        setRightTab("agent");
+        setRightOpen(true);
+      }
+    }),
+    "view.toggleSidebar": inTerminal(() => toggleSidebar()),
+  });
 
   if (sessions.length === 0) {
     return (

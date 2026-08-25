@@ -11,6 +11,10 @@ type AppConfig struct {
 	FontSize     int          `json:"fontSize"` // interface font size in px
 	CJKFont      string       `json:"cjkFont"`  // CJK (Chinese) font family name
 	LLM          LLMConfig    `json:"llm"`      // AI agent provider config (API key in SecretStore)
+	// Keyboard shortcut overrides (Xshell-style). Key = command id
+	// ("terminal.copy"), value = binding string ("Ctrl+Shift+C"). Only entries
+	// the user changed from the default are stored; nil/empty = all defaults.
+	Shortcuts map[string]string `json:"shortcuts,omitempty"`
 }
 
 // LLMConfig holds the non-sensitive LLM provider settings. The API Key is

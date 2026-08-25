@@ -34,6 +34,8 @@ import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabM
 import { TerminalThemeDialog } from "@/features/terminal/TerminalThemeDialog";
 import { useHosts } from "@/features/hosts/hooks";
 import { getTerminalTheme } from "@/features/terminal/themes";
+import { useKeybindingStore } from "@/keybindings/store";
+import { registerPaneActions } from "@/keybindings/registry";
 import { base64ToBytes, encodeBase64, bytesToBase64 } from "@/lib/base64";
 import { toast } from "@/lib/toast";
 
@@ -65,11 +67,14 @@ export function TerminalPanel({
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
+  const fitRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const setSessionStatus = useTerminalStore((s) => s.setSessionStatus);
   const removeSession = useTerminalStore((s) => s.removeSession);
+  const setActivePane = useTerminalStore((s) => s.setActivePane);
   const activeView = useUIStore((s) => s.activeView);
   const activeTabId = useTerminalStore((s) => s.activeId);
+  const bindings = useKeybindingStore((s) => s.resolved);
   const { data: hosts } = useHosts();
 
   // Context menu + search bar state.
@@ -80,6 +85,9 @@ export function TerminalPanel({
   const [showThemeDialog, setShowThemeDialog] = useState(false);
   // Theme picked from the context menu for *this pane only* (session lifetime).
   const [liveThemeId, setLiveThemeId] = useState<string | null>(null);
+  // Live font zoom for this pane (session lifetime, not persisted — the same
+  // deal as liveThemeId). Applied on top of the host's configured size.
+  const [zoomDelta, setZoomDelta] = useState(0);
 
   // The host's theme; "" falls back to the default scheme inside
   // getTerminalTheme. The context-menu pick overrides it for this pane.
@@ -139,6 +147,7 @@ export function TerminalPanel({
       /* container not laid out yet */
     }
     termRef.current = term;
+    fitRef.current = fit;
     searchAddonRef.current = search;
     setSessionStatus(session.id, "connected");
 
@@ -146,6 +155,11 @@ export function TerminalPanel({
     const selDisp = term.onSelectionChange(() => {
       setHasSelection(term.hasSelection());
     });
+
+    // Report focus for shortcut routing: copy/paste/zoom act on the pane
+    // that last had keyboard focus (falls back to the tab's first pane).
+    const onTermFocus = () => setActivePane(session.id);
+    term.textarea?.addEventListener("focus", onTermFocus);
 
     // Right-click: show custom context menu (prevent the browser default).
     const onContext = (e: MouseEvent) => {
@@ -238,6 +252,7 @@ export function TerminalPanel({
       clearTimeout(resizeTimer);
       onDataDisp.dispose();
       selDisp.dispose();
+      term.textarea?.removeEventListener("focus", onTermFocus);
       container.removeEventListener("contextmenu", onContext);
       if (typeof outCancel === "function") outCancel();
       if (typeof exitCancel === "function") exitCancel();
@@ -245,10 +260,31 @@ export function TerminalPanel({
       search.dispose();
       term.dispose();
       termRef.current = null;
+      fitRef.current = null;
       searchAddonRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id]);
+
+  // Live font zoom (Ctrl+= / Ctrl+- shortcuts): update the option, re-fit the
+  // grid and tell the backend so the PTY matches the new cols/rows.
+  const zoomedFontSize = Math.min(40, Math.max(6, resolvedFontSize + zoomDelta));
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term || term.options.fontSize === zoomedFontSize) return;
+    term.options.fontSize = zoomedFontSize;
+    try {
+      fitRef.current?.fit();
+    } catch {
+      /* container not laid out yet */
+    }
+    TerminalService.ResizeSession(session.id, {
+      cols: term.cols,
+      rows: term.rows,
+    }).catch(() => {
+      /* session may have just closed */
+    });
+  }, [zoomedFontSize, session.id]);
 
   // ── Context menu actions ──────────────────────────────────────────
 
@@ -351,19 +387,40 @@ export function TerminalPanel({
     else searchAddonRef.current.findPrevious(searchQuery);
   };
 
+  // Expose this pane's actions to the shortcut system (TerminalView routes
+  // terminal.* commands to the focused pane's registration). Re-registered
+  // every render so the closures stay fresh.
+  useEffect(() => {
+    return registerPaneActions(session.id, {
+      copy: () => void handleCopy(),
+      paste: () => void handlePaste(),
+      selectAll: handleSelectAll,
+      find: () => setShowSearch(true),
+      clear: handleClear,
+      zoomIn: () => setZoomDelta((d) => Math.min(20, d + 1)),
+      zoomOut: () => setZoomDelta((d) => Math.max(-10, d - 1)),
+      zoomReset: () => setZoomDelta(0),
+      focus: () => termRef.current?.focus(),
+    });
+  });
+
   // Build context menu items based on current state.
   const buildMenuItems = (): MenuItem[] => {
     const inSplit = paneCount > 1;
+    // Right-aligned shortcut hints (Xshell-style) for bound commands.
+    const hint = (id: string) => bindings[id] ?? undefined;
     const items: MenuItem[] = [
       {
         label: t("termMenu.reconnect"),
         icon: PlugZap,
+        shortcut: hint("terminal.reconnect"),
         onClick: () => onReconnect?.(),
       },
       {
         label: inSplit ? t("termMenu.closePane") : t("termMenu.disconnect"),
         icon: XCircle,
         danger: true,
+        shortcut: hint("pane.close"),
         onClick: () => onDisconnect?.(),
       },
     ];
@@ -375,11 +432,13 @@ export function TerminalPanel({
         {
           label: t("termMenu.splitH"),
           icon: Columns2,
+          shortcut: hint("pane.splitH"),
           onClick: () => onSplitHorizontal?.(),
         },
         {
           label: t("termMenu.splitV"),
           icon: Rows2,
+          shortcut: hint("pane.splitV"),
           onClick: () => onSplitVertical?.(),
         },
       );
@@ -388,8 +447,13 @@ export function TerminalPanel({
     if (hasSelection) {
       items.push({ type: "separator" });
       items.push(
-        { label: t("termMenu.copy"), icon: CopyIcon, onClick: handleCopy },
-        { label: t("termMenu.copyRtf"), icon: FileText, onClick: handleCopyRTF },
+        {
+          label: t("termMenu.copy"),
+          icon: CopyIcon,
+          shortcut: hint("terminal.copy"),
+          onClick: () => void handleCopy(),
+        },
+        { label: t("termMenu.copyRtf"), icon: FileText, onClick: () => void handleCopyRTF() },
         { label: t("termMenu.pasteSelected"), icon: ClipboardList, onClick: handlePasteSelected },
       );
     }
@@ -398,20 +462,35 @@ export function TerminalPanel({
     // lands in /tmp (remote) or the local temp dir and inserts the path.
     items.push({ type: "separator" });
     items.push(
-      { label: t("termMenu.paste"), icon: ClipboardPaste, onClick: handlePaste },
-      { label: t("termMenu.uploadImage"), icon: ImageUp, onClick: handleUploadClipboardImage },
+      {
+        label: t("termMenu.paste"),
+        icon: ClipboardPaste,
+        shortcut: hint("terminal.paste"),
+        onClick: () => void handlePaste(),
+      },
+      { label: t("termMenu.uploadImage"), icon: ImageUp, onClick: () => void handleUploadClipboardImage() },
     );
 
     items.push(
       { type: "separator" },
-      { label: t("termMenu.selectAll"), icon: TextSelect, onClick: handleSelectAll },
+      {
+        label: t("termMenu.selectAll"),
+        icon: TextSelect,
+        shortcut: hint("terminal.selectAll"),
+        onClick: handleSelectAll,
+      },
       { label: t("termMenu.selectScreen"), icon: ScanLine, onClick: handleSelectScreen },
       { type: "separator" },
-      { label: t("termMenu.find"), icon: Search, onClick: () => setShowSearch(true) },
+      {
+        label: t("termMenu.find"),
+        icon: Search,
+        shortcut: hint("terminal.find"),
+        onClick: () => setShowSearch(true),
+      },
       {
         label: t("termMenu.pasteLocalIP"),
         icon: Network,
-        onClick: handlePasteLocalIP,
+        onClick: () => void handlePasteLocalIP(),
       },
       {
         label: t("termMenu.pasteRemoteIP"),
@@ -420,7 +499,12 @@ export function TerminalPanel({
         onClick: handlePasteRemoteIP,
       },
       { type: "separator" },
-      { label: t("termMenu.clear"), icon: Eraser, onClick: handleClear },
+      {
+        label: t("termMenu.clear"),
+        icon: Eraser,
+        shortcut: hint("terminal.clear"),
+        onClick: handleClear,
+      },
       { type: "separator" },
       {
         label: t("termMenu.terminalTheme"),
