@@ -22,6 +22,10 @@ type AppConfig struct {
 	// ("terminal.copy"), value = binding string ("Ctrl+Shift+C"). Only entries
 	// the user changed from the default are stored; nil/empty = all defaults.
 	Shortcuts map[string]string `json:"shortcuts,omitempty"`
+	// Middle-click behavior on terminal panes (Xshell-style): "none" |
+	// "pasteSelection" (default) | "pasteClipboard" | "sendEnter" |
+	// "contextMenu".
+	MiddleClickAction string `json:"middleClickAction"`
 }
 
 // LLMConfig holds the non-sensitive LLM provider settings. The API Key is
@@ -74,5 +78,6 @@ func DefaultConfig() AppConfig {
 			BaseURL: "https://api.openai.com/v1",
 			Model:   "gpt-4o",
 		},
+		MiddleClickAction: "pasteSelection",
 	}
 }

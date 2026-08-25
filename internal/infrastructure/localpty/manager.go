@@ -38,6 +38,18 @@ type localSession struct {
 	id  string
 	pty pty.Pty
 	cmd *pty.Cmd
+	// go-pty's conPty.Close is NOT idempotent: a second ClosePseudoConsole
+	// runs on a freed handle (which the kernel may have reused), and on
+	// Windows that kills the calling process with STATUS_FATAL_APP_EXIT —
+	// closing a local terminal tab took the whole app down. The once guards
+	// the two legitimate closers (user-triggered Close + the output pump's
+	// teardown after the shell exits on its own).
+	closeOnce sync.Once
+}
+
+/** closePty tears the PTY down exactly once per session. */
+func (s *localSession) closePty() {
+	s.closeOnce.Do(func() { _ = s.pty.Close() })
 }
 
 // Manager owns live local PTY sessions. Safe for concurrent use.
@@ -111,7 +123,9 @@ func (m *Manager) Open(cols, rows int, events application.SessionEvents) (string
 		m.mu.Lock()
 		delete(m.sessions, sessionID)
 		m.mu.Unlock()
-		_ = p.Close()
+		// Also closes for the natural-exit path (user typed `exit`); a
+		// no-op when Manager.Close already tore the PTY down.
+		s.closePty()
 	}()
 
 	return sessionID, nil
@@ -136,13 +150,21 @@ func (m *Manager) Resize(sessionID string, cols, rows int) error {
 	return s.pty.Resize(cols, rows)
 }
 
-// Close terminates a local session. Safe to call multiple times.
+// Close terminates a local session. Safe to call multiple times. The session
+// is dropped from the map FIRST so any in-flight WriteStdin/Resize fails
+// fast instead of touching a freed ConPTY handle.
 func (m *Manager) Close(sessionID string) error {
-	s, ok := m.session(sessionID)
+	m.mu.Lock()
+	s, ok := m.sessions[sessionID]
+	if ok {
+		delete(m.sessions, sessionID)
+	}
+	m.mu.Unlock()
 	if !ok {
 		return ErrSessionNotFound
 	}
-	return s.pty.Close()
+	s.closePty()
+	return nil
 }
 
 // CloseAll tears down every local session (app shutdown).

@@ -6,7 +6,7 @@ Go 原生（Wails v3 + React）的跨平台桌面应用，把 **SSH / Terminal /
 
 不替代传统 SSH Client，而是让 AI 在「Remote Context + Tools + Permission」之上真正完成运维与诊断工作。
 
-> 受[Netcatty]([GitHub - binaricat/Netcatty: SSH workspace, SFTP, and terminals in one · GitHub](https://github.com/binaricat/Netcatty))启发，但是不喜欢electron的重量级依赖，改为使用wails3+golang的webview2方案。
+> 受[Netcatty](https://github.com/binaricat/Netcatty)启发，但是electron的依赖太重量级了，作为一个轻度工具，使用wails3+golang的webview2方案是个更好的选择。
 > 
 > 保持轻量级的工具实现，只增加必要的功能。
 
@@ -198,3 +198,7 @@ Linux 支持一次性生成主流的二进制安装包。
 ├── build/                  # 各平台打包资源（Windows/macOS/Linux/iOS/Android）
 └── docs/                   # PRD / 架构 / 安全 / 路线图 / TODO
 ```
+
+
+# 截图
+
