@@ -1,10 +1,13 @@
-name: Cross-Platform Package Build
+name: Release Package
 
 on:
   push:
     tags:
-      - "v*" # 仅在提交版本标签（如 v1.0.0）时触发打包
-  workflow_dispatch: # 允许在 GitHub 网页上手动触发构建
+      - "v*.*.*" # 推送版本标签（如 v0.1.0）时触发打包并发布 Release
+  workflow_dispatch: # 允许在 GitHub 网页上手动触发构建（仅产出 Artifacts，不发布 Release）
+
+permissions:
+  contents: read # 默认最小权限；release 任务单独提权
 
 jobs:
   package:
@@ -13,20 +16,28 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Windows 环境：构建 NSIS 安装包
+          # Windows：NSIS 安装包（bin/ai-remote-workspace-amd64-installer.exe）
           - platform: windows
             os: windows-latest
             artifact_name: win-installer
+            artifact_paths:
+              - bin/*-installer.exe
 
-          # macOS 环境：构建 Universal DMG 安装包
+          # macOS：Universal DMG（arm64 + amd64）
           - platform: darwin
             os: macos-latest
             artifact_name: mac-installer
+            artifact_paths:
+              - bin/*.dmg
 
-          # Linux 环境：构建 DEB 和 AppImage 安装包
+          # Linux：DEB / RPM / AppImage
           - platform: linux
             os: ubuntu-latest
             artifact_name: linux-installer
+            artifact_paths:
+              - bin/*.deb
+              - bin/*.rpm
+              - bin/*.AppImage
 
     runs-on: ${{ matrix.os }}
 
@@ -37,58 +48,80 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26"
+          go-version-file: go.mod
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-      # Linux 云端依赖自动安装
+      # Linux：Wails v3 依赖 GTK + WebKitGTK（Ubuntu 24.04 起为 4.1 版）
       - name: Install Linux Dependencies
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libgtk-3-dev \
-            libwebkit2gtk-4.0-dev \
-            nsis \
-            squashfs-tools \
-            dpkg
+            libwebkit2gtk-4.1-dev \
+            squashfs-tools
 
-      # Windows 云端依赖自动安装
+      # Windows：NSIS（choco 会将 makensis shim 加入已有 PATH）
       - name: Install Windows Dependencies
         if: matrix.platform == 'windows'
         run: choco install nsis -y
 
-      # macOS 云端依赖自动安装
-      - name: Install macOS Dependencies
-        if: matrix.platform == 'darwin'
-        run: brew install nsis
-
-      # 安装 Wails v3 CLI
       - name: Install Wails v3 CLI
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
-      # 执行打包任务
       - name: Build and Package
+        shell: bash
         run: |
           if [ "${{ matrix.platform }}" = "darwin" ]; then
             wails3 task darwin:package:universal
+            # package:universal 只产出 .app bundle，需再打包为 .dmg
+            wails3 task darwin:create:dmg
           elif [ "${{ matrix.platform }}" = "linux" ]; then
             wails3 task linux:package
           else
             wails3 task windows:package
           fi
-        shell: bash
 
-      # 将打包生成的安装包上传为 GitHub Artifacts 供下载
+      # 将安装包上传为构建 Artifacts（手动触发时也可从 Actions 页下载）
       - name: Upload Installer Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: |
-            bin/*.exe
-            bin/*.dmg
-            bin/*.deb
-            bin/*.AppImage
+          path: ${{ join(matrix.artifact_paths, '\n') }}
+          if-no-files-found: error
+
+  # 打包全部成功后：汇总安装包 → 生成校验和 → 发布到对应 tag 的 Release assets
+  release:
+    name: Publish GitHub Release
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 创建 Release 并上传 assets
+
+    steps:
+      - name: Download All Installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-installer"
+          merge-multiple: true
+          path: dist
+
+      - name: Generate Checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload to Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
