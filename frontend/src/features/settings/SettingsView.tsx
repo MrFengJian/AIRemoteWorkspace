@@ -42,6 +42,9 @@ const DEFAULT_CONFIG: AppConfig = {
   uiFont: "",
   fontSize: 13,
   cjkFont: "",
+  terminalTheme: "",
+  terminalFont: "",
+  terminalFontSize: 0,
   llm: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o" },
 };
 

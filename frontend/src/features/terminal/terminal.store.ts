@@ -43,9 +43,16 @@ interface TerminalState {
   setActivePane: (paneId: string) => void;
 
   addSession: (id: string, hostID: string, hostName: string, terminalTheme: string, terminalFont: string, terminalFontSize: number) => void;
-  /** Register a LOCAL terminal session (no host; built-in appearance). */
-  addLocalSession: (id: string, name: string) => void;
+  /** Register a LOCAL terminal session (no host; appearance from the global
+   *  terminal defaults resolved at open time). */
+  addLocalSession: (id: string, name: string, terminalTheme: string, terminalFont: string, terminalFontSize: number) => void;
   setSessionStatus: (id: string, status: TerminalSession["status"]) => void;
+  /** Update a tab's appearance snapshot (the appearance dialog persists new
+   *  values here so later panes / duplicates inherit them). */
+  setSessionAppearance: (
+    sessionId: string,
+    appearance: { terminalTheme: string; terminalFont: string; terminalFontSize: number },
+  ) => void;
   removeSession: (id: string) => void;
   removeSessions: (ids: string[]) => void;
   clearSessions: () => void;
@@ -74,11 +81,11 @@ export const useTerminalStore = create<TerminalState>((set) => ({
       activeId: id,
     })),
 
-  addLocalSession: (id, name) =>
+  addLocalSession: (id, name, terminalTheme, terminalFont, terminalFontSize) =>
     set((s) => ({
       sessions: [
         ...s.sessions,
-        { id, hostID: "", hostName: name, status: "connecting" as const, terminalTheme: "", terminalFont: "", terminalFontSize: 0, paneIds: [id], splitDirection: null },
+        { id, hostID: "", hostName: name, status: "connecting" as const, terminalTheme, terminalFont, terminalFontSize, paneIds: [id], splitDirection: null },
       ],
       activeId: id,
     })),
@@ -87,6 +94,13 @@ export const useTerminalStore = create<TerminalState>((set) => ({
     set((s) => ({
       sessions: s.sessions.map((sess) =>
         sess.id === id ? { ...sess, status } : sess,
+      ),
+    })),
+
+  setSessionAppearance: (sessionId, appearance) =>
+    set((s) => ({
+      sessions: s.sessions.map((sess) =>
+        sess.id === sessionId ? { ...sess, ...appearance } : sess,
       ),
     })),
 

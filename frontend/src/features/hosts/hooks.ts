@@ -2,10 +2,35 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { hostsApi, type HostInputDTO, type CredentialsDTO } from "@/features/hosts/api";
 import { useTerminalStore } from "@/features/terminal/terminal.store";
-import { TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
+import {
+  ConfigService,
+  TerminalService,
+} from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 
 /** Query key for the hosts list. */
 export const HOSTS_KEY = ["hosts"] as const;
+
+/**
+ * Global terminal appearance defaults (AppConfig). Per-host values of "" / 0
+ * fall back to these; a failure to load the config falls back to the
+ * built-in defaults ("" / 0), same as before the fields existed.
+ */
+async function globalTerminalDefaults(): Promise<{
+  terminalTheme: string;
+  terminalFont: string;
+  terminalFontSize: number;
+}> {
+  try {
+    const cfg = await ConfigService.GetAppConfig();
+    return {
+      terminalTheme: cfg.terminalTheme ?? "",
+      terminalFont: cfg.terminalFont ?? "",
+      terminalFontSize: cfg.terminalFontSize ?? 0,
+    };
+  } catch {
+    return { terminalTheme: "", terminalFont: "", terminalFontSize: 0 };
+  }
+}
 
 /** useHosts subscribes to the host list via TanStack Query. */
 export function useHosts() {
@@ -78,13 +103,16 @@ export function useOpenTerminal() {
         creds,
         size: { cols: 80, rows: 24 },
       });
+      // Snapshot the appearance at open time: per-host overrides, else the
+      // global terminal defaults, else built-ins ("" / 0 downstream).
+      const defaults = await globalTerminalDefaults();
       return {
         sessionId: res.sessionId,
         hostID: host.id,
         hostName: host.name,
-        terminalTheme: host.terminalTheme ?? "",
-        terminalFont: host.terminalFont ?? "",
-        terminalFontSize: host.terminalFontSize ?? 0,
+        terminalTheme: host.terminalTheme || defaults.terminalTheme,
+        terminalFont: host.terminalFont || defaults.terminalFont,
+        terminalFontSize: host.terminalFontSize || defaults.terminalFontSize,
       };
     },
     onSuccess: ({ sessionId, hostID, hostName, terminalTheme, terminalFont, terminalFontSize }) => {
@@ -101,13 +129,27 @@ export function useOpenLocalTerminal() {
   const addLocalSession = useTerminalStore((s) => s.addLocalSession);
 
   return useMutation({
-    mutationFn: (name: string) =>
-      TerminalService.OpenLocalSession({ cols: 80, rows: 24 }).then((res) => ({
+    // The name is the tab label; the appearance comes from the global
+    // terminal defaults (the appearance dialog in a local tab persists there).
+    mutationFn: async (name: string) => {
+      const [res, defaults] = await Promise.all([
+        TerminalService.OpenLocalSession({ cols: 80, rows: 24 }),
+        globalTerminalDefaults(),
+      ]);
+      return {
         sessionId: res.sessionId,
         name,
-      })),
-    onSuccess: ({ sessionId, name }) => {
-      addLocalSession(sessionId, name);
+        appearance: defaults,
+      };
+    },
+    onSuccess: ({ sessionId, name, appearance }) => {
+      addLocalSession(
+        sessionId,
+        name,
+        appearance.terminalTheme,
+        appearance.terminalFont,
+        appearance.terminalFontSize,
+      );
     },
   });
 }

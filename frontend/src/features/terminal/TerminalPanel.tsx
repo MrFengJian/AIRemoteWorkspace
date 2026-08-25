@@ -26,18 +26,22 @@ import {
   ImageUp,
 } from "lucide-react";
 
-import { TerminalService, SystemService, SftpService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
-import { useTerminalStore, type TerminalSession } from "@/features/terminal/terminal.store";
+import { TerminalService, SystemService, SftpService, ConfigService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
+import {
+  useTerminalStore,
+  isLocalSession,
+  type TerminalSession,
+} from "@/features/terminal/terminal.store";
 import { useUIStore } from "@/stores/ui.store";
 import { terminalFontFamily } from "@/features/terminal/fonts";
 import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabMenu";
-import { TerminalThemeDialog } from "@/features/terminal/TerminalThemeDialog";
-import { useHosts } from "@/features/hosts/hooks";
+import { TerminalAppearanceDialog } from "@/features/terminal/TerminalAppearanceDialog";
+import { useHosts, useUpdateHost } from "@/features/hosts/hooks";
 import { getTerminalTheme } from "@/features/terminal/themes";
 import { useKeybindingStore } from "@/keybindings/store";
 import { registerPaneActions } from "@/keybindings/registry";
 import { base64ToBytes, encodeBase64, bytesToBase64 } from "@/lib/base64";
-import { toast } from "@/lib/toast";
+import { toast, errorMessage } from "@/lib/toast";
 
 import "@xterm/xterm/css/xterm.css";
 
@@ -70,43 +74,46 @@ export function TerminalPanel({
   const fitRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const setSessionStatus = useTerminalStore((s) => s.setSessionStatus);
+  const setSessionAppearance = useTerminalStore((s) => s.setSessionAppearance);
   const removeSession = useTerminalStore((s) => s.removeSession);
   const setActivePane = useTerminalStore((s) => s.setActivePane);
   const activeView = useUIStore((s) => s.activeView);
   const activeTabId = useTerminalStore((s) => s.activeId);
   const bindings = useKeybindingStore((s) => s.resolved);
   const { data: hosts } = useHosts();
+  const updateHost = useUpdateHost();
 
   // Context menu + search bar state.
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [hasSelection, setHasSelection] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showThemeDialog, setShowThemeDialog] = useState(false);
-  // Theme picked from the context menu for *this pane only* (session lifetime).
-  const [liveThemeId, setLiveThemeId] = useState<string | null>(null);
-  // Live font zoom for this pane (session lifetime, not persisted — the same
-  // deal as liveThemeId). Applied on top of the host's configured size.
+  const [showAppearanceDialog, setShowAppearanceDialog] = useState(false);
+  // Live font zoom for this pane (Ctrl+= / Ctrl+- shortcuts). Applied on top
+  // of the session's base size; the appearance dialog writes absolute sizes
+  // into the session snapshot and resets this to 0, so the two stay in sync.
   const [zoomDelta, setZoomDelta] = useState(0);
 
-  // The host's theme; "" falls back to the default scheme inside
-  // getTerminalTheme. The context-menu pick overrides it for this pane.
-  const resolvedTheme = getTerminalTheme(liveThemeId ?? session.terminalTheme);
+  // The host's theme ("" falls back to the default scheme inside
+  // getTerminalTheme); resolved at open time into the session snapshot.
+  const resolvedTheme = getTerminalTheme(session.terminalTheme);
 
-  // Resolved font: per-host value (host edit → 外观 tab) or built-in default.
-  // Empty font / 0 size fall back to the defaults inside terminalFontFamily.
+  // Resolved font: the session snapshot's value (host override or global
+  // default, resolved when the session opened). Empty font / 0 size fall
+  // back to the defaults inside terminalFontFamily.
   const resolvedFontFamily = terminalFontFamily(session.terminalFont || "");
   const resolvedFontSize = session.terminalFontSize || 13;
 
   // Resolve the remote host IP for the "paste remote IP" action.
   const remoteIP = (hosts ?? []).find((h) => h.id === session.hostID)?.host ?? "";
 
-  // Live-update the xterm theme when the scheme changes.
+  // Live-update the xterm theme when the scheme changes (appearance dialog
+  // writes the session snapshot; the effect re-applies from it).
   useEffect(() => {
     if (termRef.current) {
-      termRef.current.options.theme = getTerminalTheme(liveThemeId ?? session.terminalTheme).theme;
+      termRef.current.options.theme = getTerminalTheme(session.terminalTheme).theme;
     }
-  }, [session.terminalTheme, liveThemeId]);
+  }, [session.terminalTheme]);
 
   // Auto-focus: when the terminal view is showing and this pane belongs to the
   // active tab, grab focus so typing works immediately (no manual click).
@@ -266,13 +273,24 @@ export function TerminalPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id]);
 
-  // Live font zoom (Ctrl+= / Ctrl+- shortcuts): update the option, re-fit the
-  // grid and tell the backend so the PTY matches the new cols/rows.
+  // Live font application (appearance dialog + Ctrl+= / Ctrl+- shortcuts):
+  // update the xterm options, re-fit the grid and tell the backend so the
+  // PTY matches the new cols/rows. Skips no-ops so it never fights the
+  // mount-time constructor values.
   const zoomedFontSize = Math.min(40, Math.max(6, resolvedFontSize + zoomDelta));
   useEffect(() => {
     const term = termRef.current;
-    if (!term || term.options.fontSize === zoomedFontSize) return;
-    term.options.fontSize = zoomedFontSize;
+    if (!term) return;
+    let changed = false;
+    if (term.options.fontFamily !== resolvedFontFamily) {
+      term.options.fontFamily = resolvedFontFamily;
+      changed = true;
+    }
+    if (term.options.fontSize !== zoomedFontSize) {
+      term.options.fontSize = zoomedFontSize;
+      changed = true;
+    }
+    if (!changed) return;
     try {
       fitRef.current?.fit();
     } catch {
@@ -284,7 +302,7 @@ export function TerminalPanel({
     }).catch(() => {
       /* session may have just closed */
     });
-  }, [zoomedFontSize, session.id]);
+  }, [resolvedFontFamily, zoomedFontSize, session.id]);
 
   // ── Context menu actions ──────────────────────────────────────────
 
@@ -380,6 +398,56 @@ export function TerminalPanel({
   };
 
   const handleClear = () => termRef.current?.clear();
+
+  /**
+   * Persist an appearance change made in this pane so the NEXT session on the
+   * same target opens with it: host sessions write the host record (empty
+   * fields elsewhere on the host are passed back unchanged); local tabs have
+   * no host, so they update the global terminal defaults in AppConfig. The
+   * live pane already switched — a persistence failure only toasts.
+   */
+  const persistAppearance = (themeId: string, font: string, fontSize: number) => {
+    if (isLocalSession(session)) {
+      ConfigService.GetAppConfig()
+        .then((cfg) =>
+          ConfigService.SetAppConfig({
+            ...cfg,
+            terminalTheme: themeId,
+            terminalFont: font,
+            terminalFontSize: fontSize,
+          }),
+        )
+        .catch((e) => {
+          toast.error(`${t("termAppearanceDialog.saveFailed")}: ${errorMessage(e)}`);
+        });
+      return;
+    }
+    const host = (hosts ?? []).find((h) => h.id === session.hostID);
+    if (!host) return;
+    updateHost.mutate(
+      {
+        id: host.id,
+        input: {
+          name: host.name,
+          host: host.host,
+          port: host.port,
+          username: host.username,
+          authType: host.authType,
+          keyPath: host.keyPath ?? "",
+          terminalTheme: themeId,
+          terminalFont: font,
+          terminalFontSize: fontSize,
+          group: host.group ?? "",
+          tags: host.tags ?? [],
+        },
+      },
+      {
+        onError: (e) => {
+          toast.error(`${t("termAppearanceDialog.saveFailed")}: ${errorMessage(e)}`);
+        },
+      },
+    );
+  };
 
   const doSearch = (dir: "next" | "prev") => {
     if (!searchQuery || !searchAddonRef.current) return;
@@ -507,9 +575,9 @@ export function TerminalPanel({
       },
       { type: "separator" },
       {
-        label: t("termMenu.terminalTheme"),
+        label: t("termMenu.terminalAppearance"),
         icon: Palette,
-        onClick: () => setShowThemeDialog(true),
+        onClick: () => setShowAppearanceDialog(true),
       },
     );
 
@@ -593,18 +661,29 @@ export function TerminalPanel({
         />
       )}
 
-      {/* Colour scheme picker — preview inside the dialog, apply on confirm */}
-      <TerminalThemeDialog
-        open={showThemeDialog}
-        currentThemeId={liveThemeId ?? session.terminalTheme}
-        onConfirm={(id) => {
-          setLiveThemeId(id);
-          if (termRef.current) {
-            termRef.current.options.theme = getTerminalTheme(id).theme;
-          }
-          setShowThemeDialog(false);
+      {/* Appearance picker (theme / font / size) — preview inside the dialog;
+          on confirm: apply to this pane via the session snapshot (effects
+          re-apply theme/font), and persist so the next session on the same
+          host (or the next local terminal) opens with the new appearance. */}
+      <TerminalAppearanceDialog
+        open={showAppearanceDialog}
+        currentThemeId={session.terminalTheme}
+        currentFont={session.terminalFont || ""}
+        currentFontSize={resolvedFontSize + zoomDelta}
+        onConfirm={(themeId, font, size) => {
+          setShowAppearanceDialog(false);
+          // Write the new values into the tab's snapshot — the theme/font
+          // effects re-apply from it — and reset the zoom delta so the
+          // absolute size is kept without double application.
+          setZoomDelta(0);
+          setSessionAppearance(tabId, {
+            terminalTheme: themeId,
+            terminalFont: font,
+            terminalFontSize: size,
+          });
+          persistAppearance(themeId, font, size);
         }}
-        onClose={() => setShowThemeDialog(false)}
+        onClose={() => setShowAppearanceDialog(false)}
       />
     </div>
   );

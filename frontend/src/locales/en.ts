@@ -381,16 +381,22 @@ export const en = {
     splitH: "Split horizontal",
     splitV: "Split vertical",
     closePane: "Close pane",
-    terminalTheme: "Terminal colour scheme",
+    terminalAppearance: "Terminal appearance",
     uploadImage: "Upload clipboard image",
     imageUploaded: "Image saved to {{path}}",
     noClipboardImage: "No image in the clipboard.",
   },
 
-  // ── Terminal theme dialog ────────────────────────────────────
-  termThemeDialog: {
-    desc: "Pick a scheme and preview it below. It applies to this pane when confirmed.",
-    scheme: "Scheme",
+  // ── Terminal appearance dialog ───────────────────────────────
+  termAppearanceDialog: {
+    desc:
+      "Adjust the colour scheme, font and size — previews live. On confirm it applies immediately and is saved as the default appearance: SSH sessions save to the host, local terminals save to the global default; the next session opens with it.",
+    scheme: "Colour scheme",
+    font: "Font",
+    fontSize: "Font size",
+    smaller: "Smaller",
+    larger: "Larger",
     preview: "preview",
+    saveFailed: "Failed to save the default appearance",
   },
 };

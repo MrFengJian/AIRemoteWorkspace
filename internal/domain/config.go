@@ -10,7 +10,14 @@ type AppConfig struct {
 	UIFont       string       `json:"uiFont"`   // interface font family name
 	FontSize     int          `json:"fontSize"` // interface font size in px
 	CJKFont      string       `json:"cjkFont"`  // CJK (Chinese) font family name
-	LLM          LLMConfig    `json:"llm"`      // AI agent provider config (API key in SecretStore)
+	// Global terminal appearance defaults. Per-host values ("" / 0) fall back
+	// to these; they are also where the appearance dialog persists changes
+	// made in a LOCAL terminal tab (no host record to write to).
+	// "" / 0 = built-in defaults (cobalt2 / Cascadia stack / 13px).
+	TerminalTheme     string `json:"terminalTheme"`
+	TerminalFont      string `json:"terminalFont"`
+	TerminalFontSize  int    `json:"terminalFontSize"`
+	LLM               LLMConfig    `json:"llm"` // AI agent provider config (API key in SecretStore)
 	// Keyboard shortcut overrides (Xshell-style). Key = command id
 	// ("terminal.copy"), value = binding string ("Ctrl+Shift+C"). Only entries
 	// the user changed from the default are stored; nil/empty = all defaults.

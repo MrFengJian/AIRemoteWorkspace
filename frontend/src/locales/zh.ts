@@ -377,16 +377,22 @@ export const zh = {
     splitH: "水平分屏",
     splitV: "垂直分屏",
     closePane: "关闭窗格",
-    terminalTheme: "终端配色方案",
+    terminalAppearance: "终端外观设置",
     uploadImage: "上传剪贴板图片",
     imageUploaded: "图片已保存到 {{path}}",
     noClipboardImage: "剪贴板中没有图片。",
   },
 
-  // ── 终端配色方案对话框 ───────────────────────────────────────
-  termThemeDialog: {
-    desc: "选择方案并在下方预览效果，确认后应用到当前窗格。",
-    scheme: "方案",
+  // ── 终端外观设置对话框 ────────────────────────────────────────
+  termAppearanceDialog: {
+    desc:
+      "调整当前窗格的配色、字体与字号，选择时即时预览。确认后立即应用，并保存为默认外观——SSH 会话保存到主机配置，本地终端保存为全局默认，下次打开时生效。",
+    scheme: "配色方案",
+    font: "字体",
+    fontSize: "字号",
+    smaller: "减小字号",
+    larger: "增大字号",
     preview: "预览",
+    saveFailed: "保存默认外观失败",
   },
 };

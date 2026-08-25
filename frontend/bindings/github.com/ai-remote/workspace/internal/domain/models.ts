@@ -31,6 +31,16 @@ export interface AppConfig {
     "cjkFont": string;
 
     /**
+     * Global terminal appearance defaults. Per-host values ("" / 0) fall back
+     * to these; they are also where the appearance dialog persists changes
+     * made in a LOCAL terminal tab (no host record to write to).
+     * "" / 0 = built-in defaults (cobalt2 / Cascadia stack / 13px).
+     */
+    "terminalTheme": string;
+    "terminalFont": string;
+    "terminalFontSize": number;
+
+    /**
      * AI agent provider config (API key in SecretStore)
      */
     "llm": LLMConfig;

@@ -616,7 +616,7 @@ export function HostFormDialog() {
               {/* Live preview: selected theme colours + font + size. */}
               <div className="grid gap-1.5">
                 <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  {t("termThemeDialog.preview")}
+                  {t("termAppearanceDialog.preview")}
                 </span>
                 <div
                   className="overflow-hidden whitespace-nowrap rounded-[var(--radius)] border border-border px-3 py-2"

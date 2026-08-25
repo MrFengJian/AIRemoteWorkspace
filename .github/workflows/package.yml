@@ -1,0 +1,94 @@
+name: Cross-Platform Package Build
+
+on:
+  push:
+    tags:
+      - "v*" # 仅在提交版本标签（如 v1.0.0）时触发打包
+  workflow_dispatch: # 允许在 GitHub 网页上手动触发构建
+
+jobs:
+  package:
+    name: Build Installer for ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows 环境：构建 NSIS 安装包
+          - platform: windows
+            os: windows-latest
+            artifact_name: win-installer
+
+          # macOS 环境：构建 Universal DMG 安装包
+          - platform: darwin
+            os: macos-latest
+            artifact_name: mac-installer
+
+          # Linux 环境：构建 DEB 和 AppImage 安装包
+          - platform: linux
+            os: ubuntu-latest
+            artifact_name: linux-installer
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Linux 云端依赖自动安装
+      - name: Install Linux Dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.0-dev \
+            nsis \
+            squashfs-tools \
+            dpkg
+
+      # Windows 云端依赖自动安装
+      - name: Install Windows Dependencies
+        if: matrix.platform == 'windows'
+        run: choco install nsis -y
+
+      # macOS 云端依赖自动安装
+      - name: Install macOS Dependencies
+        if: matrix.platform == 'darwin'
+        run: brew install nsis
+
+      # 安装 Wails v3 CLI
+      - name: Install Wails v3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+
+      # 执行打包任务
+      - name: Build and Package
+        run: |
+          if [ "${{ matrix.platform }}" = "darwin" ]; then
+            wails3 task darwin:package:universal
+          elif [ "${{ matrix.platform }}" = "linux" ]; then
+            wails3 task linux:package
+          else
+            wails3 task windows:package
+          fi
+        shell: bash
+
+      # 将打包生成的安装包上传为 GitHub Artifacts 供下载
+      - name: Upload Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            bin/*.exe
+            bin/*.dmg
+            bin/*.deb
+            bin/*.AppImage
