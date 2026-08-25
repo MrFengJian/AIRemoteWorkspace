@@ -195,8 +195,6 @@ export const zh = {
     scrollDown: "回到底部",
     truncated: "已截断",
     copyResult: "复制结果",
-    clearTitle: "清空对话",
-    clearConfirm: "清空此对话？智能体也会忘记本次对话的内容。",
     pendingApprovals: "还有 {{count}} 项待审批",
     history: "会话历史",
     historyCurrent: "当前主机",

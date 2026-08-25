@@ -195,9 +195,6 @@ export const en = {
     scrollDown: "Scroll to bottom",
     truncated: "truncated",
     copyResult: "Copy result",
-    clearTitle: "Clear conversation",
-    clearConfirm:
-      "Clear this conversation? The agent will also lose its memory of this chat.",
     pendingApprovals: "{{count}} more pending",
     history: "Conversation history",
     historyCurrent: "This host",

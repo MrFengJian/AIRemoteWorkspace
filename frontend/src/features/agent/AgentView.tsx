@@ -347,17 +347,12 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
     if (activeSessionId) agentApi.cancelChat(activeSessionId);
   };
 
-  /** Clear this session's conversation (local UI + backend memory) and start
-   *  a fresh one — the previous chat stays in history, resumable. */
-  const handleClear = async () => {
-    if (!activeSessionId) return;
-    const ok = await askConfirm({
-      title: t("agent.clearTitle"),
-      message: t("agent.clearConfirm"),
-      danger: true,
-      confirmLabel: t("common.delete"),
-    });
-    if (!ok) return;
+  /** New conversation: detach from the current one. Non-destructive — every
+   *  completed turn is already persisted, so the previous conversation stays
+   *  in the history panel and remains resumable; the next turn simply starts
+   *  a fresh conversation. No confirm needed (that belongs to deletion). */
+  const handleNewChat = () => {
+    if (!activeSessionId || streaming[activeSessionId]) return;
     clearHistory(activeSessionId);
     setActiveConv(activeSessionId, null);
     agentApi.clearHistory(activeSessionId).catch(() => {});
@@ -469,7 +464,7 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
           {messages.length > 0 && (
             <button
               type="button"
-              onClick={handleClear}
+              onClick={handleNewChat}
               aria-label={t("agent.newChat")}
               title={t("agent.newChat")}
               className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -562,7 +557,7 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
               <div className="border-t border-border p-1.5">
                 <button
                   type="button"
-                  onClick={handleClear}
+                  onClick={handleNewChat}
                   className="flex w-full items-center gap-1.5 rounded-[calc(var(--radius)-2px)] px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
                 >
                   <MessageSquarePlus className="h-3.5 w-3.5" />
