@@ -13,8 +13,11 @@ Go 原生（Wails v3 + React）的跨平台桌面应用，把 **SSH / Terminal /
 ## 核心特性
 
 - 🔌 **SSH Workspace** — 多 Host 管理、稳定终端（xterm.js + PTY）
+- 🖥️ **本地终端** — 跨平台本地 PTY（PowerShell / bash / zsh），不走 SSH
 - 📁 **SFTP 文件管理** — 浏览、上传、下载
-- 🤖 **AI Agent** — LLM + Tool Calling，本地与远程统一执行
+- 📊 **主机监控** — 概览 / 进程 / 端口三个视图，基于 `/proc` 与系统原生工具采集，远程主机零依赖
+- 🤖 **AI Agent** — LLM + Tool Calling，本地与远程统一执行，危险操作审批
+- 🎨 **外观与快捷键** — Xshell 风格的终端外观设置（13 套配色 / 字体 / 字号实时预览）与可自定义快捷键（含鼠标中键行为）
 - 🔐 **分层安全** — 系统密码库托管敏感数据，危险操作需用户授权
 - (TBD) 🔗 **MCP Server** — 让 Claude / Codex / Cursor 等外部 Agent 复用本地能力
 - 📦 **单 Binary** — 下载即用，无需复杂部署
@@ -180,15 +183,19 @@ Linux 支持一次性生成主流的二进制安装包。
 │   ├── domain/             # 业务模型（Host/Session/Tool/Agent/Config/SSH）
 │   ├── application/        # 业务流程 + port 接口（HostService/ConnectionManager）
 │   ├── infrastructure/
+│   │   ├── agent/          # Agent 会话管理（多轮对话 / 工具调用执行 / 会话持久化）
+│   │   ├── localpty/       # 本地终端 PTY（Windows ConPTY / Unix pty）
 │   │   ├── secret/         # OS 密码库（Windows Credential Manager / macOS Keychain / Linux Secret Service）
 │   │   ├── sftp/           # SFTP Manager（连接缓存）+ 文件操作（ls/upload/download/delete/rename/mkdir）
 │   │   ├── sqlite/         # SQLite 存储实现 + schema 迁移（hosts/host_keys/settings）
 │   │   └── ssh/            # SSH Client / PTY Session / ConnectionManager / 已知主机校验
-│   └── interfaces/         # Wails Service（HostService/TerminalService/SystemService/ConfigService）
+│   └── interfaces/         # Wails Services（Host/Terminal/SFTP/Agent/Monitor/ModelProvider/Config）
 ├── frontend/
 │   ├── src/
 │   │   ├── app/            # providers, router
-│   │   ├── features/       # Feature-Based：hosts/ terminal/ agent/ sftp/ settings/
+│   │   ├── features/       # Feature-Based：hosts/ terminal/ agent/ sftp/ monitor/ settings/
+│   │   ├── keybindings/    # 快捷键系统（命令表 / 键位匹配 / 全局分发）
+│   │   ├── i18n/           # i18next 初始化（zh / en 文案见 locales/）
 │   │   ├── components/     # ui/ (shadcn), layout/ (AppShell/Sidebar/StatusBar)
 │   │   ├── stores/         # 全局状态（Zustand）
 │   │   ├── lib/            # utils, queryClient, wails helpers
@@ -196,9 +203,24 @@ Linux 支持一次性生成主流的二进制安装包。
 │   │   └── themes/         # Dark theme token overrides
 │   └── bindings/           # Wails 自动生成的 TS 绑定（勿手改）
 ├── build/                  # 各平台打包资源（Windows/macOS/Linux/iOS/Android）
-└── docs/                   # PRD / 架构 / 安全 / 路线图 / TODO
+└── docs/                   # PRD / 架构 / 安全 / 路线图 / 截图（screenshots/）
 ```
 
 
-# 截图
+## 截图
+
+|      |      |
+| :--: | :--: |
+| ![主机管理](docs/screenshots/1.png) | ![多标签终端工作区](docs/screenshots/2.png) |
+| **主机管理** — 添加主机（连接 / 外观 / 分组） | **多标签终端工作区** — 主机侧栏 + SSH / 本地终端混排 |
+| ![终端外观设置](docs/screenshots/3.png) | ![SFTP 文件管理](docs/screenshots/4-sftp.png) |
+| **终端外观设置** — 配色 / 字体 / 字号实时预览 | **SFTP 文件管理** — 浏览 / 上传 / 下载 |
+| ![主机监控](docs/screenshots/4-monitor.png) | ![AI 助手](docs/screenshots/4-agent1.png) |
+| **主机监控** — 概览 / 进程 / 端口 | **AI 助手** — 模型选择 + 会话对话 |
+
+<p align="center">
+  <img src="docs/screenshots/4-agent2.png" alt="AI 助手诊断报告" width="49%">
+</p>
+
+<p align="center"><b>AI 助手</b> — 主机诊断报告（CPU / 负载 / 进程 / 内存）</p>
 
