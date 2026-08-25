@@ -177,6 +177,33 @@ export function TerminalPanel({
     };
     container.addEventListener("contextmenu", onContext);
 
+    // Middle-click (Xshell-style). The action is read at event time from the
+    // keybinding store, so settings changes apply without remounting panes.
+    // preventDefault always runs — the WebView would otherwise start its
+    // autoscroll mode on middle mousedown, whatever the configured action.
+    const onMiddleDown = (e: MouseEvent) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      switch (useKeybindingStore.getState().mouseMiddleClick) {
+        case "none":
+          return;
+        case "pasteClipboard":
+          void handlePaste();
+          return;
+        case "pasteSelection":
+          handlePasteSelected();
+          return;
+        case "sendEnter":
+          writeToStdin("\r");
+          return;
+        case "contextMenu":
+          setHasSelection(term.hasSelection());
+          setMenu({ x: e.clientX, y: e.clientY });
+          return;
+      }
+    };
+    container.addEventListener("mousedown", onMiddleDown);
+
     // Debounced + change-gated resize. The scrollbar oscillation this used
     // to fight (scrollbar toggling changes usable width → fit → PTY resize →
     // repaint → scrollbar toggles again) is now structurally impossible: the
@@ -261,6 +288,7 @@ export function TerminalPanel({
       selDisp.dispose();
       term.textarea?.removeEventListener("focus", onTermFocus);
       container.removeEventListener("contextmenu", onContext);
+      container.removeEventListener("mousedown", onMiddleDown);
       if (typeof outCancel === "function") outCancel();
       if (typeof exitCancel === "function") exitCancel();
       ro.disconnect();

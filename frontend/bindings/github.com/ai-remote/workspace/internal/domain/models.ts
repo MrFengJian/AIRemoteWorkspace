@@ -51,6 +51,13 @@ export interface AppConfig {
      * the user changed from the default are stored; nil/empty = all defaults.
      */
     "shortcuts"?: { [_ in string]?: string } | null;
+
+    /**
+     * Middle-click behavior on terminal panes (Xshell-style): "none" |
+     * "pasteSelection" (default) | "pasteClipboard" | "sendEnter" |
+     * "contextMenu".
+     */
+    "middleClickAction": string;
 }
 
 /**

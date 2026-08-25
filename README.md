@@ -27,7 +27,7 @@ Go 原生（Wails v3 + React）的跨平台桌面应用，把 **SSH / Terminal /
 | ----------------- | ---------------------------------------------------------------- |
 | Desktop Framework | Wails v3                                                         |
 | Backend           | Go 1.24+                                                         |
-| LLM Agent         | [Eino](github.com/cloudwego/eino) from bytedance                 |
+| LLM Agent         | [Eino](https://github.com/cloudwego/eino) from bytedance                 |
 | Frontend          | React 19 · TypeScript · Vite                                     |
 | Styling           | Tailwind CSS v4 · shadcn/ui · Radix UI                           |
 | State / Data      | Zustand · TanStack Query                                         |

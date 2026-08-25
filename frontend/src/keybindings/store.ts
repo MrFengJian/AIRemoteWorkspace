@@ -2,6 +2,10 @@ import { create } from "zustand";
 
 import { SHORTCUT_COMMANDS, commandById } from "@/keybindings/commands";
 import { formatBinding, parseBinding } from "@/keybindings/match";
+import {
+  DEFAULT_MIDDLE_CLICK_ACTION,
+  type MiddleClickAction,
+} from "@/keybindings/mouse";
 
 /**
  * Sanitize persisted overrides: drop unknown command ids (from an older or
@@ -42,6 +46,11 @@ interface KeybindingState {
   /** Drop a single override (command returns to its default binding). */
   resetCommand: (id: string) => void;
   resetAll: () => void;
+
+  /** Configured middle-click behaviour on terminal panes (mouse settings
+   *  share this store + the Shortcuts settings page with keybindings). */
+  mouseMiddleClick: MiddleClickAction;
+  setMouseMiddleClick: (action: MiddleClickAction) => void;
 }
 
 function recompute(overrides: Record<string, string>) {
@@ -62,6 +71,9 @@ function recompute(overrides: Record<string, string>) {
 export const useKeybindingStore = create<KeybindingState>((set) => ({
   overrides: {},
   ...recompute({}),
+  mouseMiddleClick: DEFAULT_MIDDLE_CLICK_ACTION,
+
+  setMouseMiddleClick: (action) => set({ mouseMiddleClick: action }),
 
   load: (raw) =>
     set((s) => {

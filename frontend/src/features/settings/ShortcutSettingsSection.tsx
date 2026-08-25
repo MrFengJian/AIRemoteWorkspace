@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Keyboard, RotateCcw } from "lucide-react";
+import { Keyboard, Mouse, RotateCcw } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select } from "@/components/ui/select";
 import type { AppConfig } from "@/../bindings/github.com/ai-remote/workspace/internal/domain/models";
 import {
   SHORTCUT_CATEGORIES,
@@ -10,6 +11,11 @@ import {
   type ShortcutCommand,
 } from "@/keybindings/commands";
 import { describeEvent, isBindingAllowed } from "@/keybindings/match";
+import {
+  MIDDLE_CLICK_ACTIONS,
+  normalizeMiddleClickAction,
+  type MiddleClickAction,
+} from "@/keybindings/mouse";
 import { setKeyCapture } from "@/keybindings/registry";
 import { useKeybindingStore } from "@/keybindings/store";
 import { cn } from "@/lib/utils";
@@ -64,6 +70,15 @@ export function ShortcutSettingsSection({
 
   const resetAll = () => {
     void applyOverrides({});
+  };
+
+  /** Persist a new middle-click action and apply it to the runtime store
+   *  immediately; roll the store back if the save fails. */
+  const applyMiddleClick = async (action: MiddleClickAction) => {
+    const prev = normalizeMiddleClickAction(config.middleClickAction);
+    useKeybindingStore.getState().setMouseMiddleClick(action);
+    const ok = await update({ middleClickAction: action });
+    if (!ok) useKeybindingStore.getState().setMouseMiddleClick(prev);
   };
 
   /** Name of the (other) command already using this binding, if any. */
@@ -195,6 +210,27 @@ export function ShortcutSettingsSection({
           </button>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          {/* Mouse behaviours — select-style options, not recordable combos. */}
+          <div className="flex flex-col">
+            <h3 className="mb-1 flex items-center gap-1.5 border-b border-border pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <Mouse className="h-3.5 w-3.5" /> {t("shortcuts.mouse")}
+            </h3>
+            <div className="flex items-center justify-between gap-3 py-1">
+              <span className="min-w-0 truncate text-sm">{t("shortcuts.middleClick")}</span>
+              <Select
+                value={normalizeMiddleClickAction(config.middleClickAction)}
+                onChange={(e) => void applyMiddleClick(e.target.value as MiddleClickAction)}
+                className="w-56"
+              >
+                {MIDDLE_CLICK_ACTIONS.map((action) => (
+                  <option key={action} value={action}>
+                    {t(`shortcuts.middleClickAction.${action}`)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+
           {SHORTCUT_CATEGORIES.map((category) => (
             <div key={category} className="flex flex-col">
               <h3 className="mb-1 border-b border-border pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">

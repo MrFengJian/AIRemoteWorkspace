@@ -297,6 +297,15 @@ export const en = {
     recording: "Press keys…",
     conflictWith: "Conflicts with \u201C{{command}}\u201D",
     invalid: "This key needs a Ctrl / Alt / ⌘ modifier (or use F1–F24, Insert, …)",
+    mouse: "Mouse",
+    middleClick: "Middle Click",
+    middleClickAction: {
+      none: "Do nothing",
+      pasteSelection: "Paste selection",
+      pasteClipboard: "Paste clipboard",
+      sendEnter: "Send Enter",
+      contextMenu: "Show context menu",
+    },
     cat: {
       terminal: "Terminal",
       tab: "Tabs",

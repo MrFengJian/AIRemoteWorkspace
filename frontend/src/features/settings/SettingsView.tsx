@@ -45,6 +45,7 @@ const DEFAULT_CONFIG: AppConfig = {
   terminalTheme: "",
   terminalFont: "",
   terminalFontSize: 0,
+  middleClickAction: "pasteSelection",
   llm: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o" },
 };
 

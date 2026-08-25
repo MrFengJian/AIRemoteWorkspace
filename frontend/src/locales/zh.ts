@@ -293,6 +293,15 @@ export const zh = {
     recording: "按下按键组合…",
     conflictWith: "与「{{command}}」冲突",
     invalid: "此按键需要 Ctrl / Alt / ⌘ 修饰（或改用 F1–F24、Insert 等功能键）",
+    mouse: "鼠标",
+    middleClick: "鼠标中键",
+    middleClickAction: {
+      none: "无操作",
+      pasteSelection: "粘贴选中文本",
+      pasteClipboard: "粘贴剪贴板",
+      sendEnter: "发送回车",
+      contextMenu: "显示右键菜单",
+    },
     cat: {
       terminal: "终端",
       tab: "标签页",

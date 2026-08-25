@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 import { ConfigService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { describeEvent } from "@/keybindings/match";
+import { normalizeMiddleClickAction } from "@/keybindings/mouse";
 import {
   getShortcutHandler,
   isKeyCaptured,
@@ -21,7 +22,11 @@ import { useKeybindingStore } from "@/keybindings/store";
 export function useShortcutDispatcher() {
   useEffect(() => {
     ConfigService.GetAppConfig()
-      .then((cfg) => useKeybindingStore.getState().load(cfg.shortcuts ?? {}))
+      .then((cfg) => {
+        const state = useKeybindingStore.getState();
+        state.load(cfg.shortcuts ?? {});
+        state.setMouseMiddleClick(normalizeMiddleClickAction(cfg.middleClickAction));
+      })
       .catch(() => {});
 
     const onKeyDown = (e: KeyboardEvent) => {
