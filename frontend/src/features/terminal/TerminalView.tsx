@@ -12,6 +12,7 @@ import {
   CircleX,
   FolderTree,
   Bot,
+  Activity,
   Check,
   Monitor,
   PanelLeftOpen,
@@ -27,6 +28,7 @@ import { AgentView } from "@/features/agent/AgentView";
 import { useAgentStore } from "@/features/agent/store";
 import { agentApi } from "@/features/agent/api";
 import { SftpView } from "@/features/sftp/SftpView";
+import { MonitorView } from "@/features/monitor/MonitorView";
 import { useOpenTerminal, useOpenLocalTerminal, useHosts } from "@/features/hosts/hooks";
 import { useHostsUIStore } from "@/features/hosts/store";
 import { HostsSidebar } from "@/features/hosts/HostsSidebar";
@@ -87,9 +89,9 @@ export function TerminalView() {
     y: number;
   } | null>(null);
 
-  // Right panel visibility + active tab (SFTP / Agent share one panel).
+  // Right panel visibility + active tab (SFTP / Agent / Monitor share one panel).
   const [rightOpen, setRightOpen] = useState(false);
-  const [rightTab, setRightTab] = useState<"sftp" | "agent">("agent");
+  const [rightTab, setRightTab] = useState<"sftp" | "agent" | "monitor">("agent");
   const [copied, setCopied] = useState(false);
   // Hosts sidebar collapsed state — persisted so the preference survives
   // restarts; collapsing gives the terminal area more room.
@@ -505,6 +507,14 @@ export function TerminalView() {
         setRightOpen(true);
       }
     }),
+    "view.toggleMonitor": inTerminal(() => {
+      if (!activeSession) return;
+      if (rightOpen && rightTab === "monitor") setRightOpen(false);
+      else {
+        setRightTab("monitor");
+        setRightOpen(true);
+      }
+    }),
     "view.toggleSidebar": inTerminal(() => toggleSidebar()),
   });
 
@@ -732,6 +742,31 @@ export function TerminalView() {
             >
               <Bot className="h-4 w-4" />
             </button>
+            {/* Monitor toggle — opens right panel on the Monitor tab. Unlike
+                SFTP, local sessions are allowed: Linux/macOS collect from the
+                local machine (Windows shows an in-panel hint). */}
+            <button
+              type="button"
+              disabled={!activeSession}
+              onClick={() => {
+                if (rightOpen && rightTab === "monitor") {
+                  setRightOpen(false);
+                } else {
+                  setRightTab("monitor");
+                  setRightOpen(true);
+                }
+              }}
+              title={t("monitor.title")}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
+                "disabled:pointer-events-none disabled:opacity-40",
+                rightOpen && rightTab === "monitor"
+                  ? "bg-accent text-primary"
+                  : "text-muted-foreground hover:bg-accent/50",
+              )}
+            >
+              <Activity className="h-4 w-4" />
+            </button>
           </div>
 
           {/* Terminal panels: only active tab is visible, all stay mounted. */}
@@ -851,6 +886,19 @@ export function TerminalView() {
               </button>
               <button
                 type="button"
+                onClick={() => setRightTab("monitor")}
+                className={cn(
+                  "flex h-7 items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-xs transition-colors",
+                  rightTab === "monitor"
+                    ? "bg-accent text-foreground"
+                    : "text-muted-foreground hover:bg-accent/50",
+                )}
+              >
+                <Activity className="h-3.5 w-3.5" />
+                {t("monitor.title")}
+              </button>
+              <button
+                type="button"
                 onClick={() => setRightOpen(false)}
                 className="ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
                 title={t("common.close")}
@@ -865,6 +913,12 @@ export function TerminalView() {
                 <SftpView
                   embeddedHostID={activeSession.hostID}
                   embeddedHostName={activeSession.hostName}
+                />
+              ) : rightTab === "monitor" ? (
+                <MonitorView
+                  embeddedSessionID={activeSession.id}
+                  embeddedSessionName={activeSession.hostName}
+                  isLocal={isLocalSession(activeSession)}
                 />
               ) : (
                 <AgentView

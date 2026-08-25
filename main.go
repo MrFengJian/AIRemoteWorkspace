@@ -79,6 +79,7 @@ func main() {
 	// Application services.
 	configSvc := application.NewConfigService(configRepo)
 	hostSvc := application.NewHostService(hostRepo, connManager, hostKeyRepo, secretSvc)
+	monitorSvc := application.NewMonitorService(connManager)
 	sftpSvc := application.NewSftpService(sftp.NewAppClient(sftpMgr), hostRepo, secretSvc)
 	// ModelProviderService takes the provider repo + legacy config repo (both
 	// implemented by ConfigRepo) and the vault for per-provider API keys.
@@ -98,6 +99,7 @@ func main() {
 	hostService := interfaces.NewHostService(hostSvc)
 	localPtyMgr := localpty.NewManager()
 	terminalService := interfaces.NewTerminalService(hostSvc, connManager, localPtyMgr)
+	monitorService := interfaces.NewMonitorService(monitorSvc)
 	sftpService := interfaces.NewSftpService(sftpSvc)
 	providerService := interfaces.NewModelProviderService(providerSvc)
 	agentService := interfaces.NewAgentService(agentRuntime, permGate, convSvc)
@@ -113,6 +115,7 @@ func main() {
 			wailsapp.NewService(configService),
 			wailsapp.NewService(hostService),
 			wailsapp.NewService(terminalService),
+			wailsapp.NewService(monitorService),
 			wailsapp.NewService(sftpService),
 			wailsapp.NewService(providerService),
 			wailsapp.NewService(agentService),

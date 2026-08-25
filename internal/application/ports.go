@@ -74,6 +74,10 @@ type ConnectionManager interface {
 	// DetectOS inspects the session's host and returns the distro id
 	// (e.g. "ubuntu"). Returns "" when detection failed.
 	DetectOS(sessionID string) (string, error)
+	// ExecInSessionCtx runs a one-shot command on the connection backing
+	// sessionID (fresh non-interactive exec channel; the interactive PTY is
+	// untouched). Used by the agent's ssh_exec tool and the monitor collector.
+	ExecInSessionCtx(ctx context.Context, sessionID, cmd string) (string, error)
 	// CloseAll tears down every active session (used on app shutdown).
 	CloseAll() error
 }

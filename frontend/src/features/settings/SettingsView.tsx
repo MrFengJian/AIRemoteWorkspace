@@ -46,6 +46,7 @@ const DEFAULT_CONFIG: AppConfig = {
   terminalFont: "",
   terminalFontSize: 0,
   middleClickAction: "pasteSelection",
+  monitorIntervalSeconds: 60,
   llm: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o" },
 };
 
@@ -164,7 +165,7 @@ export function SettingsView() {
           {category === "language" && <LanguageSection i18n={i18n} />}
           {category === "models" && <ModelSettingsSection />}
           {category === "shortcuts" && <ShortcutSettingsSection config={config} update={updateConfig} />}
-          {category === "advanced" && <AdvancedSection config={config} />}
+          {category === "advanced" && <AdvancedSection config={config} update={updateConfig} />}
           {category === "about" && <AboutSection />}
         </div>
       </div>
@@ -317,11 +318,43 @@ function LanguageSection({ i18n }: { i18n: ReturnType<typeof useTranslation>["i1
 
 // ── Advanced ─────────────────────────────────────────────────────────
 
-function AdvancedSection({ config }: { config: AppConfig }) {
+const MONITOR_INTERVALS = [15, 30, 60, 120, 300, 600];
+
+function AdvancedSection({
+  config,
+  update,
+}: {
+  config: AppConfig;
+  update: (patch: Partial<AppConfig>) => Promise<boolean>;
+}) {
   const { t } = useTranslation();
+  const interval = config.monitorIntervalSeconds || 60;
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-lg font-semibold">{t("settings.advanced")}</h2>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">{t("settings.monitorTitle")}</CardTitle>
+          <CardDescription>{t("settings.monitorDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-[8rem_1fr] items-center gap-3">
+            <Label htmlFor="monitorInterval">{t("settings.monitorInterval")}</Label>
+            <Select
+              id="monitorInterval"
+              value={String(interval)}
+              onChange={(e) => void update({ monitorIntervalSeconds: Number(e.target.value) })}
+              className="max-w-40"
+            >
+              {MONITOR_INTERVALS.map((s) => (
+                <option key={s} value={s}>
+                  {s >= 60 ? `${s / 60} ${t("settings.min")}` : `${s} ${t("settings.sec")}`}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle className="text-sm">{t("settings.securityMode")}</CardTitle>

@@ -5,6 +5,7 @@ import * as AgentService from "./agentservice.js";
 import * as ConfigService from "./configservice.js";
 import * as HostService from "./hostservice.js";
 import * as ModelProviderService from "./modelproviderservice.js";
+import * as MonitorService from "./monitorservice.js";
 import * as SftpService from "./sftpservice.js";
 import * as SystemService from "./systemservice.js";
 import * as TerminalService from "./terminalservice.js";
@@ -13,6 +14,7 @@ export {
     ConfigService,
     HostService,
     ModelProviderService,
+    MonitorService,
     SftpService,
     SystemService,
     TerminalService

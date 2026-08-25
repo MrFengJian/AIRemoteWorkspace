@@ -26,6 +26,8 @@ type AppConfig struct {
 	// "pasteSelection" (default) | "pasteClipboard" | "sendEnter" |
 	// "contextMenu".
 	MiddleClickAction string `json:"middleClickAction"`
+	// Host monitor panel auto-refresh interval in seconds (0 = default 60).
+	MonitorIntervalSeconds int `json:"monitorIntervalSeconds"`
 }
 
 // LLMConfig holds the non-sensitive LLM provider settings. The API Key is
@@ -79,5 +81,6 @@ func DefaultConfig() AppConfig {
 			Model:   "gpt-4o",
 		},
 		MiddleClickAction: "pasteSelection",
+		MonitorIntervalSeconds: 60,
 	}
 }

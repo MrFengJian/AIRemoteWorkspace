@@ -37,6 +37,9 @@ func (s *configService) GetAppConfig() (domain.AppConfig, error) {
 	if cfg.MiddleClickAction == "" {
 		cfg.MiddleClickAction = "pasteSelection"
 	}
+	if cfg.MonitorIntervalSeconds == 0 {
+		cfg.MonitorIntervalSeconds = 60
+	}
 	return cfg, nil
 }
 

@@ -8,5 +8,10 @@ export {
 
 export type {
     AppConfig,
-    LLMConfig
+    LLMConfig,
+    MonitorDiskUsage,
+    MonitorOverview,
+    MonitorPort,
+    MonitorProcess,
+    MonitorTCPState
 } from "./models.js";

@@ -58,6 +58,11 @@ export interface AppConfig {
      * "contextMenu".
      */
     "middleClickAction": string;
+
+    /**
+     * Host monitor panel auto-refresh interval in seconds (0 = default 60).
+     */
+    "monitorIntervalSeconds": number;
 }
 
 /**
@@ -77,6 +82,86 @@ export interface LLMConfig {
      * e.g. "gpt-4o", "deepseek-chat"
      */
     "model": string;
+}
+
+/**
+ * MonitorDiskUsage is one mounted filesystem's usage.
+ */
+export interface MonitorDiskUsage {
+    "device": string;
+    "mount": string;
+    "totalKb": number;
+    "usedKb": number;
+    "usedPercent": number;
+}
+
+/**
+ * MonitorOverview is the host snapshot shown in the monitor panel's
+ * Overview tab. Rates are computed from two samples taken ~1s apart.
+ */
+export interface MonitorOverview {
+    "cpuPercent": number;
+    "cpuModel": string;
+    "cpuCores": number;
+    "load1": number;
+    "load5": number;
+    "load15": number;
+    "uptimeSeconds": number;
+    "kernel": string;
+    "memTotalKb": number;
+    "memUsedKb": number;
+    "memUsedPercent": number;
+    "swapTotalKb": number;
+    "swapUsedKb": number;
+    "disks": MonitorDiskUsage[] | null;
+    "netRxBytesPerSec": number;
+    "netTxBytesPerSec": number;
+    "processTotal": number;
+    "processRunning": number;
+    "tcpStates": MonitorTCPState[] | null;
+}
+
+/**
+ * MonitorPort is one listening TCP socket (or a group of identical binds).
+ */
+export interface MonitorPort {
+    /**
+     * "tcp" | "tcp6"
+     */
+    "proto": string;
+
+    /**
+     * decoded bind address
+     */
+    "address": string;
+    "port": number;
+
+    /**
+     * sockets with this identical bind (SO_REUSEPORT etc.)
+     */
+    "count": number;
+}
+
+/**
+ * MonitorProcess is one remote process with a live (sampled) CPU usage.
+ */
+export interface MonitorProcess {
+    "pid": number;
+    "name": string;
+    "commandLine": string;
+    "cpuPercent": number;
+    "rssKb": number;
+}
+
+/**
+ * MonitorTCPState is one TCP connection-state histogram bucket.
+ */
+export interface MonitorTCPState {
+    /**
+     * "ESTABLISHED", "LISTEN", "TIME_WAIT", …
+     */
+    "state": string;
+    "count": number;
 }
 
 /**
