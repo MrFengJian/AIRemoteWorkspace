@@ -3,11 +3,11 @@ Version=1.0
 Name=AI Remote Workspace
 Comment=AI-native desktop remote workspace
 # The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/ai-remote-workspace.exe %u
+Exec=/usr/local/bin/ai-remote-workspace %u
 Terminal=false
 Type=Application
-Icon=ai-remote-workspace.exe
+Icon=ai-remote-workspace
 Categories=Utility;
-StartupWMClass=ai-remote-workspace.exe
+StartupWMClass=ai-remote-workspace
 
  

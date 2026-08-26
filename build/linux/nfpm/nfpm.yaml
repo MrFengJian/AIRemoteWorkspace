@@ -3,7 +3,7 @@
 #
 # The lines below are called `modelines`. See `:help modeline`
 
-name: "ai-remote-workspace.exe"
+name: "ai-remote-workspace"
 arch: ${GOARCH}
 platform: "linux"
 version: "0.1.0"
@@ -17,12 +17,12 @@ license: "MIT"
 release: "1"
 
 contents:
-  - src: "./bin/ai-remote-workspace.exe"
-    dst: "/usr/local/bin/ai-remote-workspace.exe"
+  - src: "./bin/ai-remote-workspace"
+    dst: "/usr/local/bin/ai-remote-workspace"
   - src: "./build/appicon.png"
-    dst: "/usr/share/icons/hicolor/128x128/apps/ai-remote-workspace.exe.png"
-  - src: "./build/linux/ai-remote-workspace.exe.desktop"
-    dst: "/usr/share/applications/ai-remote-workspace.exe.desktop"
+    dst: "/usr/share/icons/hicolor/128x128/apps/ai-remote-workspace.png"
+  - src: "./build/linux/ai-remote-workspace.desktop"
+    dst: "/usr/share/applications/ai-remote-workspace.desktop"
 
 # Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
 depends:
