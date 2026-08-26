@@ -57,23 +57,32 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # Linux：Wails v3 依赖 GTK + WebKitGTK（Ubuntu 24.04 起为 4.1 版）
+      # Linux：Wails v3 beta 链接 GTK4 + WebKitGTK 6.0（cgo 经 pkg-config 探测）
       - name: Install Linux Dependencies
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
+            libgtk-4-dev \
+            libwebkitgtk-6.0-dev \
             squashfs-tools
 
-      # Windows：NSIS（choco 会将 makensis shim 加入已有 PATH）
+      # Windows：NSIS 安装包。choco 只把安装目录写进注册表 PATH，后续步骤
+      # 进程不会重读注册表 —— 显式写入 $GITHUB_PATH 让 makensis 可见。
       - name: Install Windows Dependencies
         if: matrix.platform == 'windows'
-        run: choco install nsis -y
+        shell: pwsh
+        run: |
+          choco install nsis -y
+          $nsis = @("${env:ProgramFiles(x86)}\NSIS", "$env:ProgramFiles\NSIS") |
+            Where-Object { Test-Path "$_\makensis.exe" } | Select-Object -First 1
+          if (-not $nsis) { throw "makensis.exe not found after choco install" }
+          Add-Content -Path $env:GITHUB_PATH -Value $nsis
+          Write-Host "makensis dir added to PATH: $nsis"
 
+      # 安装 Wails v3 CLI（固定版本，避免 @latest 版本迁移再次打断发布）
       - name: Install Wails v3 CLI
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.13
 
       - name: Build and Package
         shell: bash
