@@ -14,6 +14,7 @@ import {
   Bot,
   Activity,
   Check,
+  Container,
   Monitor,
   PanelLeftOpen,
 } from "lucide-react";
@@ -29,6 +30,7 @@ import { useAgentStore } from "@/features/agent/store";
 import { agentApi } from "@/features/agent/api";
 import { SftpView } from "@/features/sftp/SftpView";
 import { MonitorView } from "@/features/monitor/MonitorView";
+import { DockerView } from "@/features/docker/DockerView";
 import { useOpenTerminal, useOpenLocalTerminal, useHosts } from "@/features/hosts/hooks";
 import { useHostsUIStore } from "@/features/hosts/store";
 import { HostsSidebar } from "@/features/hosts/HostsSidebar";
@@ -91,7 +93,7 @@ export function TerminalView() {
 
   // Right panel visibility + active tab (SFTP / Agent / Monitor share one panel).
   const [rightOpen, setRightOpen] = useState(false);
-  const [rightTab, setRightTab] = useState<"sftp" | "agent" | "monitor">("agent");
+  const [rightTab, setRightTab] = useState<"sftp" | "agent" | "monitor" | "docker">("agent");
   const [copied, setCopied] = useState(false);
   // Hosts sidebar collapsed state — persisted so the preference survives
   // restarts; collapsing gives the terminal area more room.
@@ -515,6 +517,14 @@ export function TerminalView() {
         setRightOpen(true);
       }
     }),
+    "view.toggleDocker": inTerminal(() => {
+      if (!activeSession) return;
+      if (rightOpen && rightTab === "docker") setRightOpen(false);
+      else {
+        setRightTab("docker");
+        setRightOpen(true);
+      }
+    }),
     "view.toggleSidebar": inTerminal(() => toggleSidebar()),
   });
 
@@ -767,6 +777,30 @@ export function TerminalView() {
             >
               <Activity className="h-4 w-4" />
             </button>
+            {/* Docker toggle — like Monitor, local sessions are allowed: the
+                panel talks to the local docker CLI (Docker Desktop etc.). */}
+            <button
+              type="button"
+              disabled={!activeSession}
+              onClick={() => {
+                if (rightOpen && rightTab === "docker") {
+                  setRightOpen(false);
+                } else {
+                  setRightTab("docker");
+                  setRightOpen(true);
+                }
+              }}
+              title={t("docker.title")}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
+                "disabled:pointer-events-none disabled:opacity-40",
+                rightOpen && rightTab === "docker"
+                  ? "bg-accent text-primary"
+                  : "text-muted-foreground hover:bg-accent/50",
+              )}
+            >
+              <Container className="h-4 w-4" />
+            </button>
           </div>
 
           {/* Terminal panels: only active tab is visible, all stay mounted. */}
@@ -899,6 +933,19 @@ export function TerminalView() {
               </button>
               <button
                 type="button"
+                onClick={() => setRightTab("docker")}
+                className={cn(
+                  "flex h-7 items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-xs transition-colors",
+                  rightTab === "docker"
+                    ? "bg-accent text-foreground"
+                    : "text-muted-foreground hover:bg-accent/50",
+                )}
+              >
+                <Container className="h-3.5 w-3.5" />
+                {t("docker.title")}
+              </button>
+              <button
+                type="button"
                 onClick={() => setRightOpen(false)}
                 className="ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
                 title={t("common.close")}
@@ -919,6 +966,11 @@ export function TerminalView() {
                   embeddedSessionID={activeSession.id}
                   embeddedSessionName={activeSession.hostName}
                   isLocal={isLocalSession(activeSession)}
+                />
+              ) : rightTab === "docker" ? (
+                <DockerView
+                  embeddedSessionID={activeSession.id}
+                  embeddedSessionName={activeSession.hostName}
                 />
               ) : (
                 <AgentView

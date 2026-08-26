@@ -66,6 +66,102 @@ export interface AppConfig {
 }
 
 /**
+ * DockerContainer is one container row (`docker ps [-a] --format json`).
+ */
+export interface DockerContainer {
+    "id": string;
+    "names": string;
+    "image": string;
+
+    /**
+     * "running" | "exited" | "paused" | "created" | "restarting" | "dead"
+     */
+    "state": string;
+
+    /**
+     * human status incl. health/uptime ("Up 2 hours (healthy)")
+     */
+    "status": string;
+
+    /**
+     * "0.0.0.0:80->80/tcp, [::]:80->80/tcp"
+     */
+    "ports": string;
+    "createdAt": string;
+}
+
+/**
+ * DockerContainerStats is one container's live resource usage
+ * (`docker stats --no-stream --format json`).
+ */
+export interface DockerContainerStats {
+    "containerId": string;
+    "name": string;
+
+    /**
+     * "1.24%"
+     */
+    "cpuPercent": string;
+
+    /**
+     * "6.41%"
+     */
+    "memPercent": string;
+
+    /**
+     * "123.4MiB / 3.84GiB"
+     */
+    "memUsage": string;
+
+    /**
+     * "1.2kB / 3.4kB"
+     */
+    "netIO": string;
+
+    /**
+     * "0B / 12.6kB"
+     */
+    "blockIO": string;
+    "pids": string;
+}
+
+/**
+ * DockerImage is one image row (`docker images --format json`).
+ */
+export interface DockerImage {
+    "repository": string;
+    "tag": string;
+    "id": string;
+
+    /**
+     * "2 weeks ago"
+     */
+    "createdSince": string;
+
+    /**
+     * "104MB"
+     */
+    "size": string;
+}
+
+/**
+ * DockerInfo is the panel overview: `docker version` server section merged
+ * with the counters from `docker info`.
+ */
+export interface DockerInfo {
+    "version": string;
+    "apiVersion": string;
+    "osType": string;
+    "arch": string;
+    "kernelVersion": string;
+    "containersRunning": number;
+    "containersPaused": number;
+    "containersStopped": number;
+    "images": number;
+    "dockerRootDir": string;
+}
+
+/**
  * LLMConfig holds the non-sensitive LLM provider settings. The API Key is
  * stored in the OS vault (SecretStore), never here.
  * 

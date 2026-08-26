@@ -346,7 +346,10 @@ func (r *Runtime) systemPrompt(sessionID string) string {
 			"[exit status N] — diagnostic output, not a failure.\n" +
 			"- local_read_file(path): read a local file as text.\n\n" +
 			"Workflow: start with read-only diagnostics, analyze, then summarize findings in concise markdown and propose fixes.\n\n" +
-			"Permissions: state-changing operations (file writes, package/service mutations, destructive commands) require the " +
+			"Container workloads: if Docker Desktop or a local engine is installed, use the docker CLI through local_exec " +
+			"(docker ps / logs / stats / inspect). Prefer bounded output (docker logs --tail) to keep responses small.\n\n" +
+			"Permissions: state-changing operations (file writes, package/service mutations, container lifecycle control " +
+			"such as docker run/stop/restart, destructive commands) require the " +
 			"user's approval. If a tool result says the user DENIED the operation, do NOT retry it — explain and propose an alternative."
 	}
 	host, ok := r.sshMgr.HostOfSession(sessionID)
@@ -363,10 +366,14 @@ func (r *Runtime) systemPrompt(sessionID string) string {
 			"- upload(localPath, remotePath) / download(remotePath, localPath): move files between the user's machine and the host.\n"+
 			"- local_exec(command) / local_read_file(path): run/read on the user's LOCAL machine. Prefer the remote tools unless local context is required.\n\n"+
 			"Workflow: start with read-only diagnostics (uptime, df -h, free -m, ps aux, journalctl …), analyze the output, "+
-			"then summarize findings in concise markdown and propose fixes.\n\n"+
-			"Permissions: state-changing operations (file writes, uploads, package/service mutations, destructive commands) "+
-			"require the user's approval. If a tool result says the user DENIED the operation, do NOT retry it — "+
-			"explain what you were about to do and propose an alternative.",
+				"then summarize findings in concise markdown and propose fixes.\n\n"+
+				"Container workloads: if the host runs Docker or Kubernetes, use the CLIs directly through ssh_exec "+
+				"(docker ps / logs / stats / inspect, kubectl get/describe/logs) — they are the preferred interface for "+
+				"container diagnostics. Prefer bounded output (docker logs --tail, kubectl logs --tail) to keep responses small.\n\n"+
+				"Permissions: state-changing operations (file writes, uploads, package/service mutations, container lifecycle "+
+				"control such as docker run/stop/restart, destructive commands) "+
+				"require the user's approval. If a tool result says the user DENIED the operation, do NOT retry it — "+
+				"explain what you were about to do and propose an alternative.",
 		name,
 	)
 }

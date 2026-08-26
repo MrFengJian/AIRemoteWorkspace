@@ -17,9 +17,9 @@ Phase 4  AI Agent               ★ MVP 核心 ✅ 已完成
    ↓
 Phase 5  安全增强               ✅ 已完成（SecretStore）
    ↓
-Phase 6  MCP Server
+Phase 6  MCP Server             ← 下一步
    ↓
-Phase 7  Docker / Kubernetes
+Phase 7  Docker / Kubernetes    Docker 面板 ✅ · K8s 面板延后
 ```
 
 ---
@@ -95,8 +95,6 @@ Phase 7  Docker / Kubernetes
 
 **状态**：已完成。三平台均无 CGO，单 Binary 不变。Windows 实测通过（写入/读取/删除 Windows Credential Manager）。
 
-> 未完成：Tool Permission 分类与 Approval UI（依赖 Phase 4 AI Agent / Tool Runtime）。
-
 ## Phase 6 — MCP Server
 
 让外部 AI Agent 使用本地能力。
@@ -126,9 +124,49 @@ Phase 7  Docker / Kubernetes
 
 扩展到容器与集群运维。
 
-- Docker Tools
-- Kubernetes Tools
-- Diagnosis Agent
+### Docker 面板 ✅
+
+与主机监控同构的右侧面板，通过 docker CLI 原生采集（SSH 会话走 exec 通道，本地终端直连本机 Docker），不依赖 API socket 暴露或额外安装：
+
+- 概览：Docker 版本 / API 版本 / 平台 / 数据目录 / 容器与镜像计数
+- 容器：列表（含已停止切换）、实时 CPU / 内存占用（docker stats）、端口映射
+- 生命周期控制：start / stop / restart / pause / unpause（allowlist 校验 + 确认对话框）
+- 镜像：仓库 / 标签 / 大小 / 创建时间
+- 日志：按容器查看，行数可选（100–1000），自动滚到最新行
+- 友好降级：CLI 未安装 / 守护进程未运行分别提示，不报错
+- 自动刷新间隔复用全局监控设置（默认 60s）
+
+### Agent 容器运维 ✅
+
+刻意**不做** docker 命令的专用工具封装——现有原子工具（ssh_exec / local_exec）配合 LLM 自行组合更灵活。配套加固：
+
+- 系统提示词明确引导使用 docker / kubectl CLI（含有界输出建议）
+- 危险命令分级补全：docker stop/start/restart/pause/kill 及 compose/swarm 变更类动词 → WRITE（需审批）
+- 工具输出 64KB 截断（保头保尾），防止大日志 / 大文件撑爆对话上下文
+
+### Kubernetes 面板（延后）
+
+- Pod / Deployment / 日志 / 事件面板（kubectl CLI 同构方案）
+- 待 Docker 面板实际使用反馈后再排期
+
+### Diagnosis Agent
+
+- 故障定位知识库
+- 诊断场景沉淀（CPU 高、磁盘满、服务异常等）
+
+---
+
+## 计划外已交付
+
+路线图之外按实际需求交付的功能（已全部上线）：
+
+- 本地终端（跨平台本地 PTY：Windows ConPTY / Unix pty，不走 SSH）
+- 主机监控面板（概览 / 进程 / 端口，/proc 与系统原生工具采集，远程零依赖）
+- 终端外观设置（13 套 xterm 配色 / 字体 / 字号，实时预览，随主机持久化）
+- Xshell 风格快捷键系统（全局设置可改键、冲突检测、鼠标中键行为可配置）
+- Agent 会话历史（多轮对话持久化、可恢复）
+- 中英双语（i18next，400+ 键完全对齐）
+- 发布工程（GitHub Actions：v*.*.* 标签触发三平台打包，自动发布 Release，v0.1.0 已发布）
 
 ---
 
@@ -145,3 +183,6 @@ Phase 7  Docker / Kubernetes
 - MCP 调用
 
 对应阶段：**Phase 1 – Phase 6** 完成。
+
+> **现状**：v0.1.0 已发布（Phase 1–5 + 计划外功能全部达成，发布流水线已验证）。
+> MCP 调用（Phase 6）为 MVP 最后缺口，目标 v0.2。

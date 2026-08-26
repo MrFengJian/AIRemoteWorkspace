@@ -3,6 +3,7 @@
 
 import * as AgentService from "./agentservice.js";
 import * as ConfigService from "./configservice.js";
+import * as DockerService from "./dockerservice.js";
 import * as HostService from "./hostservice.js";
 import * as ModelProviderService from "./modelproviderservice.js";
 import * as MonitorService from "./monitorservice.js";
@@ -12,6 +13,7 @@ import * as TerminalService from "./terminalservice.js";
 export {
     AgentService,
     ConfigService,
+    DockerService,
     HostService,
     ModelProviderService,
     MonitorService,

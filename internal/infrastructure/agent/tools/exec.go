@@ -33,7 +33,7 @@ func (ss *sessionToolSet) localReadFile(ctx context.Context, a readPathArgs) (st
 	if err != nil {
 		return "", fmt.Errorf("read %s: %w", a.Path, err)
 	}
-	return string(data), nil
+	return capOutput(string(data)), nil
 }
 
 // sshExec runs a command on the remote host. The permission tier is derived
@@ -54,11 +54,11 @@ func (ss *sessionToolSet) sshExec(ctx context.Context, a sshExecArgs) (string, e
 		// terminate the whole conversation.
 		var exitErr *cryptossh.ExitError
 		if errors.As(err, &exitErr) {
-			return fmt.Sprintf("%s\n[exit status %d]", out, exitErr.ExitStatus()), nil
+			return fmt.Sprintf("%s\n[exit status %d]", capOutput(out), exitErr.ExitStatus()), nil
 		}
-		return out, fmt.Errorf("ssh exec: %w", err)
+		return capOutput(out), fmt.Errorf("ssh exec: %w", err)
 	}
-	return out, nil
+	return capOutput(out), nil
 }
 
 // sshReadFile reads a remote file via SFTP (READ).
@@ -74,7 +74,7 @@ func (ss *sessionToolSet) sshReadFile(ctx context.Context, a sshReadFileArgs) (s
 	if err != nil {
 		return "", fmt.Errorf("sftp read %s: %w", a.Path, err)
 	}
-	return string(data), nil
+	return capOutput(string(data)), nil
 }
 
 // sshWriteFile writes content to a remote file via SFTP (WRITE — needs approval).
@@ -143,11 +143,11 @@ func runLocal(ctx context.Context, command string) (string, error) {
 		// Non-zero exit = valid diagnostic output, not a failure (see sshExec).
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return fmt.Sprintf("%s\n[exit status %d]", out, exitErr.ExitCode()), nil
+			return fmt.Sprintf("%s\n[exit status %d]", capOutput(string(out)), exitErr.ExitCode()), nil
 		}
-		return string(out), err
+		return capOutput(string(out)), err
 	}
-	return string(out), nil
+	return capOutput(string(out)), nil
 }
 
 func isWindows() bool {

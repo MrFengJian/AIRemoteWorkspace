@@ -73,6 +73,7 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
   cmd("view", "view.toggleSftp", null),
   cmd("view", "view.toggleAgent", null),
   cmd("view", "view.toggleMonitor", null),
+  cmd("view", "view.toggleDocker", null),
   cmd("view", "view.toggleSidebar", null),
 
   // ── Application.

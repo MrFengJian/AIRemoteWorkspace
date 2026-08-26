@@ -45,6 +45,23 @@ func TestClassifyCommand(t *testing.T) {
 		{"systemctl restart nginx", "write"},
 		{"apt install htop", "write"},
 		{"docker run nginx", "write"},
+		// Docker lifecycle control verbs are WRITE (runtime state changes).
+		{"docker restart web", "write"},
+		{"docker stop web", "write"},
+		{"docker start web", "write"},
+		{"docker kill web", "write"},
+		{"docker pause web", "write"},
+		{"docker update --memory 512m web", "write"},
+		{"docker compose up -d", "write"},
+		{"docker compose down", "write"},
+		{"docker service scale web=3", "write"},
+		// Docker reads stay READ.
+		{"docker ps -a", "read"},
+		{"docker logs --tail 100 web", "read"},
+		{"docker stats --no-stream", "read"},
+		{"docker images", "read"},
+		{"docker inspect web", "read"},
+		{"docker version", "read"},
 		{"mkdir /tmp/d", "write"},
 		{"mv a b", "write"},
 		// Redirect to a real file is still a write even with 2> prefix.

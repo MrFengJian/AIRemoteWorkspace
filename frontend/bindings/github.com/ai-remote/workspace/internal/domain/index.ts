@@ -8,6 +8,10 @@ export {
 
 export type {
     AppConfig,
+    DockerContainer,
+    DockerContainerStats,
+    DockerImage,
+    DockerInfo,
     LLMConfig,
     MonitorDiskUsage,
     MonitorOverview,

@@ -162,6 +162,10 @@ var writePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\bdnf\s+(install|remove)\b`),
 	// Docker mutations
 	regexp.MustCompile(`\bdocker\s+(run|exec|create|build|push|commit)\b`),
+	// Docker container lifecycle control (stop/start/restart changes runtime state)
+	regexp.MustCompile(`\bdocker\s+(stop|start|restart|pause|unpause|kill|update|rename|tag|save|load)\b`),
+	// Docker compose / swarm mutations
+	regexp.MustCompile(`\bdocker\s+(compose|stack|service|swarm|node)\s+(up|down|start|stop|restart|kill|create|build|rm|remove|scale|deploy|apply|update|leave|promote|demote)\b`),
 	// File creation / move
 	regexp.MustCompile(`\bmkdir\b`),
 	regexp.MustCompile(`\bcp\b`),

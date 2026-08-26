@@ -55,8 +55,8 @@
 - [x] 数据库 `secret_ref` 引用机制（HasRememberedSecret + 记住/清除流程）
 - [x] Security Mode 显示（Convenience / Balanced / Secure，当前只读展示）
 - [ ] Security Mode 强制策略切换（Convenience 自动保存 / Secure 每次输入）
-- [ ] Tool Permission 分类（READ / WRITE / DANGEROUS）— Phase 4 AI Agent 范畴
-- [ ] 危险操作 Approval UI — Phase 4 AI Agent 范畴
+- [x] Tool Permission 分类（READ / WRITE / DANGEROUS，classifyCommand 命令分级）
+- [x] 危险操作 Approval UI（approval.store + ApprovalHost，WRITE/DANGEROUS 同步审批）
 
 ## Phase 6 — MCP Server
 
@@ -71,19 +71,34 @@
 
 ## Phase 7 — Docker / Kubernetes
 
-- [ ] Docker Tool 集（容器列表、日志、exec）
-- [ ] Kubernetes Tool 集（pod / deploy / logs）
+- [x] Docker 面板：概览 / 容器（含实时 stats）/ 镜像 / 日志 四个子页（docker CLI 原生采集，SSH + 本地双通道）
+- [x] 容器生命周期控制（start / stop / restart / pause / unpause，allowlist + 确认对话框）
+- [x] 友好降级（CLI 未安装 / 守护进程未运行分类提示，不报错）
+- [x] Agent 容器运维：直接经 ssh_exec / local_exec 使用 docker / kubectl CLI（提示词引导 + 危险动词 WRITE 分级 + 64KB 输出截断）
+- [ ] Kubernetes 面板（pod / deploy / logs UI）— 延后，待 Docker 面板使用反馈
 - [ ] Diagnosis Agent（故障定位知识库）
 - [ ] 诊断场景沉淀（CPU 高、磁盘满、服务异常等）
 
 ---
 
+## 计划外已交付
+
+- [x] 本地终端（跨平台本地 PTY，ConPTY / Unix pty）
+- [x] 主机监控面板（概览 / 进程 / 端口，远程零依赖采集，间隔可配置）
+- [x] 终端外观设置（配色 / 字体 / 字号，随主机持久化）
+- [x] 快捷键系统（全局可改键、冲突检测、鼠标中键行为）
+- [x] Agent 会话历史（持久化、可恢复）
+- [x] 中英双语（i18next）
+- [x] 发布工程（tag 触发三平台打包 + 自动 Release，v0.1.0 已发布）
+
+---
+
 ## MVP 发布检查
 
-- [ ] 单 Binary 打包
+- [x] 单 Binary 打包（v0.1.0 Release，三平台安装包）
 - [ ] 启动快速（冷启动 < 目标值）
 - [ ] SSH 长时间稳定
 - [ ] Terminal 长时间稳定
-- [ ] 多 Host 管理可用
-- [ ] AI 基础诊断可用
+- [x] 多 Host 管理可用
+- [x] AI 基础诊断可用
 - [ ] MCP 调用可用
