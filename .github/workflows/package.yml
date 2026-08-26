@@ -30,14 +30,12 @@ jobs:
             artifact_paths:
               - bin/*.dmg
 
-          # Linux：DEB / RPM / AppImage
+          # Linux：DEB / RPM / AppImage（双引号内 \n 是真实换行 —— GitHub
+          # 表达式的 join 不解释 \n，不能在那里拼接多行路径）
           - platform: linux
             os: ubuntu-latest
             artifact_name: linux-installer
-            artifact_paths:
-              - bin/*.deb
-              - bin/*.rpm
-              - bin/*.AppImage
+            artifact_paths: "bin/*.deb\nbin/*.rpm\nbin/*.AppImage"
 
     runs-on: ${{ matrix.os }}
 
@@ -102,7 +100,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ join(matrix.artifact_paths, '\n') }}
+          path: ${{ matrix.artifact_paths }}
           if-no-files-found: error
 
   # 打包全部成功后：汇总安装包 → 生成校验和 → 发布到对应 tag 的 Release assets
