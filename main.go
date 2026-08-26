@@ -91,8 +91,17 @@ func main() {
 
 	// Agent: permission gate (emitter wired after AgentService is created),
 	// tool runtime (eino ReAct agent per session; turns persisted via convSvc).
+	// The config source feeds the user-adjustable agent settings (prompt,
+	// max steps, history budget, tool output cap); read per chat so changes
+	// apply without a restart.
 	permGate := application.NewPermissionGate(nil)
-	agentRuntime := agent.NewRuntime(providerSvc, connManager, sftpMgr, permGate, &secretResolver{secretSvc}, convSvc)
+	agentRuntime := agent.NewRuntime(providerSvc, connManager, sftpMgr, permGate, &secretResolver{secretSvc}, convSvc, func() domain.AgentConfig {
+		cfg, err := configSvc.GetAppConfig()
+		if err != nil {
+			return domain.AgentConfig{}
+		}
+		return cfg.Agent
+	})
 
 	// Wails-facing services (interface adapter layer).
 	systemService := interfaces.NewSystemService(appName, appVersion)

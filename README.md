@@ -1,8 +1,8 @@
 # AI Remote Workspace
 
-> 一个轻量、本地优先、AI 增强的个人开发者 Remote Workspace。
+> 一个轻量、本地优先、AI 增强的开发者 Remote Workspace。
 
-Go 原生（Wails v3 + React）的跨平台桌面应用，把 **SSH / Terminal / SFTP / Local Shell / AI Agent / MCP / Docker / Kubernetes** 统一到一个面向个人开发者的 AI 工作环境。
+Go 原生（Wails v3 + React）的跨平台桌面应用，把 **SSH / Terminal / SFTP / Local Shell / AI Agent ** 统一到一个面向个人开发者的 AI 工作环境。
 
 不替代传统 SSH Client，而是让 AI 在「Remote Context + Tools + Permission」之上真正完成运维与诊断工作。
 
@@ -30,7 +30,7 @@ Go 原生（Wails v3 + React）的跨平台桌面应用，把 **SSH / Terminal /
 | ----------------- | ---------------------------------------------------------------- |
 | Desktop Framework | Wails v3                                                         |
 | Backend           | Go 1.24+                                                         |
-| LLM Agent         | [Eino](https://github.com/cloudwego/eino) from bytedance                 |
+| LLM Agent         | [Eino](https://github.com/cloudwego/eino) from bytedance         |
 | Frontend          | React 19 · TypeScript · Vite                                     |
 | Styling           | Tailwind CSS v4 · shadcn/ui · Radix UI                           |
 | State / Data      | Zustand · TanStack Query                                         |
@@ -76,10 +76,9 @@ wails3 task darwin:build:universal       # 通用双架构 Universal Binary
 
 # 构建 Linux (自动唤起 Docker)
 wails3 build GOOS=linux GOARCH=amd64
-# 构建mac
 ```
 
-构建产出为**单 Binary**，前端已通过 `//go:embed` 嵌入。
+构建产出为**单 Binary**，前端已通过 `//go:embed` 嵌入到二进制文件中。
 
 ### 打包
 
@@ -206,21 +205,15 @@ Linux 支持一次性生成主流的二进制安装包。
 └── docs/                   # PRD / 架构 / 安全 / 路线图 / 截图（screenshots/）
 ```
 
-
 ## 截图
 
-|      |      |
-| :--: | :--: |
-| ![主机管理](docs/screenshots/1.png) | ![多标签终端工作区](docs/screenshots/2.png) |
-| **主机管理** — 添加主机（连接 / 外观 / 分组） | **多标签终端工作区** — 主机侧栏 + SSH / 本地终端混排 |
-| ![终端外观设置](docs/screenshots/3.png) | ![SFTP 文件管理](docs/screenshots/4-sftp.png) |
-| **终端外观设置** — 配色 / 字体 / 字号实时预览 | **SFTP 文件管理** — 浏览 / 上传 / 下载 |
-| ![主机监控](docs/screenshots/4-monitor.png) | ![AI 助手](docs/screenshots/4-agent1.png) |
-| **主机监控** — 概览 / 进程 / 端口 | **AI 助手** — 模型选择 + 会话对话 |
-
-<p align="center">
-  <img src="docs/screenshots/4-agent2.png" alt="AI 助手诊断报告" width="49%">
-</p>
-
-<p align="center"><b>AI 助手</b> — 主机诊断报告（CPU / 负载 / 进程 / 内存）</p>
-
+|                                             |                                           |
+|:-------------------------------------------:|:-----------------------------------------:|
+| ![主机管理](docs/screenshots/1.png)             | ![多标签终端工作区](docs/screenshots/2.png)       |
+| **主机管理** — 添加主机（连接 / 外观 / 分组）               | **多标签终端工作区** — 主机侧栏 + SSH / 本地终端混排        |
+| ![终端外观设置](docs/screenshots/3.png)           | ![SFTP 文件管理](docs/screenshots/4-sftp.png) |
+| **终端外观设置** — 配色 / 字体 / 字号实时预览               | **SFTP 文件管理** — 浏览 / 上传 / 下载              |
+| ![主机监控](docs/screenshots/4-monitor.png)     | ![AI 助手](docs/screenshots/4-agent1.png)   |
+| **主机监控** — 概览 / 进程 / 端口                     | **AI 助手** — 模型选择 + 会话对话                   |
+| ![AI 助手诊断报告](docs/screenshots/4-agent2.png) | ![AI 助手](docs/screenshots/4-agent3.png)   |
+| **AI 助手诊断报告** — 主机诊断报告（CPU / 负载 / 进程 / 内存）  | **AI 助手** — 高风险操作审批                       |

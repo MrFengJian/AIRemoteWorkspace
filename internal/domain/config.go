@@ -28,6 +28,28 @@ type AppConfig struct {
 	MiddleClickAction string `json:"middleClickAction"`
 	// Host monitor panel auto-refresh interval in seconds (0 = default 60).
 	MonitorIntervalSeconds int `json:"monitorIntervalSeconds"`
+	// AI agent runtime tunables (提示词 / 最大步数等, user-adjustable).
+	Agent AgentConfig `json:"agent"`
+}
+
+// AgentConfig holds the AI agent runtime tunables exposed in global
+// settings. Zero values mean "use the built-in default" (filled in by the
+// config service), so an absent block in an older settings row upgrades
+// cleanly.
+type AgentConfig struct {
+	// MaxSteps bounds the ReAct loop per turn (model + tool node executions;
+	// one tool round ≈ 2 steps). Default 100.
+	MaxSteps int `json:"maxSteps"`
+	// HistoryTurns caps how many past (user, assistant) turns are replayed
+	// as conversation memory. Default 40.
+	HistoryTurns int `json:"historyTurns"`
+	// ToolOutputLimitKB caps a single tool result fed back to the model
+	// (head+tail kept, middle elided). Default 64.
+	ToolOutputLimitKB int `json:"toolOutputLimitKB"`
+	// CustomInstructions is appended to the built-in system prompt on every
+	// turn — standing preferences, host context, tone. Empty = built-in
+	// prompt only.
+	CustomInstructions string `json:"customInstructions"`
 }
 
 // LLMConfig holds the non-sensitive LLM provider settings. The API Key is
@@ -82,5 +104,10 @@ func DefaultConfig() AppConfig {
 		},
 		MiddleClickAction: "pasteSelection",
 		MonitorIntervalSeconds: 60,
+		Agent: AgentConfig{
+			MaxSteps:          100,
+			HistoryTurns:      40,
+			ToolOutputLimitKB: 64,
+		},
 	}
 }

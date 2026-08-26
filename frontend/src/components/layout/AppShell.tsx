@@ -9,6 +9,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Toaster } from "@/components/ui/Toaster";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ApprovalHost } from "@/features/agent/ApprovalHost";
+import { ConnectOverlay } from "@/features/hosts/ConnectOverlay";
 import { HostFormDialog } from "@/features/hosts/HostFormDialog";
 import { TerminalView } from "@/features/terminal/TerminalView";
 import { SettingsView } from "@/features/settings/SettingsView";
@@ -80,6 +81,8 @@ export function AppShell() {
       <Toaster />
       {/* Global agent-approval dialog — works regardless of the active view. */}
       <ApprovalHost />
+      {/* SSH connection progress overlay / failure dialog (useOpenTerminal). */}
+      <ConnectOverlay />
     </div>
   );
 }

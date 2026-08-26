@@ -254,6 +254,8 @@ export function TerminalView() {
         hostId: sess.hostID,
         creds: {},
         size: { cols: 80, rows: 24 },
+        // Untracked progress id: pane-level splits keep their own error toast.
+        connectId: crypto.randomUUID(),
       });
       addPane(tabId, res.sessionId, direction);
     } catch (e) {
@@ -271,6 +273,8 @@ export function TerminalView() {
         hostId: sess.hostID,
         creds: {},
         size: { cols: 80, rows: 24 },
+        // Untracked progress id (see handleSplit).
+        connectId: crypto.randomUUID(),
       });
       // Replace paneId with new session ID in the store.
       removePane(tabId, paneId);

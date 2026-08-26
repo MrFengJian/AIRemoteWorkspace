@@ -40,6 +40,18 @@ func (s *configService) GetAppConfig() (domain.AppConfig, error) {
 	if cfg.MonitorIntervalSeconds == 0 {
 		cfg.MonitorIntervalSeconds = 60
 	}
+	// Agent tunables: zero fields in an older settings row fall back to the
+	// defaults (same values as DefaultConfig, kept in sync here because the
+	// stored row may predate the field).
+	if cfg.Agent.MaxSteps == 0 {
+		cfg.Agent.MaxSteps = 100
+	}
+	if cfg.Agent.HistoryTurns == 0 {
+		cfg.Agent.HistoryTurns = 40
+	}
+	if cfg.Agent.ToolOutputLimitKB == 0 {
+		cfg.Agent.ToolOutputLimitKB = 64
+	}
 	return cfg, nil
 }
 

@@ -5,19 +5,25 @@ import (
 	"unicode/utf8"
 )
 
-// maxToolOutput bounds how much text one tool invocation may return into the
-// LLM conversation. Without it a `cat` of a large log or an unbounded
-// `docker logs` can blow up the context window and kill the chat.
+// maxToolOutput is the default bound on how much text one tool invocation
+// may return into the LLM conversation. Without it a `cat` of a large log or
+// an unbounded `docker logs` can blow up the context window and kill the
+// chat. The effective limit is per ToolSet (Deps.OutputLimitBytes, fed from
+// the global agent settings).
 const maxToolOutput = 64 << 10 // 64 KB
 
-// capOutput truncates s to maxToolOutput, keeping the head and the tail (the
-// start usually carries the error, the end the latest lines) and marking the
-// elided middle. Cuts are rune-boundary safe.
-func capOutput(s string) string {
-	if len(s) <= maxToolOutput {
+// capOutputAt truncates s to max, keeping the head and the tail (the start
+// usually carries the error, the end the latest lines) and marking the
+// elided middle. Cuts are rune-boundary safe. max <= 0 falls back to the
+// package default.
+func capOutputAt(s string, max int) string {
+	if max <= 0 {
+		max = maxToolOutput
+	}
+	if len(s) <= max {
 		return s
 	}
-	const keep = maxToolOutput / 2
+	keep := max / 2
 
 	// Back the head cut up to a rune boundary.
 	headEnd := keep

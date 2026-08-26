@@ -114,9 +114,8 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
         creds: {},
       })
       .catch(() => {
-        // Connection failed (e.g. no remembered credentials) — the reason is
-        // toasted globally; open the editor to fix credentials right away.
-        openEditor(host);
+        // Failures surface in the ConnectOverlay dialog (reason + retry +
+        // edit-host); nothing to do here.
       });
   };
 
@@ -133,7 +132,7 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
         creds: {},
       })
       .catch(() => {
-        openEditor(host);
+        // See activateOrConnect: the overlay dialog owns failure UX.
       });
   };
 

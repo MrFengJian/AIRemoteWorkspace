@@ -90,12 +90,13 @@ const (
 // Conversation history is kept in memory per session and replayed on each
 // turn (multi-turn memory); ClearHistory drops it.
 type Runtime struct {
-	llm     LLMResolver
-	sshMgr  *ssh.Manager
-	sftp    SftpFileOps
-	gate    PermissionGate
-	secrets SecretsForResolver
-	sink    TurnSink
+	llm      LLMResolver
+	sshMgr   *ssh.Manager
+	sftp     SftpFileOps
+	gate     PermissionGate
+	secrets  SecretsForResolver
+	sink     TurnSink
+	agentCfg AgentConfigSource
 
 	mu        sync.Mutex
 	cancelFns map[string]context.CancelFunc
@@ -107,9 +108,15 @@ type SecretsForResolver interface {
 	GetHostSecret(hostID string, kind string) ([]byte, error)
 }
 
+// AgentConfigSource supplies the current agent tunables from the global
+// settings (application layer's ConfigService). Read per chat so setting
+// changes apply to the next turn without a restart. May be nil — the
+// built-in defaults are used then.
+type AgentConfigSource func() domain.AgentConfig
+
 // NewRuntime wires the agent runtime. sink (may be nil) persists completed
 // turns — the application layer's ConversationService.
-func NewRuntime(llm LLMResolver, sshMgr *ssh.Manager, sftp SftpFileOps, gate PermissionGate, secrets SecretsForResolver, sink TurnSink) *Runtime {
+func NewRuntime(llm LLMResolver, sshMgr *ssh.Manager, sftp SftpFileOps, gate PermissionGate, secrets SecretsForResolver, sink TurnSink, agentCfg AgentConfigSource) *Runtime {
 	return &Runtime{
 		llm:       llm,
 		sshMgr:    sshMgr,
@@ -117,9 +124,29 @@ func NewRuntime(llm LLMResolver, sshMgr *ssh.Manager, sftp SftpFileOps, gate Per
 		gate:      gate,
 		secrets:   secrets,
 		sink:      sink,
+		agentCfg:  agentCfg,
 		cancelFns: make(map[string]context.CancelFunc),
 		histories: make(map[string][]*schema.Message),
 	}
+}
+
+// agentConfig returns the effective settings with defaults for zero fields
+// (a nil source or a zero block in an older settings row).
+func (r *Runtime) agentConfig() domain.AgentConfig {
+	cfg := domain.AgentConfig{}
+	if r.agentCfg != nil {
+		cfg = r.agentCfg()
+	}
+	if cfg.MaxSteps <= 0 {
+		cfg.MaxSteps = 100
+	}
+	if cfg.HistoryTurns <= 0 {
+		cfg.HistoryTurns = maxHistoryTurns
+	}
+	if cfg.ToolOutputLimitKB <= 0 {
+		cfg.ToolOutputLimitKB = 64
+	}
+	return cfg
 }
 
 // Chat starts a streaming agent chat for a session using the selected
@@ -147,7 +174,12 @@ func (r *Runtime) Chat(ctx context.Context, sessionID, providerID, model, userMe
 	}
 
 	credsResolver := r.buildResolver()
-	ts, err := tools.NewToolSet(tools.Deps{SSH: r.sshMgr, SFTP: r.sftp}, credsResolver, r.gate, eventsObserver{events})
+	cfg := r.agentConfig()
+	ts, err := tools.NewToolSet(tools.Deps{
+		SSH:               r.sshMgr,
+		SFTP:              r.sftp,
+		OutputLimitBytes: cfg.ToolOutputLimitKB * 1024,
+	}, credsResolver, r.gate, eventsObserver{events})
 	if err != nil {
 		return fmt.Errorf("build toolset: %w", err)
 	}
@@ -168,7 +200,7 @@ func (r *Runtime) Chat(ctx context.Context, sessionID, providerID, model, userMe
 		ToolsConfig: compose.ToolsNodeConfig{
 			Tools: toolList,
 		},
-		MaxStep: 20,
+		MaxStep: cfg.MaxSteps,
 		// Route the model's stream: tool calls anywhere → tools node; pure
 		// text past a short preamble → END. The default first-chunk checker
 		// breaks models that emit text before tool calls (Claude, DeepSeek-R1).
@@ -211,6 +243,13 @@ func (r *Runtime) Chat(ctx context.Context, sessionID, providerID, model, userMe
 			}
 			if events != nil {
 				events.OnError(sessionID, err.Error())
+			}
+			// Keep whatever the model produced before the failure in the
+			// conversation memory, so a follow-up "继续" has context instead
+			// of a gap (tool results live only inside the aborted eino run,
+			// but the partial narration still anchors the continuation).
+			if finalText.Len() > 0 {
+				r.recordTurn(sessionID, userMessage, finalText.String())
 			}
 			return err
 		}
@@ -261,8 +300,9 @@ func (r *Runtime) RestoreHistory(sessionID string, msgs []*schema.Message) {
 	for _, m := range h {
 		total += len(m.Content)
 	}
+	turns := r.agentConfig().HistoryTurns
 	i := 0
-	for i+2 <= len(h)-2 && (total > historyCharBudget || (len(h)-i)/2 > maxHistoryTurns) {
+	for i+2 <= len(h)-2 && (total > historyCharBudget || (len(h)-i)/2 > turns) {
 		total -= len(h[i].Content) + len(h[i+1].Content)
 		i += 2
 	}
@@ -278,10 +318,11 @@ func (r *Runtime) recordTurn(sessionID, user, assistant string) {
 		schema.AssistantMessage(assistant, nil))
 
 	total := len(user) + len(assistant)
+	turns := r.agentConfig().HistoryTurns
 	i := 0
 	// History is (user, assistant) pairs; drop two at a time. Always keep the
 	// newest turn (the last two messages).
-	for i+2 <= len(h)-2 && (total > historyCharBudget || (len(h)-i)/2 > maxHistoryTurns) {
+	for i+2 <= len(h)-2 && (total > historyCharBudget || (len(h)-i)/2 > turns) {
 		total -= len(h[i].Content) + len(h[i+1].Content)
 		i += 2
 	}
@@ -306,17 +347,22 @@ func (r *Runtime) unregisterCancel(sessionID string) {
 	r.mu.Unlock()
 }
 
-// hybridToolCallChecker routes the model's streamed output:
-//   - any chunk carrying tool calls → tools node (OpenAI-style, instant);
-//   - pure text past ~200 chars with no tool calls → END (it's the answer,
-//     and streaming latency stays bounded);
-//   - end of stream → END.
+// hybridToolCallChecker routes the model's streamed output using only
+// definitive signals:
+//   - any chunk carrying tool calls → tools node;
+//   - end of stream with no tool calls → END (it's the final answer).
+//
+// Earlier versions cut over to END after ~200 bytes of text — but models
+// that narrate before calling tools (Claude, DeepSeek…, and any of them in
+// Chinese, where 200 bytes ≈ 66 characters) regularly tripped it, ending the
+// turn right after "I'll continue checking…" and silently dropping the tool
+// calls. Deciding on EOF alone delays first-token delivery for pure-text
+// answers, which is a cheap price for never misrouting an agentic turn.
 //
 // The checker receives its own fork of the stream (eino copies the branch
 // input), so consuming it never loses data downstream.
 func hybridToolCallChecker(_ context.Context, sr *schema.StreamReader[*schema.Message]) (bool, error) {
 	defer sr.Close()
-	textLen := 0
 	for {
 		msg, err := sr.Recv()
 		if errors.Is(err, io.EOF) {
@@ -328,19 +374,17 @@ func hybridToolCallChecker(_ context.Context, sr *schema.StreamReader[*schema.Me
 		if len(msg.ToolCalls) > 0 {
 			return true, nil
 		}
-		textLen += len(msg.Content)
-		if textLen > 200 {
-			return false, nil
-		}
 	}
 }
 
 // systemPrompt is the LLM-facing contract: tools, workflow, and approval
 // semantics (a DENIED result must change the plan, never be retried).
-// Local terminal sessions get a local-only variant.
+// Local terminal sessions get a local-only variant. The user's standing
+// instructions from global settings are appended to either variant.
 func (r *Runtime) systemPrompt(sessionID string) string {
+	var base string
 	if strings.HasPrefix(sessionID, "local-") {
-		return "You are an AI operations assistant working on the user's LOCAL machine (a local terminal session, no remote host).\n\n" +
+		base = "You are an AI operations assistant working on the user's LOCAL machine (a local terminal session, no remote host).\n\n" +
 			"Tools:\n" +
 			"- local_exec(command): run a shell command locally. Returns combined stdout+stderr; a non-zero exit is reported as " +
 			"[exit status N] — diagnostic output, not a failure.\n" +
@@ -351,21 +395,21 @@ func (r *Runtime) systemPrompt(sessionID string) string {
 			"Permissions: state-changing operations (file writes, package/service mutations, container lifecycle control " +
 			"such as docker run/stop/restart, destructive commands) require the " +
 			"user's approval. If a tool result says the user DENIED the operation, do NOT retry it — explain and propose an alternative."
-	}
-	host, ok := r.sshMgr.HostOfSession(sessionID)
-	name := "unknown"
-	if ok {
-		name = fmt.Sprintf("%s@%s", host.Username, host.Host)
-	}
-	return fmt.Sprintf(
-		"You are an AI operations assistant embedded in an SSH workspace, connected to host %s.\n\n"+
-			"Tools:\n"+
-			"- ssh_exec(command): run a shell command on the remote host. Returns combined stdout+stderr; "+
-			"a non-zero exit is reported as [exit status N] — that is diagnostic output, not a failure.\n"+
-			"- ssh_read_file(path) / ssh_write_file(path, content): read or overwrite a remote file over SFTP.\n"+
-			"- upload(localPath, remotePath) / download(remotePath, localPath): move files between the user's machine and the host.\n"+
-			"- local_exec(command) / local_read_file(path): run/read on the user's LOCAL machine. Prefer the remote tools unless local context is required.\n\n"+
-			"Workflow: start with read-only diagnostics (uptime, df -h, free -m, ps aux, journalctl …), analyze the output, "+
+	} else {
+		host, ok := r.sshMgr.HostOfSession(sessionID)
+		name := "unknown"
+		if ok {
+			name = fmt.Sprintf("%s@%s", host.Username, host.Host)
+		}
+		base = fmt.Sprintf(
+			"You are an AI operations assistant embedded in an SSH workspace, connected to host %s.\n\n"+
+				"Tools:\n"+
+				"- ssh_exec(command): run a shell command on the remote host. Returns combined stdout+stderr; "+
+				"a non-zero exit is reported as [exit status N] — that is diagnostic output, not a failure.\n"+
+				"- ssh_read_file(path) / ssh_write_file(path, content): read or overwrite a remote file over SFTP.\n"+
+				"- upload(localPath, remotePath) / download(remotePath, localPath): move files between the user's machine and the host.\n"+
+				"- local_exec(command) / local_read_file(path): run/read on the user's LOCAL machine. Prefer the remote tools unless local context is required.\n\n"+
+				"Workflow: start with read-only diagnostics (uptime, df -h, free -m, ps aux, journalctl …), analyze the output, "+
 				"then summarize findings in concise markdown and propose fixes.\n\n"+
 				"Container workloads: if the host runs Docker or Kubernetes, use the CLIs directly through ssh_exec "+
 				"(docker ps / logs / stats / inspect, kubectl get/describe/logs) — they are the preferred interface for "+
@@ -374,8 +418,13 @@ func (r *Runtime) systemPrompt(sessionID string) string {
 				"control such as docker run/stop/restart, destructive commands) "+
 				"require the user's approval. If a tool result says the user DENIED the operation, do NOT retry it — "+
 				"explain what you were about to do and propose an alternative.",
-		name,
-	)
+			name,
+		)
+	}
+	if custom := r.agentConfig().CustomInstructions; strings.TrimSpace(custom) != "" {
+		base += "\n\n# The user's standing instructions (highest priority short of safety rules)\n" + custom
+	}
+	return base
 }
 
 func (r *Runtime) buildResolver() CredsResolver {

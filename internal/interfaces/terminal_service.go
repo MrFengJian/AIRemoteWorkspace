@@ -20,6 +20,10 @@ type OpenSessionRequest struct {
 	HostID string         `json:"hostId"`
 	Creds  CredentialsDTO `json:"creds"`
 	Size   PtySizeDTO     `json:"size"`
+	// ConnectID is a frontend-generated correlation id: connection-progress
+	// events are emitted under "terminal:connect" carrying it while this
+	// call is in flight (the session id doesn't exist until it returns).
+	ConnectID string `json:"connectId"`
 }
 
 // PtySizeDTO is the initial terminal dimensions.
@@ -86,6 +90,8 @@ func (t *TerminalService) ServiceShutdown() error {
 // streamed over the per-session "term:<id>:out" event; termination over
 // "term:<id>:exit".
 func (t *TerminalService) OpenSession(req OpenSessionRequest) (OpenSessionResult, error) {
+	events := &terminalEvents{app: t.app, connectID: req.ConnectID}
+
 	host, err := t.hostSvc.Get(req.HostID)
 	if err != nil {
 		return OpenSessionResult{}, fmt.Errorf("open session: %w", err)
@@ -93,11 +99,11 @@ func (t *TerminalService) OpenSession(req OpenSessionRequest) (OpenSessionResult
 
 	// Resolve credentials: use what the frontend sent; fall back to any
 	// remembered secret from the OS vault when the frontend sent blanks.
+	events.OnProgress("", "credentials")
 	creds, err := t.hostSvc.ResolveCredentials(host, toDomainCreds(req.Creds))
 	if err != nil {
 		return OpenSessionResult{}, err
 	}
-	events := &terminalEvents{app: t.app}
 
 	ctx := context.Background()
 	sessionID, err := t.connManager.OpenSession(ctx, host, creds, req.Size.Cols, req.Size.Rows, events)
@@ -186,9 +192,29 @@ func (t *TerminalService) CloseSession(sessionID string) error {
 // terminalEvents implements application.SessionEvents, forwarding PTY output
 // and exit onto the Wails event bus under term:<id>:out / :exit. The session
 // id arrives as an OnData/OnExit argument (the connection manager assigns it
-// before the pumps start), so no per-session state is held here.
+// before the pumps start), so no per-session state is held here. Connection
+// progress stages additionally go out under "terminal:connect" tagged with
+// the request's ConnectID so the UI can correlate them with the opening call.
 type terminalEvents struct {
-	app *wailsapp.App
+	app       *wailsapp.App
+	connectID string
+}
+
+// terminalConnectEvent is the payload of the "terminal:connect" progress
+// event (see OpenSessionRequest.ConnectID).
+type terminalConnectEvent struct {
+	ConnectID string `json:"connectId"`
+	Stage     string `json:"stage"`
+}
+
+func (te *terminalEvents) OnProgress(_, stage string) {
+	if te.app == nil || te.connectID == "" {
+		return
+	}
+	te.app.Event.Emit("terminal:connect", terminalConnectEvent{
+		ConnectID: te.connectID,
+		Stage:     stage,
+	})
 }
 
 func (te *terminalEvents) OnData(sessionID string, data []byte) {

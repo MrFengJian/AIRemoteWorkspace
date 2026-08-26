@@ -26,6 +26,10 @@ type ConnectOptions struct {
 	Username  string
 	Timeout   time.Duration // dial timeout; 0 = 15s
 	OnNewKey  func(alg, fp string)
+	// OnProgress receives "connect" (TCP dial) and "handshake" (key
+	// exchange + host-key verification + authentication) as they start —
+	// fed to the UI's connection progress indicator. May be nil.
+	OnProgress func(stage string)
 }
 
 // Auth carries resolved credentials for a connection. Exactly one source is
@@ -79,11 +83,17 @@ func Dial(opts ConnectOptions, auth Auth, store HostKeyStore) (*Client, error) {
 	addr := formatAddr(opts.Host, opts.Port)
 	// Use a net.Dialer so we respect Timeout precisely; ssh.Dial also does,
 	// but keeping the conn lets us grab ssh.Conn for keepalive.
+	if opts.OnProgress != nil {
+		opts.OnProgress("connect")
+	}
 	netConn, err := net.DialTimeout("tcp", addr, opts.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", addr, err)
 	}
 
+	if opts.OnProgress != nil {
+		opts.OnProgress("handshake")
+	}
 	sshConn, chans, reqs, err := ssh.NewClientConn(netConn, addr, cfg)
 	if err != nil {
 		_ = netConn.Close()

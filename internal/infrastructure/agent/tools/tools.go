@@ -40,6 +40,9 @@ type SftpFileOps interface {
 type Deps struct {
 	SSH  *ssh.Manager
 	SFTP SftpFileOps
+	// OutputLimitBytes bounds a single tool result fed back to the model
+	// (0 = package default, 64KB). Fed from the global agent settings.
+	OutputLimitBytes int
 }
 
 // CredsResolver returns credentials for a session's host (so SFTP tools can
@@ -48,23 +51,25 @@ type CredsResolver func(sessionID string) (domain.Host, domain.Credentials, erro
 
 // ToolSet holds the built eino tools for one agent session.
 type ToolSet struct {
-	tools    []tool.BaseTool
-	resolver CredsResolver
-	ssh      *ssh.Manager
-	sftp     SftpFileOps
-	gate     PermissionGate
-	observer RunObserver
+	tools       []tool.BaseTool
+	resolver    CredsResolver
+	ssh         *ssh.Manager
+	sftp        SftpFileOps
+	gate        PermissionGate
+	observer    RunObserver
+	outputLimit int
 }
 
 // NewToolSet builds the 7 tools, each capturing sessionID at call time. The
 // observer (may be nil) receives per-invocation start/end events.
 func NewToolSet(deps Deps, resolver CredsResolver, gate PermissionGate, observer RunObserver) (*ToolSet, error) {
 	ts := &ToolSet{
-		resolver: resolver,
-		ssh:      deps.SSH,
-		sftp:     deps.SFTP,
-		gate:     gate,
-		observer: observer,
+		resolver:    resolver,
+		ssh:         deps.SSH,
+		sftp:        deps.SFTP,
+		gate:        gate,
+		observer:    observer,
+		outputLimit: deps.OutputLimitBytes,
 	}
 	if err := ts.build(); err != nil {
 		return nil, err
@@ -131,6 +136,11 @@ func (ss *sessionToolSet) gateCheck(ctx context.Context, name string, perm domai
 	}
 	argsJSON, _ := json.Marshal(args)
 	return ss.gate.Check(ctx, ss.sessionID, name, perm, string(argsJSON))
+}
+
+// capOutput bounds a tool result to the ToolSet's configured limit.
+func (ss *sessionToolSet) capOutput(s string) string {
+	return capOutputAt(s, ss.outputLimit)
 }
 
 // build constructs all 7 tools for this sessionToolSet.

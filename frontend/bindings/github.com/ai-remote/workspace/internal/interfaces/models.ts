@@ -134,6 +134,13 @@ export interface OpenSessionRequest {
     "hostId": string;
     "creds": CredentialsDTO;
     "size": PtySizeDTO;
+
+    /**
+     * ConnectID is a frontend-generated correlation id: connection-progress
+     * events are emitted under "terminal:connect" carrying it while this
+     * call is in flight (the session id doesn't exist until it returns).
+     */
+    "connectId": string;
 }
 
 /**

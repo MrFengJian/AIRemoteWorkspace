@@ -66,12 +66,19 @@ func (m *Manager) OpenSession(
 		Username: host.Username,
 	}
 
+	// The session id is assigned before dialing so progress events can be
+	// attributed to this session from the very first stage.
+	sessionID := uuid.NewString()
+	if events != nil {
+		opts.OnProgress = func(stage string) {
+			events.OnProgress(sessionID, stage)
+		}
+	}
+
 	client, err := Dial(opts, auth, m.keyStore)
 	if err != nil {
 		return "", err
 	}
-
-	sessionID := uuid.NewString()
 
 	// Output handler routes PTY chunks to the events sink.
 	onOutput := func(data []byte) {
@@ -80,6 +87,9 @@ func (m *Manager) OpenSession(
 		}
 	}
 
+	if events != nil {
+		events.OnProgress(sessionID, "session")
+	}
 	pty, err := NewPtySession(client, cols, rows, onOutput)
 	if err != nil {
 		_ = client.Close()

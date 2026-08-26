@@ -6,6 +6,7 @@ import {
   Settings2,
   Info,
   Bot,
+  BrainCircuit,
   Check,
   Keyboard,
   Sun,
@@ -32,6 +33,7 @@ import { applyTheme, applyFonts } from "@/app/providers/ThemeProvider";
 import { useUIStore, type SettingsCategory } from "@/stores/ui.store";
 import { ModelSettingsSection } from "@/features/settings/ModelSettingsSection";
 import { ShortcutSettingsSection } from "@/features/settings/ShortcutSettingsSection";
+import { AgentSettingsSection } from "@/features/settings/AgentSettingsSection";
 import { cn } from "@/lib/utils";
 import { toast, errorMessage } from "@/lib/toast";
 
@@ -47,6 +49,12 @@ const DEFAULT_CONFIG: AppConfig = {
   terminalFontSize: 0,
   middleClickAction: "pasteSelection",
   monitorIntervalSeconds: 60,
+  agent: {
+    maxSteps: 100,
+    historyTurns: 40,
+    toolOutputLimitKB: 64,
+    customInstructions: "",
+  },
   llm: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o" },
 };
 
@@ -128,6 +136,7 @@ export function SettingsView() {
     { id: "appearance", label: t("settings.appearance"), icon: Palette },
     { id: "language", label: t("settings.language"), icon: Languages },
     { id: "models", label: t("settings.models.title"), icon: Bot },
+    { id: "agent", label: t("settings.agentTitle"), icon: BrainCircuit },
     { id: "shortcuts", label: t("settings.shortcuts"), icon: Keyboard },
     { id: "advanced", label: t("settings.advanced"), icon: Settings2 },
     { id: "about", label: t("settings.about"), icon: Info },
@@ -164,6 +173,7 @@ export function SettingsView() {
           {category === "appearance" && <AppearanceSection config={config} update={updateConfig} saving={saving} />}
           {category === "language" && <LanguageSection i18n={i18n} />}
           {category === "models" && <ModelSettingsSection />}
+          {category === "agent" && <AgentSettingsSection config={config} update={updateConfig} />}
           {category === "shortcuts" && <ShortcutSettingsSection config={config} update={updateConfig} />}
           {category === "advanced" && <AdvancedSection config={config} update={updateConfig} />}
           {category === "about" && <AboutSection />}

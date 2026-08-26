@@ -201,6 +201,7 @@ func (s *HostService) TestConnection(ctx context.Context, host domain.Host, cred
 type noopSessionEvents struct{}
 
 func (noopSessionEvents) OnData(string, []byte) {}
+func (noopSessionEvents) OnProgress(string, string) {}
 func (noopSessionEvents) OnExit(string, error)  {}
 
 func validateHostInput(in CreateHostInput) error {

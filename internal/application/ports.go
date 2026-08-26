@@ -57,6 +57,10 @@ type SessionEvents interface {
 	// OnExit reports the shell has exited; exitErr carries the wait result
 	// (nil on a clean exit). Resources for the session are released after.
 	OnExit(sessionID string, exitErr error)
+	// OnProgress reports connection-establishment stages ("connect",
+	// "handshake", "session") so the UI can show what the dial is doing.
+	// Called before the session exists; implementations may no-op.
+	OnProgress(sessionID, stage string)
 }
 
 // ConnectionManager owns live SSH connections and their PTY sessions.
