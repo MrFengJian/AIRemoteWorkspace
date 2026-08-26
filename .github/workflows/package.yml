@@ -20,15 +20,13 @@ jobs:
           - platform: windows
             os: windows-latest
             artifact_name: win-installer
-            artifact_paths:
-              - bin/*-installer.exe
+            artifact_paths: "bin/*-installer.exe"
 
           # macOS：Universal DMG（arm64 + amd64）
           - platform: darwin
             os: macos-latest
             artifact_name: mac-installer
-            artifact_paths:
-              - bin/*.dmg
+            artifact_paths: "bin/*.dmg"
 
           # Linux：DEB / RPM / AppImage（双引号内 \n 是真实换行 —— GitHub
           # 表达式的 join 不解释 \n，不能在那里拼接多行路径）
