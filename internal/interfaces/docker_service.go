@@ -66,6 +66,20 @@ func (d *DockerService) ListImages(sessionID string) ([]domain.DockerImage, erro
 	return d.svc.ListImages(ctx, sessionID)
 }
 
+// ListNetworks returns the network list for a session.
+func (d *DockerService) ListNetworks(sessionID string) ([]domain.DockerNetwork, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dockerTimeout)
+	defer cancel()
+	return d.svc.ListNetworks(ctx, sessionID)
+}
+
+// InspectNetwork returns one network's detail (name or ID reference).
+func (d *DockerService) InspectNetwork(sessionID, network string) (domain.DockerNetworkDetail, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dockerTimeout)
+	defer cancel()
+	return d.svc.InspectNetwork(ctx, sessionID, network)
+}
+
 // GetLogs returns the last `tail` timestamped log lines of one container.
 func (d *DockerService) GetLogs(sessionID, container string, tail int) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dockerTimeout)

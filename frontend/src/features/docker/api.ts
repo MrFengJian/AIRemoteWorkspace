@@ -12,6 +12,9 @@ export const dockerApi = {
     DockerService.ListContainers(sessionID, all),
   stats: (sessionID: string) => DockerService.GetContainerStats(sessionID),
   images: (sessionID: string) => DockerService.ListImages(sessionID),
+  networks: (sessionID: string) => DockerService.ListNetworks(sessionID),
+  networkInspect: (sessionID: string, network: string) =>
+    DockerService.InspectNetwork(sessionID, network),
   logs: (sessionID: string, container: string, tail: number) =>
     DockerService.GetLogs(sessionID, container, tail),
   action: (sessionID: string, container: string, action: DockerAction) =>

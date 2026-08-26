@@ -162,6 +162,58 @@ export interface DockerInfo {
 }
 
 /**
+ * DockerNetwork is one network row (`docker network ls --format json`).
+ */
+export interface DockerNetwork {
+    "id": string;
+    "name": string;
+
+    /**
+     * "bridge" | "host" | "overlay" | "none" | …
+     */
+    "driver": string;
+
+    /**
+     * "local" | "swarm"
+     */
+    "scope": string;
+    "internal": boolean;
+    "ipv6": boolean;
+}
+
+/**
+ * DockerNetworkContainer is one endpoint attached to a network.
+ */
+export interface DockerNetworkContainer {
+    "name": string;
+    "ipv4Address": string;
+    "ipv6Address": string;
+}
+
+/**
+ * DockerNetworkDetail is `docker network inspect --format json`: the row
+ * fields plus IPAM pools and the attached containers.
+ */
+export interface DockerNetworkDetail {
+    "id": string;
+    "name": string;
+    "driver": string;
+    "scope": string;
+    "internal": boolean;
+    "enableIpv6": boolean;
+    "subnets": DockerNetworkSubnet[] | null;
+    "containers": DockerNetworkContainer[] | null;
+}
+
+/**
+ * DockerNetworkSubnet is one IPAM pool of a network.
+ */
+export interface DockerNetworkSubnet {
+    "subnet": string;
+    "gateway": string;
+}
+
+/**
  * LLMConfig holds the non-sensitive LLM provider settings. The API Key is
  * stored in the OS vault (SecretStore), never here.
  * 

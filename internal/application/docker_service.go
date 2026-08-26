@@ -148,6 +148,32 @@ func (s *DockerService) ListImages(ctx context.Context, sessionID string) ([]dom
 	return parseDockerImages(out), nil
 }
 
+// ListNetworks returns the docker networks (`docker network ls`).
+func (s *DockerService) ListNetworks(ctx context.Context, sessionID string) ([]domain.DockerNetwork, error) {
+	out, err := s.runDocker(ctx, sessionID, "network", "ls", "--format", "{{json .}}")
+	if err != nil {
+		return nil, err
+	}
+	return parseDockerNetworks(out), nil
+}
+
+// InspectNetwork returns one network's detail (IPAM pools + attached
+// containers). `network` may be a name or ID.
+func (s *DockerService) InspectNetwork(ctx context.Context, sessionID, network string) (domain.DockerNetworkDetail, error) {
+	if strings.TrimSpace(network) == "" {
+		return domain.DockerNetworkDetail{}, errors.New("docker: empty network reference")
+	}
+	out, err := s.runDocker(ctx, sessionID, "network", "inspect", "--format", "{{json .}}", network)
+	if err != nil {
+		return domain.DockerNetworkDetail{}, err
+	}
+	detail, ok := parseDockerNetworkInspect(out)
+	if !ok {
+		return domain.DockerNetworkDetail{}, errors.New("docker: network detail not parseable")
+	}
+	return detail, nil
+}
+
 // dockerLogTailLimits bounds the log window the panel may request.
 const (
 	dockerLogTailMin = 10

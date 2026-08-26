@@ -46,6 +46,13 @@ export function GetLogs(sessionID: string, container: string, tail: number): $Ca
 }
 
 /**
+ * InspectNetwork returns one network's detail (name or ID reference).
+ */
+export function InspectNetwork(sessionID: string, network: string): $CancellablePromise<domain$0.DockerNetworkDetail> {
+    return $Call.ByID(718825661, sessionID, network);
+}
+
+/**
  * ListContainers returns the container list for a session (all=true includes
  * stopped containers).
  */
@@ -58,4 +65,11 @@ export function ListContainers(sessionID: string, all: boolean): $CancellablePro
  */
 export function ListImages(sessionID: string): $CancellablePromise<domain$0.DockerImage[] | null> {
     return $Call.ByID(3101217033, sessionID);
+}
+
+/**
+ * ListNetworks returns the network list for a session.
+ */
+export function ListNetworks(sessionID: string): $CancellablePromise<domain$0.DockerNetwork[] | null> {
+    return $Call.ByID(2343702608, sessionID);
 }

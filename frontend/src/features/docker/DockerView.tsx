@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
+  ChevronDown,
+  ChevronRight,
   Container as ContainerIcon,
   FileText,
   Package,
@@ -13,12 +15,17 @@ import {
 } from "lucide-react";
 
 import { ConfigService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
-import type { DockerContainerStats } from "@/../bindings/github.com/ai-remote/workspace/internal/domain";
+import type {
+  DockerContainer,
+  DockerContainerStats,
+  DockerNetwork,
+} from "@/../bindings/github.com/ai-remote/workspace/internal/domain";
 import { dockerApi, dockerErrorKind, type DockerAction } from "@/features/docker/api";
 import { useConfirm } from "@/lib/useConfirm";
 import { cn } from "@/lib/utils";
 
-type SubTab = "overview" | "containers" | "images" | "logs";
+type SubTab = "overview" | "containers" | "stats" | "networks" | "images" | "logs";
+type StateFilter = "all" | "running" | "paused" | "stopped";
 
 interface DockerViewProps {
   /** The terminal session (tab) whose docker runtime is shown. */
@@ -31,12 +38,27 @@ const LOG_TAILS = [100, 200, 500, 1000];
 /** Actions that visibly disrupt the workload — confirmed before running. */
 const CONFIRMED_ACTIONS: ReadonlySet<DockerAction> = new Set(["stop", "restart", "kill", "pause"]);
 
+/** Map a docker state to the filter bucket it belongs to (null = "all" only). */
+function stateBucket(state: string): StateFilter | null {
+  if (state === "running" || state === "restarting") return "running";
+  if (state === "paused") return "paused";
+  if (state === "exited" || state === "created" || state === "dead" || state === "removing") return "stopped";
+  return null;
+}
+
+/** Parse docker's "1.24%" strings into a number for bars and sorting. */
+function parsePct(s: string): number {
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
 /**
  * Docker panel (right side, next to Files/Agent/Monitor): engine overview,
- * container list with live stats and lifecycle actions, image list, and a
- * per-container log viewer. Everything runs on the backend through the
- * session's SSH exec channel (or the local docker CLI for local terminals);
- * a missing CLI or stopped daemon degrades to a calm hint.
+ * a state-filtered container list with live stats and lifecycle actions,
+ * per-container resource monitoring, networks, images, and a log viewer.
+ * Everything runs on the backend through the session's SSH exec channel (or
+ * the local docker CLI for local terminals); a missing CLI or stopped daemon
+ * degrades to a calm hint.
  */
 export function DockerView({ embeddedSessionID }: DockerViewProps) {
   const { t } = useTranslation();
@@ -55,10 +77,12 @@ export function DockerView({ embeddedSessionID }: DockerViewProps) {
   const intervalMs = Math.max(5, intervalSec) * 1000;
   const refetchOpts = { refetchInterval: intervalMs } as const;
 
-  const [showAll, setShowAll] = useState(true);
+  const [stateFilter, setStateFilter] = useState<StateFilter>("all");
   const [logContainer, setLogContainer] = useState("");
   const [logTail, setLogTail] = useState(200);
 
+  // The list is always fetched in full (all=true) so the state filter and
+  // the logs picker work client-side without re-querying.
   // The logs tab needs the container list for its picker, so containers are
   // fetched for both tabs.
   const containersEnabled = tab === "containers" || tab === "logs";
@@ -69,15 +93,21 @@ export function DockerView({ embeddedSessionID }: DockerViewProps) {
     ...refetchOpts,
   });
   const containersQ = useQuery({
-    queryKey: ["docker-containers", embeddedSessionID, showAll],
-    queryFn: () => dockerApi.containers(embeddedSessionID, showAll),
+    queryKey: ["docker-containers", embeddedSessionID],
+    queryFn: () => dockerApi.containers(embeddedSessionID, true),
     enabled: containersEnabled,
     ...refetchOpts,
   });
   const statsQ = useQuery({
     queryKey: ["docker-stats", embeddedSessionID],
     queryFn: () => dockerApi.stats(embeddedSessionID),
-    enabled: tab === "containers",
+    enabled: tab === "containers" || tab === "stats",
+    ...refetchOpts,
+  });
+  const networksQ = useQuery({
+    queryKey: ["docker-networks", embeddedSessionID],
+    queryFn: () => dockerApi.networks(embeddedSessionID),
+    enabled: tab === "networks",
     ...refetchOpts,
   });
   const imagesQ = useQuery({
@@ -94,7 +124,17 @@ export function DockerView({ embeddedSessionID }: DockerViewProps) {
   });
 
   const activeQ =
-    tab === "overview" ? infoQ : tab === "containers" ? containersQ : tab === "images" ? imagesQ : logsQ;
+    tab === "overview"
+      ? infoQ
+      : tab === "containers" || tab === "stats"
+        ? tab === "containers"
+          ? containersQ
+          : statsQ
+        : tab === "networks"
+          ? networksQ
+          : tab === "images"
+            ? imagesQ
+            : logsQ;
 
   // When the container list arrives and the picker selection vanished (state
   // change, removal), fall back to the first container.
@@ -141,6 +181,8 @@ export function DockerView({ embeddedSessionID }: DockerViewProps) {
   const tabs: { id: SubTab; label: string }[] = [
     { id: "overview", label: t("docker.overview") },
     { id: "containers", label: t("docker.containers") },
+    { id: "stats", label: t("docker.stats") },
+    { id: "networks", label: t("docker.networks") },
     { id: "images", label: t("docker.images") },
     { id: "logs", label: t("docker.logs") },
   ];
@@ -157,37 +199,26 @@ export function DockerView({ embeddedSessionID }: DockerViewProps) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Sub-tab strip + refresh */}
+      {/* Sub-tab strip + refresh (scrolls when the panel is narrow) */}
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2">
-        {tabs.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => setTab(s.id)}
-            className={cn(
-              "flex h-7 items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-xs transition-colors",
-              tab === s.id
-                ? "bg-accent text-foreground"
-                : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-            )}
-          >
-            {s.label}
-          </button>
-        ))}
-        {tab === "containers" && (
-          <button
-            type="button"
-            onClick={() => setShowAll((v) => !v)}
-            title={t("docker.showStopped")}
-            className={cn(
-              "ml-1 rounded px-1.5 py-0.5 text-[10px] transition-colors",
-              showAll ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50",
-            )}
-          >
-            {t("docker.showStopped")}
-          </button>
-        )}
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          {tabs.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setTab(s.id)}
+              className={cn(
+                "flex h-7 shrink-0 items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-xs transition-colors",
+                tab === s.id
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+              )}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-1">
           {tab !== "logs" && (
             <span
               className="text-[10px] text-muted-foreground"
@@ -222,9 +253,15 @@ export function DockerView({ embeddedSessionID }: DockerViewProps) {
             statsById={statsById}
             pending={pending}
             actionError={actionMut.isError ? actionMut.error : null}
+            filter={stateFilter}
+            onFilter={setStateFilter}
             onAction={runAction}
             onLogs={openLogs}
           />
+        ) : tab === "stats" ? (
+          <StatsPane loading={statsQ.isLoading} stats={statsQ.data ?? []} />
+        ) : tab === "networks" ? (
+          <NetworksPane loading={networksQ.isLoading} networks={networksQ.data ?? []} sessionID={embeddedSessionID} />
         ) : tab === "images" ? (
           <ImagesPane loading={imagesQ.isLoading} images={imagesQ.data ?? []} />
         ) : (
@@ -341,7 +378,7 @@ function InfoCard({
   );
 }
 
-// ── Containers ───────────────────────────────────────────────────────
+// ── Containers (state-filtered) ──────────────────────────────────────
 
 function stateDotClass(state: string) {
   switch (state) {
@@ -356,20 +393,31 @@ function stateDotClass(state: string) {
   }
 }
 
+const FILTERS: { id: StateFilter; labelKey: string }[] = [
+  { id: "all", labelKey: "docker.filter_all" },
+  { id: "running", labelKey: "docker.filter_running" },
+  { id: "paused", labelKey: "docker.filter_paused" },
+  { id: "stopped", labelKey: "docker.filter_stopped" },
+];
+
 function ContainersPane({
   loading,
   containers,
   statsById,
   pending,
   actionError,
+  filter,
+  onFilter,
   onAction,
   onLogs,
 }: {
   loading: boolean;
-  containers: import("@/../bindings/github.com/ai-remote/workspace/internal/domain").DockerContainer[];
+  containers: DockerContainer[];
   statsById: Map<string, DockerContainerStats>;
   pending: { id: string; action: DockerAction } | null;
   actionError: unknown;
+  filter: StateFilter;
+  onFilter: (f: StateFilter) => void;
   onAction: (id: string, name: string, action: DockerAction) => void;
   onLogs: (id: string) => void;
 }) {
@@ -377,6 +425,15 @@ function ContainersPane({
   if (loading) {
     return <div className="p-6 text-center text-xs text-muted-foreground">{t("common.loading")}</div>;
   }
+
+  const counts: Record<StateFilter, number> = { all: containers.length, running: 0, paused: 0, stopped: 0 };
+  for (const ct of containers) {
+    const b = stateBucket(ct.state);
+    if (b) counts[b]++;
+  }
+  const visible = containers.filter((c) => filter === "all" || stateBucket(c.state) === filter);
+
+  const actionErrMsg = actionError ? String((actionError as Error)?.message ?? actionError) : "";
 
   const ActionBtn = ({
     container,
@@ -405,20 +462,39 @@ function ContainersPane({
     );
   };
 
-  const actionErrMsg = actionError ? String((actionError as Error)?.message ?? actionError) : "";
-
   return (
-    <div className="flex flex-col text-xs">
+    <div className="flex flex-col gap-1.5 text-xs">
+      {/* State filter chips with counts */}
+      <div className="flex flex-wrap items-center gap-1">
+        {FILTERS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => onFilter(f.id)}
+            className={cn(
+              "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors",
+              filter === f.id
+                ? "border-primary/50 bg-accent text-foreground"
+                : "border-border text-muted-foreground hover:bg-accent/50",
+            )}
+          >
+            {t(f.labelKey)}
+            <span className="tabular-nums opacity-70">{counts[f.id]}</span>
+          </button>
+        ))}
+      </div>
+
       {actionErrMsg && (
         <div
-          className="mb-1.5 truncate rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-[10px] text-destructive"
+          className="truncate rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-[10px] text-destructive"
           title={actionErrMsg}
         >
           {t("docker.actionFailed")}: {actionErrMsg}
         </div>
       )}
+
       <div className="divide-y divide-border/50">
-        {containers.map((c) => {
+        {visible.map((c) => {
           const st = statsById.get(c.id);
           const running = c.state === "running";
           const paused = c.state === "paused";
@@ -481,10 +557,198 @@ function ContainersPane({
             </div>
           );
         })}
-        {containers.length === 0 && (
+        {visible.length === 0 && (
           <div className="p-6 text-center text-xs text-muted-foreground">{t("docker.noContainers")}</div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Stats (container monitoring) ─────────────────────────────────────
+
+function StatsPane({
+  loading,
+  stats,
+}: {
+  loading: boolean;
+  stats: DockerContainerStats[];
+}) {
+  const { t } = useTranslation();
+  if (loading) {
+    return <div className="p-6 text-center text-xs text-muted-foreground">{t("common.loading")}</div>;
+  }
+  const rows = [...stats].sort((a, b) => parsePct(b.cpuPercent) - parsePct(a.cpuPercent));
+
+  return (
+    <div className="flex flex-col gap-1.5 text-xs">
+      {rows.map((s) => {
+        const cpu = parsePct(s.cpuPercent);
+        const mem = parsePct(s.memPercent);
+        return (
+          <div key={s.containerId || s.name} className="flex flex-col gap-1 rounded-[var(--radius)] border border-border bg-card p-2">
+            <div className="flex items-center gap-1.5">
+              <span className="min-w-0 flex-1 truncate font-medium" title={`${s.name} (${s.containerId})`}>
+                {s.name}
+              </span>
+              <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground" title={t("docker.pids")}>
+                PID {s.pids}
+              </span>
+            </div>
+            <StatBar label={t("docker.cpuUsage")} value={`${cpu.toFixed(2)}%`} percent={cpu} />
+            <StatBar label={t("docker.memUsage")} value={s.memUsage} percent={mem} />
+            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+              <span className="shrink-0">{t("docker.netIO")}</span>
+              <span className="truncate font-mono" title={`${t("docker.netIO")}: ${s.netIO}`}>
+                {s.netIO}
+              </span>
+              <span className="ml-auto shrink-0">{t("docker.blockIO")}</span>
+              <span className="truncate font-mono" title={`${t("docker.blockIO")}: ${s.blockIO}`}>
+                {s.blockIO}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+      {rows.length === 0 && (
+        <div className="p-6 text-center text-xs text-muted-foreground">{t("docker.noRunning")}</div>
+      )}
+    </div>
+  );
+}
+
+function StatBar({ label, value, percent }: { label: string; value: string; percent: number }) {
+  const p = Math.max(0, Math.min(100, percent));
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-baseline justify-between gap-2 text-[10px]">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-mono tabular-nums">{value}</span>
+      </div>
+      <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn("h-full rounded-full transition-all", p >= 90 ? "bg-destructive" : "bg-primary")}
+          style={{ width: `${p}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Networks ─────────────────────────────────────────────────────────
+
+function NetworksPane({
+  loading,
+  networks,
+  sessionID,
+}: {
+  loading: boolean;
+  networks: DockerNetwork[];
+  sessionID: string;
+}) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  // Detail loads lazily for the one expanded network; cached so collapsing
+  // and re-expanding doesn't refetch.
+  const inspectQ = useQuery({
+    queryKey: ["docker-network-inspect", sessionID, expanded],
+    queryFn: () => dockerApi.networkInspect(sessionID, expanded!),
+    enabled: expanded !== null,
+    staleTime: 60_000,
+  });
+
+  if (loading) {
+    return <div className="p-6 text-center text-xs text-muted-foreground">{t("common.loading")}</div>;
+  }
+
+  return (
+    <div className="flex flex-col divide-y divide-border/50 text-xs">
+      {networks.map((n) => {
+        const isOpen = expanded === n.name;
+        return (
+          <div key={n.id} className="py-1">
+            <button
+              type="button"
+              onClick={() => setExpanded(isOpen ? null : n.name)}
+              className="flex w-full items-center gap-1.5 rounded px-1 py-1 text-left hover:bg-accent/40"
+            >
+              {isOpen ? (
+                <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+              )}
+              <span className="min-w-0 flex-1 truncate font-medium">{n.name}</span>
+              <span className="shrink-0 rounded-full border border-border px-1.5 py-px text-[9px] text-muted-foreground">
+                {n.driver}
+              </span>
+              {n.scope === "swarm" && (
+                <span className="shrink-0 rounded-full border border-primary/40 px-1.5 py-px text-[9px] text-primary">
+                  {n.scope}
+                </span>
+              )}
+            </button>
+
+            {isOpen && (
+              <div className="flex flex-col gap-1 pl-6 pr-1 pt-0.5">
+                {inspectQ.isLoading ? (
+                  <span className="text-[10px] text-muted-foreground">{t("common.loading")}</span>
+                ) : inspectQ.isError ? (
+                  <span
+                    className="text-[10px] text-destructive"
+                    title={String((inspectQ.error as Error)?.message ?? "")}
+                  >
+                    {t("docker.inspectFailed")}
+                  </span>
+                ) : inspectQ.data ? (
+                  <>
+                    {(inspectQ.data.subnets ?? []).map((s, i) => (
+                      <div key={i} className="flex items-baseline justify-between gap-2 font-mono text-[10px]">
+                        <span className="truncate" title={t("docker.subnet")}>
+                          {s.subnet}
+                        </span>
+                        <span className="shrink-0 text-muted-foreground" title={t("docker.gateway")}>
+                          gw {s.gateway}
+                        </span>
+                      </div>
+                    ))}
+                    <div className="flex flex-wrap items-center gap-1">
+                      {inspectQ.data.internal && (
+                        <span className="rounded-full border border-border px-1.5 py-px text-[9px] text-muted-foreground">
+                          {t("docker.internal")}
+                        </span>
+                      )}
+                      {inspectQ.data.enableIpv6 && (
+                        <span className="rounded-full border border-border px-1.5 py-px text-[9px] text-muted-foreground">
+                          IPv6
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[10px] font-medium text-muted-foreground">
+                        {t("docker.attached")} ({inspectQ.data.containers?.length ?? 0})
+                      </span>
+                      {(inspectQ.data.containers ?? []).map((c) => (
+                        <div key={c.name} className="flex items-baseline justify-between gap-2 text-[10px]">
+                          <span className="min-w-0 flex-1 truncate" title={c.name}>
+                            {c.name}
+                          </span>
+                          <span className="shrink-0 font-mono text-muted-foreground" title={`${c.ipv4Address} ${c.ipv6Address}`}>
+                            {c.ipv4Address || c.ipv6Address || "—"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {networks.length === 0 && (
+        <div className="p-6 text-center text-xs text-muted-foreground">{t("docker.noNetworks")}</div>
+      )}
     </div>
   );
 }
@@ -539,7 +803,7 @@ function LogsPane({
   onTail,
   query,
 }: {
-  containers: import("@/../bindings/github.com/ai-remote/workspace/internal/domain").DockerContainer[];
+  containers: DockerContainer[];
   selected: string;
   onSelect: (id: string) => void;
   tail: number;
@@ -547,7 +811,7 @@ function LogsPane({
   query: ReturnType<typeof useQuery<string>>;
 }) {
   const { t } = useTranslation();
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLSpanElement>(null);
 
   // Newest lines are last with --tail; keep the view pinned there.
   useEffect(() => {

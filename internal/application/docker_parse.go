@@ -63,6 +63,35 @@ type dockerVersionDoc struct {
 	} `json:"Server"`
 }
 
+type dockerNetworksRow struct {
+	ID       string `json:"ID"`
+	Name     string `json:"Name"`
+	Driver   string `json:"Driver"`
+	Scope    string `json:"Scope"`
+	Internal bool   `json:"Internal"`
+	IPv6     bool   `json:"IPv6"`
+}
+
+type dockerNetworkInspectDoc struct {
+	ID         string `json:"Id"`
+	Name       string `json:"Name"`
+	Driver     string `json:"Driver"`
+	Scope      string `json:"Scope"`
+	Internal   bool   `json:"Internal"`
+	EnableIPv6 bool   `json:"EnableIPv6"`
+	IPAM       struct {
+		Config []struct {
+			Subnet  string `json:"Subnet"`
+			Gateway string `json:"Gateway"`
+		} `json:"Config"`
+	} `json:"IPAM"`
+	Containers map[string]struct {
+		Name        string `json:"Name"`
+		IPv4Address string `json:"IPv4Address"`
+		IPv6Address string `json:"IPv6Address"`
+	} `json:"Containers"`
+}
+
 type dockerInfoDoc struct {
 	ContainersRunning int    `json:"ContainersRunning"`
 	ContainersPaused  int    `json:"ContainersPaused"`
@@ -134,6 +163,61 @@ func parseDockerImages(out string) []domain.DockerImage {
 		})
 	}
 	return images
+}
+
+// parseDockerNetworks decodes `docker network ls --format json` rows.
+func parseDockerNetworks(out string) []domain.DockerNetwork {
+	rows := jsonLines(out)
+	networks := make([]domain.DockerNetwork, 0, len(rows))
+	for _, l := range rows {
+		var r dockerNetworksRow
+		if json.Unmarshal([]byte(l), &r) != nil || r.Name == "" {
+			continue
+		}
+		networks = append(networks, domain.DockerNetwork{
+			ID:       r.ID,
+			Name:     r.Name,
+			Driver:   r.Driver,
+			Scope:    r.Scope,
+			Internal: r.Internal,
+			IPv6:     r.IPv6,
+		})
+	}
+	return networks
+}
+
+// parseDockerNetworkInspect decodes one `docker network inspect --format json`
+// document into the flattened detail model.
+func parseDockerNetworkInspect(out string) (domain.DockerNetworkDetail, bool) {
+	for _, l := range jsonLines(out) {
+		var d dockerNetworkInspectDoc
+		if json.Unmarshal([]byte(l), &d) != nil || d.Name == "" {
+			continue
+		}
+		detail := domain.DockerNetworkDetail{
+			ID:         d.ID,
+			Name:       d.Name,
+			Driver:     d.Driver,
+			Scope:      d.Scope,
+			Internal:   d.Internal,
+			EnableIPv6: d.EnableIPv6,
+		}
+		for _, c := range d.IPAM.Config {
+			detail.Subnets = append(detail.Subnets, domain.DockerNetworkSubnet{
+				Subnet:  c.Subnet,
+				Gateway: c.Gateway,
+			})
+		}
+		for _, c := range d.Containers {
+			detail.Containers = append(detail.Containers, domain.DockerNetworkContainer{
+				Name:        c.Name,
+				IPv4Address: c.IPv4Address,
+				IPv6Address: c.IPv6Address,
+			})
+		}
+		return detail, true
+	}
+	return domain.DockerNetworkDetail{}, false
 }
 
 // parseDockerInfo merges `docker version` (server section) with the counters

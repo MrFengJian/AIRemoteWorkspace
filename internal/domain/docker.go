@@ -40,6 +40,42 @@ type DockerImage struct {
 	Size         string `json:"size"`         // "104MB"
 }
 
+// DockerNetwork is one network row (`docker network ls --format json`).
+type DockerNetwork struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Driver   string `json:"driver"` // "bridge" | "host" | "overlay" | "none" | …
+	Scope    string `json:"scope"`  // "local" | "swarm"
+	Internal bool   `json:"internal"`
+	IPv6     bool   `json:"ipv6"`
+}
+
+// DockerNetworkSubnet is one IPAM pool of a network.
+type DockerNetworkSubnet struct {
+	Subnet  string `json:"subnet"`
+	Gateway string `json:"gateway"`
+}
+
+// DockerNetworkContainer is one endpoint attached to a network.
+type DockerNetworkContainer struct {
+	Name        string `json:"name"`
+	IPv4Address string `json:"ipv4Address"`
+	IPv6Address string `json:"ipv6Address"`
+}
+
+// DockerNetworkDetail is `docker network inspect --format json`: the row
+// fields plus IPAM pools and the attached containers.
+type DockerNetworkDetail struct {
+	ID         string                   `json:"id"`
+	Name       string                   `json:"name"`
+	Driver     string                   `json:"driver"`
+	Scope      string                   `json:"scope"`
+	Internal   bool                     `json:"internal"`
+	EnableIPv6 bool                     `json:"enableIpv6"`
+	Subnets    []DockerNetworkSubnet    `json:"subnets"`
+	Containers []DockerNetworkContainer `json:"containers"`
+}
+
 // DockerInfo is the panel overview: `docker version` server section merged
 // with the counters from `docker info`.
 type DockerInfo struct {

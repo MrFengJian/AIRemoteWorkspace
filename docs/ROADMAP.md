@@ -129,7 +129,9 @@ Phase 7  Docker / Kubernetes    Docker 面板 ✅ · K8s 面板延后
 与主机监控同构的右侧面板，通过 docker CLI 原生采集（SSH 会话走 exec 通道，本地终端直连本机 Docker），不依赖 API socket 暴露或额外安装：
 
 - 概览：Docker 版本 / API 版本 / 平台 / 数据目录 / 容器与镜像计数
-- 容器：列表（含已停止切换）、实时 CPU / 内存占用（docker stats）、端口映射
+- 容器：状态过滤（全部 / 运行中 / 已暂停 / 已停止，含计数）、实时 CPU / 内存、端口映射
+- 监控：每容器资源卡片（CPU / 内存条形图、网络与磁盘 I/O、PIDs），按 CPU 排序
+- 网络：列表（驱动 / 范围），展开查看子网 / 网关 / 接入容器
 - 生命周期控制：start / stop / restart / pause / unpause（allowlist 校验 + 确认对话框）
 - 镜像：仓库 / 标签 / 大小 / 创建时间
 - 日志：按容器查看，行数可选（100–1000），自动滚到最新行

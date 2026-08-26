@@ -71,7 +71,9 @@
 
 ## Phase 7 — Docker / Kubernetes
 
-- [x] Docker 面板：概览 / 容器（含实时 stats）/ 镜像 / 日志 四个子页（docker CLI 原生采集，SSH + 本地双通道）
+- [x] Docker 面板：概览 / 容器（状态过滤 + 实时 stats）/ 监控 / 网络 / 镜像 / 日志 六个子页（docker CLI 原生采集，SSH + 本地双通道）
+- [x] 容器监控子页：每容器 CPU / 内存条形图、网络与磁盘 I/O、PIDs（按 CPU 排序）
+- [x] 网络子页：列表 + 展开查看子网 / 网关 / 接入容器（network inspect）
 - [x] 容器生命周期控制（start / stop / restart / pause / unpause，allowlist + 确认对话框）
 - [x] 友好降级（CLI 未安装 / 守护进程未运行分类提示，不报错）
 - [x] Agent 容器运维：直接经 ssh_exec / local_exec 使用 docker / kubectl CLI（提示词引导 + 危险动词 WRITE 分级 + 64KB 输出截断）
