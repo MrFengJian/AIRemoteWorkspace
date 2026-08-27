@@ -81,7 +81,13 @@ func main() {
 	hostSvc := application.NewHostService(hostRepo, connManager, hostKeyRepo, secretSvc)
 	monitorSvc := application.NewMonitorService(connManager)
 	dockerSvc := application.NewDockerService(connManager)
-	sftpSvc := application.NewSftpService(sftp.NewAppClient(sftpMgr), hostRepo, secretSvc)
+	sftpSvc := application.NewSftpService(sftp.NewAppClient(sftpMgr), hostRepo, secretSvc, func() domain.TransferConfig {
+		cfg, err := configSvc.GetAppConfig()
+		if err != nil {
+			return domain.TransferConfig{}
+		}
+		return cfg.Transfer
+	})
 	// ModelProviderService takes the provider repo + legacy config repo (both
 	// implemented by ConfigRepo) and the vault for per-provider API keys.
 	providerSvc := application.NewModelProviderService(configRepo, configRepo, secretSvc)

@@ -92,6 +92,14 @@ export function ConfirmDialog() {
           >
             {request.cancelLabel ?? t("common.cancel")}
           </Button>
+          {request.altLabel && (
+            <Button
+              variant="outline"
+              onClick={() => finish("alt")}
+            >
+              {request.altLabel}
+            </Button>
+          )}
           <Button
             variant={request.danger ? "destructive" : "default"}
             className={cn(!request.danger && "bg-primary text-primary-foreground")}

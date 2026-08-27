@@ -27,6 +27,20 @@ const maxDownloadBytes = 50 * 1024 * 1024 // 50 MB
 
 // ListDir returns the entries of a remote directory, sorted (dirs first, then
 // name). The path is resolved relative to the SFTP server's root.
+// StatSize returns a remote file's size (transfer pre-checks).
+func (m *Manager) StatSize(host domain.Host, creds domain.Credentials, remotePath string) (int64, error) {
+	sc, err := m.client(host, creds)
+	if err != nil {
+		return 0, err
+	}
+	info, err := sc.Stat(remotePath)
+	if err != nil {
+		m.maybeDropOnErr(host.ID, err)
+		return 0, fmt.Errorf("stat %q: %w", remotePath, err)
+	}
+	return info.Size(), nil
+}
+
 func (m *Manager) ListDir(host domain.Host, creds domain.Credentials, dir string) ([]Entry, error) {
 	sc, err := m.client(host, creds)
 	if err != nil {

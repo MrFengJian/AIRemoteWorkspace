@@ -8,8 +8,10 @@
  * secrets from the OS vault (Phase 5 SecretStore). If no remembered secret
  * exists, the operation fails with an auth error the UI surfaces.
  * 
- * Downloads/uploads emit per-transfer progress events named
- * "sftp:transfer:<id>" (Go → JS); the frontend supplies the id.
+ * Streaming transfers (StartDownload/StartUpload) run asynchronously in a
+ * backend goroutine: progress events arrive on "sftp:transfer:<id>" and a
+ * terminal event on "sftp:transfer:<id>:end" (data = "" on success,
+ * "cancelled", or the error text). CancelTransfer aborts by id.
  * @module
  */
 
@@ -20,6 +22,13 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
+
+/**
+ * CancelTransfer aborts a running streaming transfer by its id.
+ */
+export function CancelTransfer(transferID: string): $CancellablePromise<void> {
+    return $Call.ByID(383603475, transferID);
+}
 
 /**
  * DeleteFile removes a remote file or empty directory.
@@ -44,6 +53,14 @@ export function ListDir(hostID: string, dir: string): $CancellablePromise<$model
 }
 
 /**
+ * LocalExists reports whether a local path exists — the download-side
+ * same-name conflict check (the UI offers overwrite vs auto-rename).
+ */
+export function LocalExists(path: string): $CancellablePromise<boolean> {
+    return $Call.ByID(2959701953, path);
+}
+
+/**
  * Mkdir creates a remote directory.
  */
 export function Mkdir(hostID: string, remotePath: string): $CancellablePromise<void> {
@@ -55,6 +72,24 @@ export function Mkdir(hostID: string, remotePath: string): $CancellablePromise<v
  */
 export function RenameFile(hostID: string, oldPath: string, newPath: string): $CancellablePromise<void> {
     return $Call.ByID(3195865754, hostID, oldPath, newPath);
+}
+
+/**
+ * StartDownload streams a remote file to a local path chosen via the native
+ * save dialog. Returns immediately; progress and completion arrive as
+ * events (see the type comment). The remote size is pre-checked against the
+ * configured ceiling — an oversized file fails with the limit named.
+ */
+export function StartDownload(hostID: string, remotePath: string, localPath: string, transferID: string): $CancellablePromise<void> {
+    return $Call.ByID(245680938, hostID, remotePath, localPath, transferID);
+}
+
+/**
+ * StartUpload streams a local file (native-open dialog path) to a remote
+ * path, staging via ".airw-part" and renaming on completion.
+ */
+export function StartUpload(hostID: string, localPath: string, remotePath: string, transferID: string): $CancellablePromise<void> {
+    return $Call.ByID(2542626223, hostID, localPath, remotePath, transferID);
 }
 
 /**

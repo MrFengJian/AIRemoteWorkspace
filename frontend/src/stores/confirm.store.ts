@@ -20,6 +20,8 @@ export interface ConfirmRequest {
   confirmLabel?: string;
   /** Cancel button label (default "Cancel"). */
   cancelLabel?: string;
+  /** Optional third (middle) button; resolves the promise with "alt". */
+  altLabel?: string;
   /** Red / destructive styling for the confirm button. */
   danger?: boolean;
   /** Placeholder for prompt inputs. */

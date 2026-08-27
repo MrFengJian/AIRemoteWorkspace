@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Dialogs } from "@wailsio/runtime";
 import {
   Folder,
   File as FileIcon,
@@ -15,6 +16,7 @@ import {
   HardDrive,
   Eye,
   EyeOff,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -24,6 +26,7 @@ import {
   sftpApi,
   newTransferId,
   onTransferProgress,
+  transferDone,
   type FileEntryDTO,
   type TransferProgress,
 } from "@/features/sftp/api";
@@ -41,10 +44,41 @@ interface SftpViewProps {
 
 /** One in-flight upload/download, shown as a progress bar in the status bar. */
 interface TransferState extends TransferProgress {
+  /** Backend transfer id (cancel hook). */
+  id: string;
   /** File name being transferred (display only). */
   name: string;
   /** Which way the bytes flow — picks the status-bar icon. */
   direction: "up" | "down";
+}
+
+/** Basename for both POSIX and Windows paths. */
+function baseName(p: string): string {
+  return p.split(/[\\/]/).pop() || p;
+}
+
+/** Split "report.tar.gz" into base + last extension (dotfiles stay whole). */
+function splitExt(name: string): { base: string; ext: string } {
+  const i = name.lastIndexOf(".");
+  if (i <= 0) return { base: name, ext: "" };
+  return { base: name.slice(0, i), ext: name.slice(i) };
+}
+
+/**
+ * First non-conflicting name: name → name(1).ext → name(2).ext … The
+ * generator keeps counting so the renamed file can't collide either.
+ */
+async function suggestName(
+  name: string,
+  exists: (n: string) => boolean | Promise<boolean>,
+): Promise<string> {
+  if (!(await exists(name))) return name;
+  const { base, ext } = splitExt(name);
+  for (let i = 1; i <= 99; i++) {
+    const candidate = `${base}(${i})${ext}`;
+    if (!(await exists(candidate))) return candidate;
+  }
+  return `${base}(${Date.now()})${ext}`;
 }
 
 /**
@@ -71,8 +105,7 @@ export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps) {
   const [pathInput, setPathInput] = useState("/");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const { askConfirm, askPrompt } = useConfirm();
+  const { askConfirm, askPrompt, askChoice } = useConfirm();
 
   // Follow the host prop; switching hosts resets the browser.
   useEffect(() => {
@@ -131,19 +164,29 @@ export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps) {
 
   const busy = transfer !== null;
 
-  /** Runs one transfer with live progress; resolves when it completes. */
-  const runTransfer = async (
+  /** Runs one streaming transfer: registers progress, starts the backend
+   *  job, and resolves when its terminal event arrives. Cancellation is a
+   *  quiet notice, not an error. */
+  const runStream = async (
     name: string,
     direction: "up" | "down",
-    start: (transferID: string) => Promise<unknown>,
+    start: (transferID: string) => Promise<void>,
   ): Promise<void> => {
     const id = newTransferId();
     const unsubscribe = onTransferProgress(id, (p) =>
-      setTransfer({ name, direction, ...p }),
+      setTransfer({ id, name, direction, ...p }),
     );
-    setTransfer({ name, direction, transferred: 0, total: 0 });
+    setTransfer({ id, name, direction, transferred: 0, total: 0 });
     try {
       await start(id);
+      const end = await transferDone(id);
+      if (!end.ok) {
+        if (end.cancelled) {
+          toast.info(t("sftp.cancelled", { name }));
+          return;
+        }
+        throw new Error(end.error);
+      }
     } finally {
       unsubscribe();
       setTransfer(null);
@@ -153,37 +196,72 @@ export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps) {
   const handleDownload = async (entry: FileEntryDTO) => {
     if (!hostId || busy) return;
     const fullPath = cwd.replace(/\/$/, "") + "/" + entry.name;
-    try {
-      let data: Uint8Array | null = null;
-      await runTransfer(entry.name, "down", async (transferID) => {
-        data = await sftpApi.downloadFile(hostId, fullPath, transferID);
+    // Native save dialog: a real filesystem path the backend streams to —
+    // file bytes never cross the JS↔Go bridge, so size doesn't matter.
+    let localPath = await Dialogs.SaveFile({ Filename: entry.name });
+    if (!localPath) return; // dialog dismissed
+    // Same-name conflict on the local side: overwrite / auto-rename / abort.
+    if (await sftpApi.localExists(localPath)) {
+      const choice = await askChoice({
+        title: t("sftp.conflictTitle"),
+        message: t("sftp.conflictMessage", { name: baseName(localPath) }),
+        confirmLabel: t("sftp.conflictOverwrite"),
+        altLabel: t("sftp.conflictRename"),
+        danger: true,
       });
-      // Trigger a browser download via a Blob URL.
-      const blob = new Blob([data!.buffer as ArrayBuffer]);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = entry.name;
-      a.click();
-      URL.revokeObjectURL(url);
+      if (choice === false) return;
+      if (choice === "alt") {
+        const idx = Math.max(localPath.lastIndexOf("/"), localPath.lastIndexOf("\\"));
+        const dir = idx >= 0 ? localPath.slice(0, idx + 1) : "";
+        const renamed = await suggestName(baseName(localPath), (n) =>
+          sftpApi.localExists(dir + n),
+        );
+        localPath = dir + renamed;
+        toast.info(t("sftp.renamedTo", { name: renamed }));
+      }
+    }
+    try {
+      await runStream(entry.name, "down", (transferID) =>
+        sftpApi.startDownload(hostId, fullPath, localPath, transferID),
+      );
       toast.success(t("sftp.downloadDone", { name: entry.name }));
     } catch (e) {
       toast.error(`${t("sftp.downloadFailed", { name: entry.name })}: ${errorMessage(e)}`);
     }
   };
 
-  const handleUpload = async (file: File) => {
+  const handleUpload = async () => {
     if (!hostId || busy) return;
-    const fullPath = cwd.replace(/\/$/, "") + "/" + file.name;
+    // Native open dialog returns real paths → backend-side streaming.
+    const localPath = await Dialogs.OpenFile({ CanChooseFiles: true });
+    if (!localPath) return; // dialog dismissed
+    let name = baseName(localPath);
+    // Same-name conflict in the remote directory (checked against the
+    // current listing): overwrite / auto-rename / abort.
+    const remoteHas = (n: string) => entries.some((e) => e.name === n);
+    if (remoteHas(name)) {
+      const choice = await askChoice({
+        title: t("sftp.conflictTitle"),
+        message: t("sftp.conflictMessage", { name }),
+        confirmLabel: t("sftp.conflictOverwrite"),
+        altLabel: t("sftp.conflictRename"),
+        danger: true,
+      });
+      if (choice === false) return;
+      if (choice === "alt") {
+        name = await suggestName(name, remoteHas);
+        toast.info(t("sftp.renamedTo", { name }));
+      }
+    }
+    const fullPath = cwd.replace(/\/$/, "") + "/" + name;
     try {
-      const buf = new Uint8Array(await file.arrayBuffer());
-      await runTransfer(file.name, "up", (transferID) =>
-        sftpApi.uploadFile(hostId, fullPath, buf, transferID),
+      await runStream(name, "up", (transferID) =>
+        sftpApi.startUpload(hostId, localPath, fullPath, transferID),
       );
-      toast.success(t("sftp.uploadDone", { name: file.name }));
+      toast.success(t("sftp.uploadDone", { name }));
       await refresh(cwd);
     } catch (e) {
-      toast.error(`${t("sftp.uploadFailed", { name: file.name })}: ${errorMessage(e)}`);
+      toast.error(`${t("sftp.uploadFailed", { name })}: ${errorMessage(e)}`);
     }
   };
 
@@ -313,22 +391,12 @@ export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps) {
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => void handleUpload()}
           disabled={busy}
           title={t("sftp.upload")}
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
         </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleUpload(f);
-            e.target.value = "";
-          }}
-        />
       </div>
 
       {/* Breadcrumb */}
@@ -492,11 +560,24 @@ export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps) {
               }}
             />
           </div>
+          {transfer.total > 0 && (
+            <span className="w-9 shrink-0 text-right font-mono tabular-nums text-foreground">
+              {Math.min(100, Math.floor((transfer.transferred / transfer.total) * 100))}%
+            </span>
+          )}
           <span className="shrink-0 font-mono">
             {transfer.total > 0
               ? `${formatSize(transfer.transferred)} / ${formatSize(transfer.total)}`
               : formatSize(transfer.transferred)}
           </span>
+          <button
+            type="button"
+            onClick={() => void sftpApi.cancelTransfer(transfer.id)}
+            title={t("sftp.cancelTransfer")}
+            className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <X className="h-3 w-3" />
+          </button>
         </div>
       ) : (
         <div className="flex items-center justify-between border-t border-border bg-card px-3 py-1 text-xs text-muted-foreground">

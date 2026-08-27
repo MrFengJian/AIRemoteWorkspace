@@ -52,6 +52,16 @@ func (s *configService) GetAppConfig() (domain.AppConfig, error) {
 	if cfg.Agent.ToolOutputLimitKB == 0 {
 		cfg.Agent.ToolOutputLimitKB = 64
 	}
+	// Transfer tunables: same-value fallbacks for older stored rows.
+	if cfg.Transfer.ChunkKB == 0 {
+		cfg.Transfer.ChunkKB = 256
+	}
+	if cfg.Transfer.MaxUploadMB == 0 {
+		cfg.Transfer.MaxUploadMB = 4096
+	}
+	if cfg.Transfer.MaxDownloadMB == 0 {
+		cfg.Transfer.MaxDownloadMB = 4096
+	}
 	return cfg, nil
 }
 

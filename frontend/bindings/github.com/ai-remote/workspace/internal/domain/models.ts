@@ -101,6 +101,11 @@ export interface AppConfig {
      * AI agent runtime tunables (提示词 / 最大步数等, user-adjustable).
      */
     "agent": AgentConfig;
+
+    /**
+     * SFTP file-transfer tunables (streaming chunk size + size ceilings).
+     */
+    "transfer": TransferConfig;
 }
 
 /**
@@ -382,3 +387,29 @@ export enum SecurityMode {
     SecurityBalanced = "balanced",
     SecuritySecure = "secure",
 };
+
+/**
+ * TransferConfig holds the SFTP streaming-transfer tunables exposed in
+ * global settings. Zero values mean "use the built-in default" (filled in
+ * by the config service). Size ceilings exist to protect the user from
+ * accidental giant transfers, not from memory pressure — transfers stream
+ * with a fixed buffer regardless of file size.
+ */
+export interface TransferConfig {
+    /**
+     * ChunkKB is the streaming chunk size in KB (also the progress-event
+     * granularity). Default 256.
+     */
+    "chunkKb": number;
+
+    /**
+     * MaxUploadMB caps a single upload. Default 4096; raise it in settings
+     * for effectively-unlimited transfers (0 falls back to the default).
+     */
+    "maxUploadMb": number;
+
+    /**
+     * MaxDownloadMB caps a single download. Default 4096.
+     */
+    "maxDownloadMb": number;
+}

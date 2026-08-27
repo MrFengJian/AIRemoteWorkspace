@@ -3,6 +3,7 @@ package interfaces
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,11 +42,16 @@ const progressEmitInterval = 100 * time.Millisecond
 // secrets from the OS vault (Phase 5 SecretStore). If no remembered secret
 // exists, the operation fails with an auth error the UI surfaces.
 //
-// Downloads/uploads emit per-transfer progress events named
-// "sftp:transfer:<id>" (Go → JS); the frontend supplies the id.
+// Streaming transfers (StartDownload/StartUpload) run asynchronously in a
+// backend goroutine: progress events arrive on "sftp:transfer:<id>" and a
+// terminal event on "sftp:transfer:<id>:end" (data = "" on success,
+// "cancelled", or the error text). CancelTransfer aborts by id.
 type SftpService struct {
 	svc *appsvc.SftpService
 	app *wailsapp.App
+
+	mu        sync.Mutex
+	transfers map[string]context.CancelFunc
 }
 
 // NewSftpService wires the Wails SftpService to its application port.
@@ -116,6 +122,88 @@ func (s *SftpService) DownloadFile(hostID, remotePath, transferID string) ([]byt
 // "sftp:transfer:<transferID>" while the write runs.
 func (s *SftpService) UploadFile(hostID, remotePath string, data []byte, transferID string) error {
 	return s.svc.UploadFile(hostID, domain.Credentials{}, remotePath, data, s.progressEmitter(transferID))
+}
+
+// registerTransfer records a running transfer's cancel func.
+func (s *SftpService) registerTransfer(id string, cancel context.CancelFunc) {
+	s.mu.Lock()
+	if s.transfers == nil {
+		s.transfers = make(map[string]context.CancelFunc)
+	}
+	s.transfers[id] = cancel
+	s.mu.Unlock()
+}
+
+func (s *SftpService) unregisterTransfer(id string) {
+	s.mu.Lock()
+	delete(s.transfers, id)
+	s.mu.Unlock()
+}
+
+// runStreamTransfer executes one streaming transfer in the background and
+// emits the terminal "sftp:transfer:<id>:end" event. start runs the
+// cancellable work.
+func (s *SftpService) runStreamTransfer(transferID string, start func(ctx context.Context) error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.registerTransfer(transferID, cancel)
+	go func() {
+		defer s.unregisterTransfer(transferID)
+		err := start(ctx)
+		msg := ""
+		if err != nil {
+			if errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "cancelled") {
+				msg = "cancelled"
+			} else {
+				msg = err.Error()
+			}
+		}
+		if s.app != nil {
+			s.app.Event.Emit(fmt.Sprintf("sftp:transfer:%s:end", transferID), msg)
+		}
+	}()
+}
+
+// StartDownload streams a remote file to a local path chosen via the native
+// save dialog. Returns immediately; progress and completion arrive as
+// events (see the type comment). The remote size is pre-checked against the
+// configured ceiling — an oversized file fails with the limit named.
+func (s *SftpService) StartDownload(hostID, remotePath, localPath, transferID string) error {
+	s.runStreamTransfer(transferID, func(ctx context.Context) error {
+		return s.svc.DownloadToFile(ctx, hostID, remotePath, localPath, s.progressEmitter(transferID))
+	})
+	return nil
+}
+
+// StartUpload streams a local file (native-open dialog path) to a remote
+// path, staging via ".airw-part" and renaming on completion.
+func (s *SftpService) StartUpload(hostID, localPath, remotePath, transferID string) error {
+	s.runStreamTransfer(transferID, func(ctx context.Context) error {
+		return s.svc.UploadFromFile(ctx, hostID, localPath, remotePath, s.progressEmitter(transferID))
+	})
+	return nil
+}
+
+// CancelTransfer aborts a running streaming transfer by its id.
+func (s *SftpService) CancelTransfer(transferID string) {
+	s.mu.Lock()
+	cancel, ok := s.transfers[transferID]
+	s.mu.Unlock()
+	if ok {
+		cancel()
+	}
+}
+
+// LocalExists reports whether a local path exists — the download-side
+// same-name conflict check (the UI offers overwrite vs auto-rename).
+func (s *SftpService) LocalExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
 }
 
 // UploadClipboardImage decodes base64 image data and stores it as /tmp/<name>

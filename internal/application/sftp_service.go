@@ -1,7 +1,9 @@
 package application
 
 import (
+	"context"
 	"fmt"
+	"os"
 
 	"github.com/ai-remote/workspace/internal/domain"
 )
@@ -19,6 +21,12 @@ type SftpClient interface {
 	DeleteFile(host domain.Host, creds domain.Credentials, remotePath string) error
 	RenameFile(host domain.Host, creds domain.Credentials, oldPath, newPath string) error
 	Mkdir(host domain.Host, creds domain.Credentials, remotePath string) error
+	// Streaming transfers (FileZilla-style): fixed-memory, cancellable,
+	// staged via .part + rename. chunk bytes is the buffer size and progress
+	// granularity.
+	StatSize(host domain.Host, creds domain.Credentials, remotePath string) (int64, error)
+	DownloadToFile(ctx context.Context, host domain.Host, creds domain.Credentials, remotePath, localPath string, chunk int64, progress SftpProgress) error
+	UploadFromFile(ctx context.Context, host domain.Host, creds domain.Credentials, localPath, remotePath string, chunk int64, progress SftpProgress) error
 }
 
 // SftpEntry mirrors the remote filesystem entry for the application layer.
@@ -36,11 +44,32 @@ type SftpService struct {
 	client  SftpClient
 	hosts   HostRepository
 	secrets *SecretService
+	// transferCfg supplies the current transfer tunables (global settings);
+	// nil falls back to the built-in defaults.
+	transferCfg func() domain.TransferConfig
 }
 
-// NewSftpService wires an SftpService. secrets may be nil.
-func NewSftpService(client SftpClient, hosts HostRepository, secrets *SecretService) *SftpService {
-	return &SftpService{client: client, hosts: hosts, secrets: secrets}
+// NewSftpService wires an SftpService. secrets and cfg may be nil.
+func NewSftpService(client SftpClient, hosts HostRepository, secrets *SecretService, cfg func() domain.TransferConfig) *SftpService {
+	return &SftpService{client: client, hosts: hosts, secrets: secrets, transferCfg: cfg}
+}
+
+// transferConfig returns effective settings with defaults for zero fields.
+func (s *SftpService) transferConfig() domain.TransferConfig {
+	cfg := domain.TransferConfig{}
+	if s.transferCfg != nil {
+		cfg = s.transferCfg()
+	}
+	if cfg.ChunkKB <= 0 {
+		cfg.ChunkKB = 256
+	}
+	if cfg.MaxUploadMB <= 0 {
+		cfg.MaxUploadMB = 4096
+	}
+	if cfg.MaxDownloadMB <= 0 {
+		cfg.MaxDownloadMB = 4096
+	}
+	return cfg
 }
 
 // resolve loads a host and fills in remembered credentials for empty fields.
@@ -117,6 +146,43 @@ func (s *SftpService) Mkdir(hostID string, creds domain.Credentials, remotePath 
 		return err
 	}
 	return s.client.Mkdir(host, c, remotePath)
+}
+
+// DownloadToFile streams a remote file to a local path. The remote size is
+// pre-checked against the configured download ceiling so oversized files
+// fail fast with the limit named (before any bytes move).
+func (s *SftpService) DownloadToFile(ctx context.Context, hostID, remotePath, localPath string, progress SftpProgress) error {
+	host, c, err := s.resolve(hostID, domain.Credentials{})
+	if err != nil {
+		return err
+	}
+	cfg := s.transferConfig()
+	size, err := s.client.StatSize(host, c, remotePath)
+	if err != nil {
+		return err
+	}
+	if limit := int64(cfg.MaxDownloadMB) * 1024 * 1024; size > limit {
+		return fmt.Errorf("file is %d MB, exceeds the %d MB download limit (adjust in Settings → Advanced)", size/1024/1024, cfg.MaxDownloadMB)
+	}
+	return s.client.DownloadToFile(ctx, host, c, remotePath, localPath, int64(cfg.ChunkKB)*1024, progress)
+}
+
+// UploadFromFile streams a local file to a remote path, with the same
+// fast-fail size pre-check on the local file.
+func (s *SftpService) UploadFromFile(ctx context.Context, hostID, localPath, remotePath string, progress SftpProgress) error {
+	host, c, err := s.resolve(hostID, domain.Credentials{})
+	if err != nil {
+		return err
+	}
+	cfg := s.transferConfig()
+	info, err := os.Stat(localPath)
+	if err != nil {
+		return fmt.Errorf("stat local %q: %w", localPath, err)
+	}
+	if limit := int64(cfg.MaxUploadMB) * 1024 * 1024; info.Size() > limit {
+		return fmt.Errorf("file is %d MB, exceeds the %d MB upload limit (adjust in Settings → Advanced)", info.Size()/1024/1024, cfg.MaxUploadMB)
+	}
+	return s.client.UploadFromFile(ctx, host, c, localPath, remotePath, int64(cfg.ChunkKB)*1024, progress)
 }
 
 // SftpError wraps an SFTP error with context for the UI.

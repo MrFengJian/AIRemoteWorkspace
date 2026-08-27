@@ -1,6 +1,7 @@
 package sftp
 
 import (
+	"context"
 	"time"
 
 	"github.com/ai-remote/workspace/internal/application"
@@ -49,6 +50,18 @@ func (a *AppClient) RenameFile(host domain.Host, creds domain.Credentials, oldPa
 
 func (a *AppClient) Mkdir(host domain.Host, creds domain.Credentials, remotePath string) error {
 	return a.m.Mkdir(host, creds, remotePath)
+}
+
+func (a *AppClient) StatSize(host domain.Host, creds domain.Credentials, remotePath string) (int64, error) {
+	return a.m.StatSize(host, creds, remotePath)
+}
+
+func (a *AppClient) DownloadToFile(ctx context.Context, host domain.Host, creds domain.Credentials, remotePath, localPath string, chunk int64, progress application.SftpProgress) error {
+	return a.m.DownloadToFile(ctx, host, creds, remotePath, localPath, chunk, progress)
+}
+
+func (a *AppClient) UploadFromFile(ctx context.Context, host domain.Host, creds domain.Credentials, localPath, remotePath string, chunk int64, progress application.SftpProgress) error {
+	return a.m.UploadFromFile(ctx, host, creds, localPath, remotePath, chunk, progress)
 }
 
 func toAppEntry(e Entry) application.SftpEntry {

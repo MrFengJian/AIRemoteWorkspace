@@ -79,8 +79,14 @@ func (m *Manager) client(host domain.Host, creds domain.Credentials) (*sf.Client
 		return nil, fmt.Errorf("sftp dial %s: %w", host.Host, err)
 	}
 	// sftp.NewClient needs the raw *golang.org/x/crypto/ssh.Client that our
-	// ssh.Client wraps.
-	sc, err := sf.NewClient(sshClient.SSHClient())
+	// ssh.Client wraps. Concurrent reads/writes pipeline SFTP requests so a
+	// single stream isn't round-trip-bound on latency (the classic SFTP
+	// client throughput trick — see FileZilla/Xftp).
+	sc, err := sf.NewClient(sshClient.SSHClient(),
+		sf.UseConcurrentReads(true),
+		sf.UseConcurrentWrites(true),
+		sf.MaxConcurrentRequestsPerFile(64),
+	)
 	if err != nil {
 		_ = sshClient.Close()
 		return nil, fmt.Errorf("sftp init %s: %w", host.Host, err)

@@ -17,6 +17,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
@@ -54,6 +55,11 @@ const DEFAULT_CONFIG: AppConfig = {
     historyTurns: 40,
     toolOutputLimitKB: 64,
     customInstructions: "",
+  },
+  transfer: {
+    chunkKb: 256,
+    maxUploadMb: 4096,
+    maxDownloadMb: 4096,
   },
   llm: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o" },
 };
@@ -363,6 +369,61 @@ function AdvancedSection({
               ))}
             </Select>
           </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">{t("settings.transferTitle")}</CardTitle>
+          <CardDescription>{t("settings.transferDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {(
+            [
+              {
+                id: "transferChunk",
+                key: "chunkKb" as const,
+                label: t("settings.transferChunk"),
+                hint: t("settings.transferChunkHint"),
+                min: 64,
+                max: 4096,
+              },
+              {
+                id: "transferUpload",
+                key: "maxUploadMb" as const,
+                label: t("settings.transferUploadLimit"),
+                hint: t("settings.transferLimitHint"),
+                min: 1,
+                max: 1048576,
+              },
+              {
+                id: "transferDownload",
+                key: "maxDownloadMb" as const,
+                label: t("settings.transferDownloadLimit"),
+                hint: t("settings.transferLimitHint"),
+                min: 1,
+                max: 1048576,
+              },
+            ] as const
+          ).map((f) => (
+            <div key={f.id} className="grid grid-cols-[10rem_9rem_1fr] items-center gap-3">
+              <Label htmlFor={f.id}>{f.label}</Label>
+              <Input
+                id={f.id}
+                type="number"
+                min={f.min}
+                max={f.max}
+                value={config.transfer?.[f.key] ?? 256}
+                onChange={(e) => {
+                  const n = Math.round(Number(e.target.value));
+                  if (!Number.isFinite(n)) return;
+                  void update({
+                    transfer: { ...config.transfer, [f.key]: Math.min(f.max, Math.max(f.min, n)) },
+                  });
+                }}
+              />
+              <p className="text-xs text-muted-foreground">{f.hint}</p>
+            </div>
+          ))}
         </CardContent>
       </Card>
       <Card>

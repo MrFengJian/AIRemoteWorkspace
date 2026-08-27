@@ -22,5 +22,6 @@ export type {
     MonitorOverview,
     MonitorPort,
     MonitorProcess,
-    MonitorTCPState
+    MonitorTCPState,
+    TransferConfig
 } from "./models.js";

@@ -1,8 +1,10 @@
 // SFTP feature API — typed wrappers over the generated SftpService bindings.
 //
-// DownloadFile/UploadFile carry file bytes as strings (Wails serialises
-// []byte ↔ string). Both take a caller-generated transfer id; the backend
-// emits progress events on "sftp:transfer:<id>" while the transfer runs.
+// Transfers are streaming and backend-driven (FileZilla-style): the UI only
+// picks paths via native dialogs and observes events — file bytes never
+// cross the JS↔Go bridge, so memory usage is independent of file size.
+// Per-transfer events: progress on "sftp:transfer:<id>", terminal state on
+// "sftp:transfer:<id>:end" ("" success | "cancelled" | error text).
 
 import { Events } from "@wailsio/runtime";
 
@@ -18,6 +20,9 @@ export interface TransferProgress {
   transferred: number;
   total: number;
 }
+
+/** Terminal state of a streaming transfer. */
+export type TransferEnd = { ok: true } | { ok: false; cancelled: boolean; error: string };
 
 let nextTransferId = 1;
 
@@ -40,10 +45,41 @@ export function onTransferProgress(
   };
 }
 
+/**
+ * Subscribe to a transfer's terminal event; returns an unsubscribe fn.
+ * The promise-style helper below is the convenient way to await it.
+ */
+export function onTransferEnd(id: string, cb: (end: TransferEnd) => void): () => void {
+  const cancel = Events.On(`sftp:transfer:${id}:end`, (e: unknown) => {
+    const data = (e as { data?: unknown }).data;
+    const msg = typeof data === "string" ? data : "";
+    cb(msg === "" ? { ok: true } : { ok: false, cancelled: msg === "cancelled", error: msg });
+  });
+  return () => {
+    if (typeof cancel === "function") cancel();
+  };
+}
+
+/** Resolve when the transfer finishes (success or failure). */
+export function transferDone(id: string): Promise<TransferEnd> {
+  return new Promise((resolve) => {
+    const cancel = onTransferEnd(id, (end) => {
+      cancel();
+      resolve(end);
+    });
+  });
+}
+
 export interface SftpApi {
   listDir: (hostID: string, dir: string) => Promise<FileEntryDTO[]>;
-  downloadFile: (hostID: string, remotePath: string, transferID: string) => Promise<Uint8Array>;
-  uploadFile: (hostID: string, remotePath: string, data: Uint8Array, transferID: string) => Promise<void>;
+  /** Stream remotePath → localPath (native save-dialog path). */
+  startDownload: (hostID: string, remotePath: string, localPath: string, transferID: string) => Promise<void>;
+  /** Stream localPath (native open-dialog path) → remotePath. */
+  startUpload: (hostID: string, localPath: string, remotePath: string, transferID: string) => Promise<void>;
+  /** Abort a running transfer by id. */
+  cancelTransfer: (transferID: string) => Promise<void>;
+  /** Whether a local path exists (download-side same-name conflict check). */
+  localExists: (path: string) => Promise<boolean>;
   deleteFile: (hostID: string, remotePath: string) => Promise<void>;
   renameFile: (hostID: string, oldPath: string, newPath: string) => Promise<void>;
   mkdir: (hostID: string, remotePath: string) => Promise<void>;
@@ -51,14 +87,12 @@ export interface SftpApi {
 
 export const sftpApi: SftpApi = {
   listDir: (hostID, dir) => SftpService.ListDir(hostID, dir).then((r) => r ?? []),
-  downloadFile: (hostID, remotePath, transferID) =>
-    // Backend returns the file bytes as a string; encode to bytes for the Blob.
-    SftpService.DownloadFile(hostID, remotePath, transferID).then((s) =>
-      new TextEncoder().encode(s ?? ""),
-    ),
-  uploadFile: (hostID, remotePath, data, transferID) =>
-    // Backend expects a string; decode bytes first.
-    SftpService.UploadFile(hostID, remotePath, new TextDecoder().decode(data), transferID),
+  startDownload: (hostID, remotePath, localPath, transferID) =>
+    SftpService.StartDownload(hostID, remotePath, localPath, transferID),
+  startUpload: (hostID, localPath, remotePath, transferID) =>
+    SftpService.StartUpload(hostID, localPath, remotePath, transferID),
+  cancelTransfer: (transferID) => SftpService.CancelTransfer(transferID),
+  localExists: (path) => SftpService.LocalExists(path),
   deleteFile: (hostID, remotePath) => SftpService.DeleteFile(hostID, remotePath),
   renameFile: (hostID, oldPath, newPath) =>
     SftpService.RenameFile(hostID, oldPath, newPath),
