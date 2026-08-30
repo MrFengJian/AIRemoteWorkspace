@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, Copy, CornerDownLeft, Terminal as TerminalIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { ContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
 import { cn } from "@/lib/utils";
 
 interface CodeBlockProps {
@@ -16,7 +17,9 @@ interface CodeBlockProps {
 }
 
 /**
- * Renders a fenced code block with Copy + Insert-to-Terminal actions.
+ * Renders a fenced code block with Copy + Insert-to-Terminal actions (both
+ * as buttons and via the panel's own context menu — the browser default is
+ * suppressed).
  *
  * "Insert" sends the code to the active SSH session's stdin (via WriteStdin),
  * so the user can review an agent-suggested command and run it with one click
@@ -26,6 +29,7 @@ export function CodeBlock({ code, language, canInsert, onInsert }: CodeBlockProp
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [inserted, setInserted] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
   const trimmed = code.replace(/^\n+|\n+$/g, "");
 
@@ -45,8 +49,20 @@ export function CodeBlock({ code, language, canInsert, onInsert }: CodeBlockProp
     setTimeout(() => setInserted(false), 2000);
   };
 
+  const menuItems: MenuItem[] = [
+    { label: t("agent.copyCode"), icon: Copy, onClick: () => void handleCopy() },
+    { label: t("agent.insert"), icon: CornerDownLeft, onClick: handleInsert, disabled: !canInsert },
+  ];
+
   return (
-    <div className="group relative my-1 overflow-hidden rounded-[var(--radius)] border border-border bg-background/80">
+    <div
+      className="group relative my-1 overflow-hidden rounded-[var(--radius)] border border-border bg-background/80"
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setMenu({ x: e.clientX, y: e.clientY });
+      }}
+    >
       {/* Action bar */}
       <div className="flex items-center justify-between border-b border-border/60 bg-secondary/40 px-2 py-1">
         <span className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -93,6 +109,10 @@ export function CodeBlock({ code, language, canInsert, onInsert }: CodeBlockProp
       <pre className="overflow-auto whitespace-pre-wrap break-all p-2.5 font-mono text-xs leading-relaxed text-foreground/90">
         {trimmed}
       </pre>
+
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
@@ -7,11 +7,20 @@ import {
   ArrowUp,
   ChevronDown,
   ChevronUp,
+  Copy,
   RefreshCw,
+  Skull,
+  Square,
+  TerminalSquare,
 } from "lucide-react";
 
 import { ConfigService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
+import type { MonitorPort, MonitorProcess } from "@/../bindings/github.com/ai-remote/workspace/internal/domain";
 import { monitorApi, fmtKB, fmtRate, fmtUptime } from "@/features/monitor/api";
+import { ContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
+import { insertToTerminal } from "@/lib/insertTerminal";
+import { toast } from "@/lib/toast";
+import { useUIStore } from "@/stores/ui.store";
 import { cn } from "@/lib/utils";
 
 type SubTab = "overview" | "processes" | "ports";
@@ -42,6 +51,122 @@ export function MonitorView({ embeddedSessionID, embeddedSessionName, isLocal }:
   const { t } = useTranslation();
   const [tab, setTab] = useState<SubTab>("overview");
   const [intervalSec, setIntervalSec] = useState(60);
+  /** Panel context menu: proc row | port row | metric card (overview) | background. */
+  const [menu, setMenu] = useState<
+    | { x: number; y: number; entry: { kind: "proc"; proc: MonitorProcess } | { kind: "port"; port: MonitorPort } }
+    | { x: number; y: number; metric: { label: string; value: string } }
+    | { x: number; y: number }
+    | null
+  >(null);
+  const setView = useUIStore((s) => s.setView);
+
+  /** Copy text with a quiet confirmation. */
+  const copyText = useCallback(
+    async (text: string) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        toast.info(t("monitor.copied"));
+      } catch {
+        /* clipboard unavailable */
+      }
+    },
+    [t],
+  );
+
+  /** Insert a diagnostic command into the active terminal (review + Enter). */
+  const insertCommand = useCallback(
+    (cmd: string) => {
+      if (insertToTerminal(cmd)) {
+        setView("terminal");
+      } else {
+        toast.info(t("monitor.noTerminal"));
+      }
+    },
+    [setView, t],
+  );
+
+  /** Context-menu items per right-click target. Declared as a function so
+   *  it can close over `activeQ` (defined below) at call time. */
+  function buildMenuItems(m: NonNullable<typeof menu>): MenuItem[] {
+    if ("metric" in m) {
+      // Overview metric card: copy the displayed value.
+      return [
+        {
+          label: t("monitor.copyMetric", { value: m.metric.value }),
+          icon: Copy,
+          onClick: () => void copyText(m.metric.value),
+        },
+      ];
+    }
+    if ("entry" in m && m.entry.kind === "proc") {
+      const p = m.entry.proc;
+      return [
+        {
+          label: t("monitor.killProc", { pid: p.pid }),
+          icon: Square,
+          onClick: () => insertCommand(`kill ${p.pid}`),
+        },
+        {
+          label: t("monitor.kill9Proc", { pid: p.pid }),
+          icon: Skull,
+          onClick: () => insertCommand(`kill -9 ${p.pid}`),
+        },
+        { type: "separator" },
+        {
+          label: t("monitor.copyPid"),
+          icon: Copy,
+          onClick: () => void copyText(String(p.pid)),
+        },
+        {
+          label: t("monitor.copyProcName"),
+          icon: Copy,
+          onClick: () => void copyText(p.name),
+        },
+        {
+          label: t("monitor.copyProcCmd"),
+          icon: Copy,
+          onClick: () => void copyText(p.commandLine || p.name),
+        },
+      ];
+    }
+    if ("entry" in m && m.entry.kind === "port") {
+      const port = m.entry.port;
+      return [
+        {
+          label: t("monitor.portOwner", { port: port.port }),
+          icon: TerminalSquare,
+          onClick: () => insertCommand(`ss -tnlp | grep ':${port.port} '`),
+        },
+        { type: "separator" },
+        {
+          label: t("monitor.copyPort"),
+          icon: Copy,
+          onClick: () => void copyText(String(port.port)),
+        },
+        {
+          label: t("monitor.copyAddr"),
+          icon: Copy,
+          onClick: () => void copyText(port.address),
+        },
+      ];
+    }
+    // Background: refresh + auto-refresh settings deep link.
+    return [
+      {
+        label: t("monitor.refresh"),
+        icon: RefreshCw,
+        onClick: () => void activeQ.refetch(),
+      },
+      {
+        label: t("monitor.openAutoRefreshSettings"),
+        icon: RefreshCw,
+        onClick: () => {
+          useUIStore.getState().setView("settings");
+          useUIStore.getState().setSettingsCategory("advanced");
+        },
+      },
+    ];
+  }
 
   // Windows local terminals have nothing to collect through — explain
   // instead of running requests that can only fail.
@@ -174,7 +299,10 @@ export function MonitorView({ embeddedSessionID, embeddedSessionName, isLocal }:
             </p>
           </div>
         ) : tab === "overview" ? (
-          <OverviewPane q={overviewQ} />
+          <OverviewPane
+            q={overviewQ}
+            onMetricMenu={(x, y, metric) => setMenu({ x, y, metric })}
+          />
         ) : tab === "processes" ? (
           <ProcessesPane
             loading={processesQ.isLoading}
@@ -182,11 +310,26 @@ export function MonitorView({ embeddedSessionID, embeddedSessionName, isLocal }:
             sortKey={sortKey}
             sortAsc={sortAsc}
             onSort={toggleSort}
+            onMenu={(x, y, p) => setMenu({ x, y, entry: { kind: "proc", proc: p } })}
           />
         ) : (
-          <PortsPane loading={portsQ.isLoading} ports={portsQ.data ?? []} />
+          <PortsPane
+            loading={portsQ.isLoading}
+            ports={portsQ.data ?? []}
+            onMenu={(x, y, port) => setMenu({ x, y, entry: { kind: "port", port } })}
+          />
         )}
       </div>
+
+      {/* Context menu (process row / port row / metric card / background) */}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={buildMenuItems(menu)}
+          onClose={() => setMenu(null)}
+        />
+      )}
     </div>
   );
 }
@@ -195,8 +338,10 @@ export function MonitorView({ embeddedSessionID, embeddedSessionName, isLocal }:
 
 function OverviewPane({
   q,
+  onMetricMenu,
 }: {
   q: ReturnType<typeof useQuery<import("@/../bindings/github.com/ai-remote/workspace/internal/domain").MonitorOverview>>;
+  onMetricMenu: (x: number, y: number, metric: { label: string; value: string }) => void;
 }) {
   const { t } = useTranslation();
   if (q.isLoading || !q.data) {
@@ -210,6 +355,7 @@ function OverviewPane({
       <MetricCard
         label={t("monitor.cpu")}
         value={`${o.cpuPercent.toFixed(1)}%`}
+        onMenu={onMetricMenu}
         footer={
           <>
             <Bar percent={o.cpuPercent} />
@@ -224,6 +370,7 @@ function OverviewPane({
       <MetricCard
         label={t("monitor.memory")}
         value={`${fmtKB(o.memUsedKb)} / ${fmtKB(o.memTotalKb)}`}
+        onMenu={onMetricMenu}
         footer={
           <>
             <Bar percent={o.memUsedPercent} />
@@ -238,8 +385,8 @@ function OverviewPane({
 
       {/* Network rates */}
       <div className="grid grid-cols-2 gap-2">
-        <MetricCard label={t("monitor.down")} value={fmtRate(o.netRxBytesPerSec)} icon={<ArrowDown className="h-3 w-3 text-primary" />} />
-        <MetricCard label={t("monitor.up")} value={fmtRate(o.netTxBytesPerSec)} icon={<ArrowUp className="h-3 w-3 text-success" />} />
+        <MetricCard label={t("monitor.down")} value={fmtRate(o.netRxBytesPerSec)} icon={<ArrowDown className="h-3 w-3 text-primary" />} onMenu={onMetricMenu} />
+        <MetricCard label={t("monitor.up")} value={fmtRate(o.netTxBytesPerSec)} icon={<ArrowUp className="h-3 w-3 text-success" />} onMenu={onMetricMenu} />
       </div>
 
       {/* Load + processes + uptime */}
@@ -247,20 +394,23 @@ function OverviewPane({
         <MetricCard
           label={t("monitor.load")}
           value={o.load1.toFixed(2)}
+          onMenu={onMetricMenu}
           footer={<div className="text-[10px] text-muted-foreground">5s {o.load5.toFixed(2)} · 15s {o.load15.toFixed(2)}</div>}
         />
         <MetricCard
           label={t("monitor.procCount")}
           value={String(o.processTotal)}
+          onMenu={onMetricMenu}
           footer={<div className="text-[10px] text-muted-foreground">{t("monitor.running")}: {o.processRunning}</div>}
         />
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <MetricCard label={t("monitor.uptime")} value={fmtUptime(o.uptimeSeconds)} />
+        <MetricCard label={t("monitor.uptime")} value={fmtUptime(o.uptimeSeconds)} onMenu={onMetricMenu} />
         <MetricCard
           label={t("monitor.tcpConnections")}
           value={String(o.tcpStates?.reduce((a, s) => a + s.count, 0) ?? 0)}
+          onMenu={onMetricMenu}
           footer={
             <div className="space-y-0.5 text-[10px] text-muted-foreground">
               {(o.tcpStates ?? []).slice(0, 3).map((s) => (
@@ -309,15 +459,29 @@ function MetricCard({
   icon,
   footer,
   accent,
+  onMenu,
 }: {
   label: string;
   value: string;
   icon?: ReactNode;
   footer?: ReactNode;
   accent?: boolean;
+  /** Right-click: expose a copy-value menu for this metric. */
+  onMenu?: (x: number, y: number, metric: { label: string; value: string }) => void;
 }) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-[var(--radius)] border border-border bg-card p-2.5">
+    <div
+      className="flex flex-col gap-1.5 rounded-[var(--radius)] border border-border bg-card p-2.5"
+      onContextMenu={
+        onMenu
+          ? (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onMenu(e.clientX, e.clientY, { label, value });
+            }
+          : undefined
+      }
+    >
       <div className="flex items-center justify-between gap-2">
         <span className={cn("flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground", accent && "text-foreground")}>
           {icon}
@@ -350,12 +514,14 @@ function ProcessesPane({
   sortKey,
   sortAsc,
   onSort,
+  onMenu,
 }: {
   loading: boolean;
   procs: import("@/../bindings/github.com/ai-remote/workspace/internal/domain").MonitorProcess[];
   sortKey: ProcSortKey;
   sortAsc: boolean;
   onSort: (k: ProcSortKey) => void;
+  onMenu: (x: number, y: number, proc: MonitorProcess) => void;
 }) {
   const { t } = useTranslation();
   if (loading) {
@@ -384,7 +550,15 @@ function ProcessesPane({
       </div>
       <div className="divide-y divide-border/50">
         {procs.map((p) => (
-          <div key={p.pid} className="flex items-center gap-2 px-1 py-1 hover:bg-accent/40">
+          <div
+            key={p.pid}
+            className="flex items-center gap-2 px-1 py-1 hover:bg-accent/40"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onMenu(e.clientX, e.clientY, p);
+            }}
+          >
             <span className="w-12 shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">{p.pid}</span>
             <span className="w-28 shrink-0 truncate" title={p.commandLine || p.name}>
               {p.name || "??"}
@@ -415,9 +589,11 @@ function ProcessesPane({
 function PortsPane({
   loading,
   ports,
+  onMenu,
 }: {
   loading: boolean;
   ports: import("@/../bindings/github.com/ai-remote/workspace/internal/domain").MonitorPort[];
+  onMenu: (x: number, y: number, port: MonitorPort) => void;
 }) {
   const { t } = useTranslation();
   if (loading) {
@@ -433,7 +609,15 @@ function PortsPane({
       </div>
       <div className="divide-y divide-border/50">
         {ports.map((p) => (
-          <div key={`${p.proto}-${p.address}-${p.port}`} className="flex items-center gap-2 px-1 py-1 hover:bg-accent/40">
+          <div
+            key={`${p.proto}-${p.address}-${p.port}`}
+            className="flex items-center gap-2 px-1 py-1 hover:bg-accent/40"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onMenu(e.clientX, e.clientY, p);
+            }}
+          >
             <span className="w-16 shrink-0 font-mono text-[11px] font-medium tabular-nums">{p.port}</span>
             <span className="w-14 shrink-0 text-[11px] text-muted-foreground">{p.proto}</span>
             <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={p.address}>

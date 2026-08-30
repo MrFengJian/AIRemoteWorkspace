@@ -17,6 +17,8 @@ import {
   RotateCcw,
   Trash2,
   Scissors,
+  TextSelect,
+  ClipboardPaste,
   History as HistoryIcon,
   MessageSquarePlus,
 } from "lucide-react";
@@ -25,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { agentApi, type ConversationDTO } from "@/features/agent/api";
+import { ContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
 import { useAgentStore, type ChatMessage } from "@/features/agent/store";
 import { useTerminalStore } from "@/features/terminal/terminal.store";
 import { useModelProviders } from "@/features/settings/hooks";
@@ -93,6 +96,12 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
   // Follow-scroll flag: only auto-scroll while the user is at the bottom.
   const atBottomRef = useRef(true);
   const [showJumpDown, setShowJumpDown] = useState(false);
+  /** Panel context menu target: conversation row | transcript | input box. */
+  const [menu, setMenu] = useState<
+    | { kind: "conv"; conv: ConversationDTO; x: number; y: number }
+    | { kind: "transcript" | "input"; x: number; y: number }
+    | null
+  >(null);
 
   // Shared provider query (same cache as Settings → Models), filtered to
   // enabled providers for the inline selector.
@@ -360,6 +369,100 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
     setHistoryOpen(false);
   };
 
+  /** Write text to the clipboard with a quiet confirmation. */
+  const copyText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.info(t("agent.copied"));
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+
+  /** Clipboard edit on the input textarea via execCommand (honours the
+   *  textarea focus/selection without native menu). */
+  const editInput = (op: "cut" | "copy" | "paste" | "selectAll") => {
+    const el = textareaRef.current;
+    if (!el) return;
+    if (op === "selectAll") {
+      el.focus();
+      el.select();
+      return;
+    }
+    if (op === "paste") {
+      navigator.clipboard
+        .readText()
+        .then((text) => {
+          if (!text) return;
+          // Insert at the caret, replacing any selection (native paste feel).
+          const start = el.selectionStart ?? el.value.length;
+          const end = el.selectionEnd ?? el.value.length;
+          const next = el.value.slice(0, start) + text + el.value.slice(end);
+          setInput(next);
+          requestAnimationFrame(() => {
+            el.focus();
+            el.setSelectionRange(start + text.length, start + text.length);
+          });
+        })
+        .catch(() => {});
+      return;
+    }
+    const selected = el.value.slice(el.selectionStart ?? 0, el.selectionEnd ?? 0);
+    if (!selected) return;
+    navigator.clipboard.writeText(selected).catch(() => {});
+    if (op === "cut") {
+      const start = el.selectionStart ?? 0;
+      const end = el.selectionEnd ?? 0;
+      setInput(el.value.slice(0, start) + el.value.slice(end));
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(start, start);
+      });
+    }
+  };
+
+  /** Context-menu items per target. */
+  const buildMenuItems = (): MenuItem[] => {
+    if (!menu) return [];
+    if (menu.kind === "conv") {
+      const c = menu.conv;
+      return [
+        { label: t("agent.menuResume"), icon: HistoryIcon, onClick: () => void handleResume(c) },
+        { label: t("agent.menuDelete"), icon: Trash2, danger: true, onClick: () => void handleDeleteConv(c) },
+      ];
+    }
+    if (menu.kind === "transcript") {
+      const sel = window.getSelection()?.toString() ?? "";
+      return [
+        {
+          label: t("agent.copySelection"),
+          icon: CopyIcon,
+          disabled: sel.length === 0,
+          onClick: () => void copyText(sel),
+        },
+        { label: t("agent.selectAll"), icon: TextSelect, onClick: () => selectAllTranscript() },
+      ];
+    }
+    return [
+      { label: t("agent.cut"), icon: Scissors, onClick: () => editInput("cut") },
+      { label: t("agent.copy"), icon: CopyIcon, onClick: () => editInput("copy") },
+      { label: t("agent.paste"), icon: ClipboardPaste, onClick: () => editInput("paste") },
+      { type: "separator" },
+      { label: t("agent.selectAll"), icon: TextSelect, onClick: () => editInput("selectAll") },
+    ];
+  };
+
+  /** Select the whole transcript (scroll container text). */
+  const selectAllTranscript = () => {
+    const range = document.createRange();
+    if (scrollRef.current) {
+      range.selectNodeContents(scrollRef.current);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    }
+  };
+
   /** Resume a persisted conversation into this session (display + memory). */
   const handleResume = async (conv: ConversationDTO) => {
     if (!activeSessionId || streaming[activeSessionId]) return;
@@ -524,6 +627,11 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
                             active ? "bg-accent" : "hover:bg-accent/50",
                           )}
                           onClick={() => handleResume(c)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setMenu({ kind: "conv", conv: c, x: e.clientX, y: e.clientY });
+                          }}
                         >
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-xs font-medium text-foreground">
@@ -575,6 +683,12 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
         onScroll={onScroll}
         role="log"
         aria-live="polite"
+        onContextMenu={(e) => {
+          // Let CodeBlock handle its own menu (stopPropagation there);
+          // plain text area gets copy-selection / select-all.
+          e.preventDefault();
+          setMenu({ kind: "transcript", x: e.clientX, y: e.clientY });
+        }}
         className="relative min-h-0 flex-1 overflow-auto p-4"
       >
         {messages.length === 0 ? (
@@ -675,6 +789,10 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
             value={input}
             onChange={(e) => setInput(e.target.value)}
             aria-label={t("agent.placeholderConfigured")}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setMenu({ kind: "input", x: e.clientX, y: e.clientY });
+            }}
             onKeyDown={(e) => {
               // IME safety: Enter during composition confirms the candidate,
               // it must not send the message.
@@ -733,6 +851,11 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
           )}
         </div>
       </div>
+
+      {/* Panel context menu (conversation row / transcript / input box) */}
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} items={buildMenuItems()} onClose={() => setMenu(null)} />
+      )}
     </div>
   );
 }

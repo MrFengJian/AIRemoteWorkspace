@@ -10,8 +10,10 @@ import {
   Trash2,
   Pencil,
   FolderPlus,
+  FolderOpen,
   ArrowLeft,
   ChevronRight,
+  Copy,
   Loader2,
   HardDrive,
   Eye,
@@ -22,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { ContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
 import {
   sftpApi,
   newTransferId,
@@ -105,6 +108,8 @@ export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps) {
   const [pathInput, setPathInput] = useState("/");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  /** Right-click menu: null = closed; entry null = background menu. */
+  const [menu, setMenu] = useState<{ x: number; y: number; entry: FileEntryDTO | null } | null>(null);
   const { askConfirm, askPrompt, askChoice } = useConfirm();
 
   // Follow the host prop; switching hosts resets the browser.
@@ -288,6 +293,57 @@ export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps) {
     setRenameValue(entry.name);
   };
 
+  /** Copy text to the clipboard with a quiet confirmation. */
+  const copyText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.info(t("sftp.copied"));
+    } catch {
+      toast.error(t("sftp.copyFailed"));
+    }
+  };
+
+  const entryFullPath = (name: string) => cwd.replace(/\/$/, "") + "/" + name;
+
+  /** Context-menu items for a row entry (file vs directory) or the
+   *  background (upload / new folder / refresh / hidden toggle). */
+  const buildMenuItems = (entry: FileEntryDTO | null): MenuItem[] => {
+    if (!entry) {
+      return [
+        { label: t("sftp.upload"), icon: Upload, onClick: () => void handleUpload(), disabled: busy },
+        { label: t("sftp.newFolder"), icon: FolderPlus, onClick: handleMkdir, disabled: busy },
+        { label: t("common.refresh"), icon: RefreshCw, onClick: () => refresh(cwd) },
+        { type: "separator" },
+        {
+          label: showHidden ? t("sftp.hideHidden") : t("sftp.showHidden"),
+          icon: showHidden ? EyeOff : Eye,
+          checked: showHidden,
+          onClick: () => setShowHidden(!showHidden),
+        },
+      ];
+    }
+    const items: MenuItem[] = entry.isDir
+      ? [
+          { label: t("sftp.open"), icon: FolderOpen, onClick: () => openEntry(entry) },
+        ]
+      : [
+          { label: t("sftp.download"), icon: Download, onClick: () => void handleDownload(entry), disabled: busy },
+        ];
+    items.push(
+      { type: "separator" },
+      {
+        label: t(entry.isDir ? "sftp.copyDirName" : "sftp.copyFileName"),
+        icon: Copy,
+        onClick: () => void copyText(entry.name),
+      },
+      { label: t("sftp.copyPath"), icon: Copy, onClick: () => void copyText(entryFullPath(entry.name)) },
+      { type: "separator" },
+      { label: t("sftp.rename"), icon: Pencil, onClick: () => startRename(entry), disabled: busy },
+      { label: t("common.delete"), icon: Trash2, danger: true, onClick: () => void handleDelete(entry), disabled: busy },
+    );
+    return items;
+  };
+
   const commitRename = async (oldName: string) => {
     if (!hostId || !renameValue || renameValue === oldName) {
       setRenaming(null);
@@ -425,8 +481,16 @@ export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps) {
         </div>
       )}
 
-      {/* File list */}
-      <div className="min-h-0 flex-1 overflow-auto">
+      {/* File list — right-click opens the panel's own context menu
+          (rows stop propagation so the background menu only fires on empty
+          space; the browser default is suppressed everywhere). */}
+      <div
+        className="min-h-0 flex-1 overflow-auto"
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setMenu({ x: e.clientX, y: e.clientY, entry: null });
+        }}
+      >
         {loading && visibleEntries.length === 0 ? (
           <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t("common.loading")}
@@ -456,6 +520,11 @@ export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps) {
                   key={entry.name}
                   className="group border-b border-border/50 hover:bg-accent/30"
                   onDoubleClick={() => openEntry(entry)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setMenu({ x: e.clientX, y: e.clientY, entry });
+                  }}
                 >
                   <td className="w-8 py-1.5 pl-3">
                     {entry.isDir ? (
@@ -589,6 +658,16 @@ export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps) {
           </span>
           {loading && <Badge variant="secondary">{t("sftp.refreshing")}</Badge>}
         </div>
+      )}
+
+      {/* Context menu (row entry or panel background) */}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={buildMenuItems(menu.entry)}
+          onClose={() => setMenu(null)}
+        />
       )}
     </div>
   );

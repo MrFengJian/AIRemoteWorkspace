@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   Container as ContainerIcon,
+  Copy,
   FileText,
   Package,
   Pause,
@@ -12,15 +13,20 @@ import {
   RefreshCw,
   RotateCw,
   Square,
+  TerminalSquare,
 } from "lucide-react";
 
 import { ConfigService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import type {
   DockerContainer,
   DockerContainerStats,
+  DockerImage,
   DockerNetwork,
 } from "@/../bindings/github.com/ai-remote/workspace/internal/domain";
 import { dockerApi, dockerErrorKind, type DockerAction } from "@/features/docker/api";
+import { ContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
+import { insertToTerminal } from "@/lib/insertTerminal";
+import { toast } from "@/lib/toast";
 import { useConfirm } from "@/lib/useConfirm";
 import { cn } from "@/lib/utils";
 
@@ -80,6 +86,34 @@ export function DockerView({ embeddedSessionID }: DockerViewProps) {
   const [stateFilter, setStateFilter] = useState<StateFilter>("all");
   const [logContainer, setLogContainer] = useState("");
   const [logTail, setLogTail] = useState(200);
+  /** Panel context menu target (see buildMenuItems). */
+  const [menu, setMenu] = useState<
+    | { x: number; y: number; kind: "container"; container: DockerContainer }
+    | { x: number; y: number; kind: "image"; image: DockerImage }
+    | { x: number; y: number; kind: "network"; network: DockerNetwork }
+    | { x: number; y: number; kind: "stat"; stat: DockerContainerStats }
+    | { x: number; y: number; kind: "background" }
+    | null
+  >(null);
+
+  /** Copy text with a quiet confirmation. */
+  const copyText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.info(t("docker.copied"));
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+
+  /** Insert a docker command into the active terminal (review + Enter). */
+  const insertCommand = (cmd: string) => {
+    if (insertToTerminal(cmd)) {
+      toast.info(t("docker.insertedToTerminal"));
+    } else {
+      toast.info(t("docker.noTerminal"));
+    }
+  };
 
   // The list is always fetched in full (all=true) so the state filter and
   // the logs picker work client-side without re-querying.
@@ -178,6 +212,96 @@ export function DockerView({ embeddedSessionID }: DockerViewProps) {
     setTab("logs");
   };
 
+  /** Context-menu items per right-click target. */
+  function buildMenuItems(): MenuItem[] {
+    if (!menu) return [];
+    if (menu.kind === "container") {
+      const c = menu.container;
+      const running = c.state === "running";
+      const paused = c.state === "paused";
+      const name = c.names?.split(",")[0] || c.id;
+      const act = (action: DockerAction) => () => void runAction(c.id, name, action);
+      return [
+        { label: t("docker.action_start"), icon: Play, disabled: running || pending !== null, onClick: act("start") },
+        { label: t("docker.action_stop"), icon: Square, disabled: (!running && !paused) || pending !== null, onClick: act("stop") },
+        { label: t("docker.action_restart"), icon: RotateCw, disabled: pending !== null, onClick: act("restart") },
+        paused
+          ? { label: t("docker.action_unpause"), icon: Play, disabled: pending !== null, onClick: act("unpause") }
+          : { label: t("docker.action_pause"), icon: Pause, disabled: !running || pending !== null, onClick: act("pause") },
+        { type: "separator" },
+        { label: t("docker.viewLogs"), icon: FileText, onClick: () => openLogs(c.id) },
+        {
+          label: t("docker.menuExec"),
+          icon: TerminalSquare,
+          disabled: !running,
+          onClick: () => insertCommand(`docker exec -it ${name} sh`),
+        },
+        {
+          label: t("docker.menuFollowLogs"),
+          icon: FileText,
+          onClick: () => insertCommand(`docker logs --tail 100 -f ${name}`),
+        },
+        {
+          label: t("docker.menuInspect"),
+          icon: TerminalSquare,
+          onClick: () => insertCommand(`docker inspect ${name}`),
+        },
+        { type: "separator" },
+        { label: t("docker.copyName"), icon: Copy, onClick: () => void copyText(name) },
+        { label: t("docker.copyId"), icon: Copy, onClick: () => void copyText(c.id) },
+        { label: t("docker.copyImage"), icon: Copy, onClick: () => void copyText(c.image) },
+      ];
+    }
+    if (menu.kind === "image") {
+      const im = menu.image;
+      const full = `${im.repository}:${im.tag}`;
+      return [
+        { label: t("docker.copyRepo"), icon: Copy, onClick: () => void copyText(full) },
+        { label: t("docker.copyId"), icon: Copy, onClick: () => void copyText(im.id) },
+        {
+          label: t("docker.menuInspect"),
+          icon: TerminalSquare,
+          onClick: () => insertCommand(`docker inspect ${im.id}`),
+        },
+      ];
+    }
+    if (menu.kind === "network") {
+      const n = menu.network;
+      return [
+        {
+          label: t("docker.menuInspect"),
+          icon: TerminalSquare,
+          onClick: () => insertCommand(`docker network inspect ${n.name}`),
+        },
+        { type: "separator" },
+        { label: t("docker.copyName"), icon: Copy, onClick: () => void copyText(n.name) },
+      ];
+    }
+    if (menu.kind === "stat") {
+      const s = menu.stat;
+      return [
+        { label: t("docker.copyName"), icon: Copy, onClick: () => void copyText(s.name) },
+        { label: t("docker.copyStat"), icon: Copy, onClick: () => void copyText(`${s.cpuPercent} CPU · ${s.memUsage} mem`) },
+      ];
+    }
+    // Background
+    return [
+      {
+        label: t("docker.refresh"),
+        icon: RefreshCw,
+        onClick: () => void activeQ.refetch(),
+      },
+      tab === "containers"
+        ? {
+            label: t("docker.showStopped"),
+            icon: ContainerIcon,
+            checked: stateFilter === "all",
+            onClick: () => setStateFilter((v) => (v === "all" ? "running" : "all")),
+          }
+        : { type: "separator" as const },
+    ];
+  }
+
   const tabs: { id: SubTab; label: string }[] = [
     { id: "overview", label: t("docker.overview") },
     { id: "containers", label: t("docker.containers") },
@@ -240,8 +364,15 @@ export function DockerView({ embeddedSessionID }: DockerViewProps) {
         </div>
       </div>
 
-      {/* Content */}
-      <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
+      {/* Content — background right-click offers refresh / filter (rows
+          stopPropagation with their own menus). */}
+      <div
+        className="min-h-0 flex-1 overflow-y-auto p-2.5"
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setMenu({ x: e.clientX, y: e.clientY, kind: "background" });
+        }}
+      >
         {activeQ.isError ? (
           <ErrorHint error={activeQ.error} />
         ) : tab === "overview" ? (
@@ -257,13 +388,27 @@ export function DockerView({ embeddedSessionID }: DockerViewProps) {
             onFilter={setStateFilter}
             onAction={runAction}
             onLogs={openLogs}
+            onMenu={(x, y, container) => setMenu({ x, y, kind: "container", container })}
           />
         ) : tab === "stats" ? (
-          <StatsPane loading={statsQ.isLoading} stats={statsQ.data ?? []} />
+          <StatsPane
+            loading={statsQ.isLoading}
+            stats={statsQ.data ?? []}
+            onMenu={(x, y, stat) => setMenu({ x, y, kind: "stat", stat })}
+          />
         ) : tab === "networks" ? (
-          <NetworksPane loading={networksQ.isLoading} networks={networksQ.data ?? []} sessionID={embeddedSessionID} />
+          <NetworksPane
+            loading={networksQ.isLoading}
+            networks={networksQ.data ?? []}
+            sessionID={embeddedSessionID}
+            onMenu={(x, y, network) => setMenu({ x, y, kind: "network", network })}
+          />
         ) : tab === "images" ? (
-          <ImagesPane loading={imagesQ.isLoading} images={imagesQ.data ?? []} />
+          <ImagesPane
+            loading={imagesQ.isLoading}
+            images={imagesQ.data ?? []}
+            onMenu={(x, y, image) => setMenu({ x, y, kind: "image", image })}
+          />
         ) : (
           <LogsPane
             containers={containersQ.data ?? []}
@@ -275,6 +420,11 @@ export function DockerView({ embeddedSessionID }: DockerViewProps) {
           />
         )}
       </div>
+
+      {/* Context menu (container/image/network/stat row or background) */}
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} items={buildMenuItems()} onClose={() => setMenu(null)} />
+      )}
     </div>
   );
 }
@@ -410,6 +560,7 @@ function ContainersPane({
   onFilter,
   onAction,
   onLogs,
+  onMenu,
 }: {
   loading: boolean;
   containers: DockerContainer[];
@@ -420,6 +571,7 @@ function ContainersPane({
   onFilter: (f: StateFilter) => void;
   onAction: (id: string, name: string, action: DockerAction) => void;
   onLogs: (id: string) => void;
+  onMenu: (x: number, y: number, container: DockerContainer) => void;
 }) {
   const { t } = useTranslation();
   if (loading) {
@@ -500,7 +652,15 @@ function ContainersPane({
           const paused = c.state === "paused";
           const name = c.names?.split(",")[0] || c.id;
           return (
-            <div key={c.id} className="flex flex-col gap-0.5 px-1 py-1.5 hover:bg-accent/40">
+            <div
+              key={c.id}
+              className="flex flex-col gap-0.5 px-1 py-1.5 hover:bg-accent/40"
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onMenu(e.clientX, e.clientY, c);
+              }}
+            >
               <div className="flex items-center gap-1.5">
                 <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", stateDotClass(c.state))} />
                 <span className="min-w-0 flex-1 truncate font-medium" title={c.names}>
@@ -570,9 +730,11 @@ function ContainersPane({
 function StatsPane({
   loading,
   stats,
+  onMenu,
 }: {
   loading: boolean;
   stats: DockerContainerStats[];
+  onMenu: (x: number, y: number, stat: DockerContainerStats) => void;
 }) {
   const { t } = useTranslation();
   if (loading) {
@@ -586,7 +748,15 @@ function StatsPane({
         const cpu = parsePct(s.cpuPercent);
         const mem = parsePct(s.memPercent);
         return (
-          <div key={s.containerId || s.name} className="flex flex-col gap-1 rounded-[var(--radius)] border border-border bg-card p-2">
+          <div
+            key={s.containerId || s.name}
+            className="flex flex-col gap-1 rounded-[var(--radius)] border border-border bg-card p-2"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onMenu(e.clientX, e.clientY, s);
+            }}
+          >
             <div className="flex items-center gap-1.5">
               <span className="min-w-0 flex-1 truncate font-medium" title={`${s.name} (${s.containerId})`}>
                 {s.name}
@@ -641,10 +811,12 @@ function NetworksPane({
   loading,
   networks,
   sessionID,
+  onMenu,
 }: {
   loading: boolean;
   networks: DockerNetwork[];
   sessionID: string;
+  onMenu: (x: number, y: number, network: DockerNetwork) => void;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -667,7 +839,15 @@ function NetworksPane({
       {networks.map((n) => {
         const isOpen = expanded === n.name;
         return (
-          <div key={n.id} className="py-1">
+          <div
+            key={n.id}
+            className="py-1"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onMenu(e.clientX, e.clientY, n);
+            }}
+          >
             <button
               type="button"
               onClick={() => setExpanded(isOpen ? null : n.name)}
@@ -758,9 +938,11 @@ function NetworksPane({
 function ImagesPane({
   loading,
   images,
+  onMenu,
 }: {
   loading: boolean;
   images: import("@/../bindings/github.com/ai-remote/workspace/internal/domain").DockerImage[];
+  onMenu: (x: number, y: number, image: DockerImage) => void;
 }) {
   const { t } = useTranslation();
   if (loading) {
@@ -776,7 +958,15 @@ function ImagesPane({
       </div>
       <div className="divide-y divide-border/50">
         {images.map((im) => (
-          <div key={`${im.repository}-${im.tag}-${im.id}`} className="flex items-center gap-2 px-1 py-1 hover:bg-accent/40">
+          <div
+            key={`${im.repository}-${im.tag}-${im.id}`}
+            className="flex items-center gap-2 px-1 py-1 hover:bg-accent/40"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onMenu(e.clientX, e.clientY, im);
+            }}
+          >
             <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={`${im.repository}:${im.tag} (${im.id})`}>
               {im.repository}
             </span>
