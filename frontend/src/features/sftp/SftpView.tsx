@@ -15,7 +15,6 @@ import {
   ChevronRight,
   Copy,
   Loader2,
-  HardDrive,
   Eye,
   EyeOff,
   X,
@@ -42,7 +41,6 @@ interface SftpViewProps {
    *  host (the SFTP panel lives inside the terminal view; there is no
    *  standalone mode anymore). Switching the prop resets the browser. */
   embeddedHostID: string;
-  embeddedHostName: string;
 }
 
 /** One in-flight upload/download, shown as a progress bar in the status bar. */
@@ -93,7 +91,7 @@ async function suggestName(
  * All browse state lives in the component (not a global store); switching the
  * host prop (terminal tab switch) resets the browser to "/".
  */
-export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps) {
+export function SftpView({ embeddedHostID }: SftpViewProps) {
   const { t } = useTranslation();
 
   // ── Browse state (component-local; see class comment) ──────────────
@@ -391,14 +389,6 @@ export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps) {
     <div className="flex h-full flex-col">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-3 py-2">
-        {/* The host this browser is bound to (the terminal session's host). */}
-        <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-          <HardDrive className="h-3.5 w-3.5 shrink-0 text-primary" />
-          <span className="max-w-[9rem] truncate" title={embeddedHostName}>
-            {embeddedHostName}
-          </span>
-        </div>
-
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goUp} title={t("sftp.up")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -651,7 +641,7 @@ export function SftpView({ embeddedHostID, embeddedHostName }: SftpViewProps) {
       ) : (
         <div className="flex items-center justify-between border-t border-border bg-card px-3 py-1 text-xs text-muted-foreground">
           <span>
-            {embeddedHostName} · {visibleEntries.length} {t("sftp.items")}
+            {visibleEntries.length} {t("sftp.items")}
             {!showHidden && entries.length > visibleEntries.length && (
               <span className="ml-1">{t("sftp.hiddenCount", { count: entries.length - visibleEntries.length })}</span>
             )}

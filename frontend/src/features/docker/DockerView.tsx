@@ -36,7 +36,6 @@ type StateFilter = "all" | "running" | "paused" | "stopped";
 interface DockerViewProps {
   /** The terminal session (tab) whose docker runtime is shown. */
   embeddedSessionID: string;
-  embeddedSessionName: string;
 }
 
 const LOG_TAILS = [100, 200, 500, 1000];
@@ -322,7 +321,16 @@ export function DockerView({ embeddedSessionID }: DockerViewProps) {
   }, [statsQ.data]);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div
+      className="flex h-full flex-col overflow-hidden"
+      onContextMenu={(e) => {
+        // Panel-wide default-menu suppression: rows stopPropagation with
+        // their own menus; everything else (tab strip, blank space, error
+        // state) falls through to the background menu.
+        e.preventDefault();
+        setMenu({ x: e.clientX, y: e.clientY, kind: "background" });
+      }}
+    >
       {/* Sub-tab strip + refresh (scrolls when the panel is narrow) */}
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2">
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
@@ -364,15 +372,8 @@ export function DockerView({ embeddedSessionID }: DockerViewProps) {
         </div>
       </div>
 
-      {/* Content — background right-click offers refresh / filter (rows
-          stopPropagation with their own menus). */}
-      <div
-        className="min-h-0 flex-1 overflow-y-auto p-2.5"
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setMenu({ x: e.clientX, y: e.clientY, kind: "background" });
-        }}
-      >
+      {/* Content (background menu handled at the panel root) */}
+      <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
         {activeQ.isError ? (
           <ErrorHint error={activeQ.error} />
         ) : tab === "overview" ? (

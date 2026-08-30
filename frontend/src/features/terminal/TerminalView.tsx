@@ -894,59 +894,64 @@ export function TerminalView() {
               onPointerDown={startPanelDrag}
               className="absolute inset-y-0 left-0 z-10 w-1 cursor-col-resize transition-colors hover:bg-primary/50"
             />
-            {/* Tab strip */}
+            {/* Tab strip — icon-only tabs, text titles via tooltip (the host
+                name already lives on the session tab, not repeated here). */}
             <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2">
               <button
                 type="button"
                 onClick={() => setRightTab("sftp")}
+                title={t("nav.files")}
+                aria-label={t("nav.files")}
                 className={cn(
-                  "flex h-7 items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-xs transition-colors",
+                  "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
                   rightTab === "sftp"
-                    ? "bg-accent text-foreground"
+                    ? "bg-accent text-primary"
                     : "text-muted-foreground hover:bg-accent/50",
                 )}
               >
                 <FolderTree className="h-3.5 w-3.5" />
-                {t("nav.files")}
               </button>
               <button
                 type="button"
                 onClick={() => setRightTab("agent")}
+                title={t("nav.agent")}
+                aria-label={t("nav.agent")}
                 className={cn(
-                  "flex h-7 items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-xs transition-colors",
+                  "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
                   rightTab === "agent"
-                    ? "bg-accent text-foreground"
+                    ? "bg-accent text-primary"
                     : "text-muted-foreground hover:bg-accent/50",
                 )}
               >
                 <Bot className="h-3.5 w-3.5" />
-                {t("nav.agent")}
               </button>
               <button
                 type="button"
                 onClick={() => setRightTab("monitor")}
+                title={t("monitor.title")}
+                aria-label={t("monitor.title")}
                 className={cn(
-                  "flex h-7 items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-xs transition-colors",
+                  "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
                   rightTab === "monitor"
-                    ? "bg-accent text-foreground"
+                    ? "bg-accent text-primary"
                     : "text-muted-foreground hover:bg-accent/50",
                 )}
               >
                 <Activity className="h-3.5 w-3.5" />
-                {t("monitor.title")}
               </button>
               <button
                 type="button"
                 onClick={() => setRightTab("docker")}
+                title={t("docker.title")}
+                aria-label={t("docker.title")}
                 className={cn(
-                  "flex h-7 items-center gap-1.5 rounded-[var(--radius)] px-2.5 text-xs transition-colors",
+                  "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
                   rightTab === "docker"
-                    ? "bg-accent text-foreground"
+                    ? "bg-accent text-primary"
                     : "text-muted-foreground hover:bg-accent/50",
                 )}
               >
                 <Container className="h-3.5 w-3.5" />
-                {t("docker.title")}
               </button>
               <button
                 type="button"
@@ -963,23 +968,19 @@ export function TerminalView() {
               {rightTab === "sftp" ? (
                 <SftpView
                   embeddedHostID={activeSession.hostID}
-                  embeddedHostName={activeSession.hostName}
                 />
               ) : rightTab === "monitor" ? (
                 <MonitorView
                   embeddedSessionID={activeSession.id}
-                  embeddedSessionName={activeSession.hostName}
                   isLocal={isLocalSession(activeSession)}
                 />
               ) : rightTab === "docker" ? (
                 <DockerView
                   embeddedSessionID={activeSession.id}
-                  embeddedSessionName={activeSession.hostName}
                 />
               ) : (
                 <AgentView
                   embeddedSessionID={activeSession.id}
-                  embeddedSessionName={activeSession.hostName}
                 />
               )}
             </div>

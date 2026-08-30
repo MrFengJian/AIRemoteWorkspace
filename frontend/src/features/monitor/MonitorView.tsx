@@ -29,7 +29,6 @@ type ProcSortKey = "cpu" | "rss" | "pid";
 interface MonitorViewProps {
   /** The terminal session (tab) whose host is monitored. */
   embeddedSessionID: string;
-  embeddedSessionName: string;
   /** Local terminal session: on Linux/macOS the app collects from its own
    *  machine; on Windows there is no lightweight native channel — the panel
    *  explains that instead of firing failing requests. */
@@ -47,7 +46,7 @@ const isWindowsHost = () =>
  * local terminals on Linux/macOS. Auto-refreshes on the globally configured
  * interval while visible.
  */
-export function MonitorView({ embeddedSessionID, embeddedSessionName, isLocal }: MonitorViewProps) {
+export function MonitorView({ embeddedSessionID, isLocal }: MonitorViewProps) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<SubTab>("overview");
   const [intervalSec, setIntervalSec] = useState(60);
@@ -169,10 +168,14 @@ export function MonitorView({ embeddedSessionID, embeddedSessionName, isLocal }:
   }
 
   // Windows local terminals have nothing to collect through — explain
-  // instead of running requests that can only fail.
+  // instead of running requests that can only fail. The default context
+  // menu is suppressed for consistency with the rest of the panel.
   if (isLocal && isWindowsHost()) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
+      <div
+        className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center"
+        onContextMenu={(e) => e.preventDefault()}
+      >
         <Activity className="h-8 w-8 text-muted-foreground/40" />
         <div className="text-sm font-medium text-foreground">{t("monitor.localUnsupported")}</div>
         <p className="max-w-56 text-xs leading-relaxed text-muted-foreground">
@@ -247,7 +250,16 @@ export function MonitorView({ embeddedSessionID, embeddedSessionName, isLocal }:
   ];
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div
+      className="flex h-full flex-col overflow-hidden"
+      onContextMenu={(e) => {
+        // Panel-wide default-menu suppression: rows/cards stopPropagation
+        // with their own menus; everything else (tab strip, blank space,
+        // error state) falls through to the background menu.
+        e.preventDefault();
+        setMenu({ x: e.clientX, y: e.clientY });
+      }}
+    >
       {/* Sub-tab strip + refresh */}
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2">
         {tabs.map((s) => (

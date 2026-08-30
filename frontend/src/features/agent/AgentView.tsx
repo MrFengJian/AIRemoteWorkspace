@@ -54,10 +54,9 @@ const CONVERSATIONS_KEY = ["agent-conversations"] as const;
  */
 interface AgentViewProps {
   embeddedSessionID?: string;
-  embeddedSessionName?: string;
 }
 
-export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewProps = {}) {
+export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
   const { t } = useTranslation();
   const storeActiveId = useTerminalStore((s) => s.activeId);
   const sessions = useTerminalStore((s) => s.sessions);
@@ -111,11 +110,6 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
     [allProviders],
   );
   const providersLoaded = !providersLoading;
-
-  const sessionName = embeddedSessionName
-    ?? (activeSessionId
-      ? sessions.find((s) => s.id === activeSessionId)?.hostName ?? "session"
-      : null);
 
   // The session's agent model selection (set via the inline selector).
   const session = activeSessionId
@@ -526,7 +520,7 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
   const isStreaming = activeSessionId ? streaming[activeSessionId] : false;
 
   // No active session.
-  if (!activeSessionId || !sessionName) {
+  if (!activeSessionId) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
         <Bot className="h-10 w-10 text-muted-foreground" />
@@ -546,7 +540,7 @@ export function AgentView({ embeddedSessionID, embeddedSessionName }: AgentViewP
       <div className="flex items-center justify-between border-b border-border bg-card px-4 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <Bot className="h-4 w-4 shrink-0 text-primary" />
-          <span className="truncate text-sm font-medium">{t("agent.title")} · {sessionName}</span>
+          <span className="truncate text-sm font-medium">{t("agent.title")}</span>
           {isStreaming && (
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
           )}
