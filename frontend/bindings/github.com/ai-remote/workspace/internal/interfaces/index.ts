@@ -10,6 +10,7 @@ import * as MonitorService from "./monitorservice.js";
 import * as SftpService from "./sftpservice.js";
 import * as SystemService from "./systemservice.js";
 import * as TerminalService from "./terminalservice.js";
+import * as WindowService from "./windowservice.js";
 export {
     AgentService,
     ConfigService,
@@ -19,7 +20,8 @@ export {
     MonitorService,
     SftpService,
     SystemService,
-    TerminalService
+    TerminalService,
+    WindowService
 };
 
 export type {

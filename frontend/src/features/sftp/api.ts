@@ -72,17 +72,32 @@ export function transferDone(id: string): Promise<TransferEnd> {
 
 export interface SftpApi {
   listDir: (hostID: string, dir: string) => Promise<FileEntryDTO[]>;
-  /** Stream remotePath → localPath (native save-dialog path). */
+  /** Stream remotePath → localPath (native save-dialog path). Directories
+   *  transfer as whole trees. */
   startDownload: (hostID: string, remotePath: string, localPath: string, transferID: string) => Promise<void>;
-  /** Stream localPath (native open-dialog path) → remotePath. */
+  /** Stream localPath (native open-dialog path) → remotePath. Directories
+   *  transfer as whole trees. */
   startUpload: (hostID: string, localPath: string, remotePath: string, transferID: string) => Promise<void>;
+  /** Copy a local file/tree to another local path (async, cancellable). */
+  startLocalCopy: (srcPath: string, dstPath: string, transferID: string) => Promise<void>;
+  /** Copy a remote file/tree to another path on the same host (async). */
+  startRemoteCopy: (hostID: string, srcPath: string, dstPath: string, transferID: string) => Promise<void>;
   /** Abort a running transfer by id. */
   cancelTransfer: (transferID: string) => Promise<void>;
   /** Whether a local path exists (download-side same-name conflict check). */
   localExists: (path: string) => Promise<boolean>;
+  /** Whether a remote path exists (paste-side same-name conflict check). */
+  remoteExists: (hostID: string, path: string) => Promise<boolean>;
   deleteFile: (hostID: string, remotePath: string) => Promise<void>;
   renameFile: (hostID: string, oldPath: string, newPath: string) => Promise<void>;
   mkdir: (hostID: string, remotePath: string) => Promise<void>;
+  // ── Local pane (the app machine's own filesystem) ──
+  listLocalDir: (dir: string) => Promise<FileEntryDTO[]>;
+  /** The local pane's initial directory (the user's home). */
+  localDefaultDir: () => Promise<string>;
+  localMkdir: (path: string) => Promise<void>;
+  localRename: (oldPath: string, newPath: string) => Promise<void>;
+  localDelete: (path: string) => Promise<void>;
 }
 
 export const sftpApi: SftpApi = {
@@ -91,10 +106,20 @@ export const sftpApi: SftpApi = {
     SftpService.StartDownload(hostID, remotePath, localPath, transferID),
   startUpload: (hostID, localPath, remotePath, transferID) =>
     SftpService.StartUpload(hostID, localPath, remotePath, transferID),
+  startLocalCopy: (srcPath, dstPath, transferID) =>
+    SftpService.StartLocalCopy(srcPath, dstPath, transferID),
+  startRemoteCopy: (hostID, srcPath, dstPath, transferID) =>
+    SftpService.StartRemoteCopy(hostID, srcPath, dstPath, transferID),
   cancelTransfer: (transferID) => SftpService.CancelTransfer(transferID),
   localExists: (path) => SftpService.LocalExists(path),
+  remoteExists: (hostID, path) => SftpService.RemoteExists(hostID, path),
   deleteFile: (hostID, remotePath) => SftpService.DeleteFile(hostID, remotePath),
   renameFile: (hostID, oldPath, newPath) =>
     SftpService.RenameFile(hostID, oldPath, newPath),
   mkdir: (hostID, remotePath) => SftpService.Mkdir(hostID, remotePath),
+  listLocalDir: (dir) => SftpService.ListLocalDir(dir).then((r) => r ?? []),
+  localDefaultDir: () => SftpService.LocalDefaultDir(),
+  localMkdir: (path) => SftpService.LocalMkdir(path),
+  localRename: (oldPath, newPath) => SftpService.LocalRename(oldPath, newPath),
+  localDelete: (path) => SftpService.LocalDelete(path),
 };

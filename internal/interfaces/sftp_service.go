@@ -167,18 +167,21 @@ func (s *SftpService) runStreamTransfer(transferID string, start func(ctx contex
 // save dialog. Returns immediately; progress and completion arrive as
 // events (see the type comment). The remote size is pre-checked against the
 // configured ceiling — an oversized file fails with the limit named.
+// The source may be a directory: the whole tree downloads then, mirroring
+// the remote layout under localPath.
 func (s *SftpService) StartDownload(hostID, remotePath, localPath, transferID string) error {
 	s.runStreamTransfer(transferID, func(ctx context.Context) error {
-		return s.svc.DownloadToFile(ctx, hostID, remotePath, localPath, s.progressEmitter(transferID))
+		return s.svc.DownloadPath(ctx, hostID, remotePath, localPath, s.progressEmitter(transferID))
 	})
 	return nil
 }
 
 // StartUpload streams a local file (native-open dialog path) to a remote
-// path, staging via ".airw-part" and renaming on completion.
+// path, staging via ".airw-part" and renaming on completion. The source may
+// be a directory: the whole tree uploads then, mirrored under remotePath.
 func (s *SftpService) StartUpload(hostID, localPath, remotePath, transferID string) error {
 	s.runStreamTransfer(transferID, func(ctx context.Context) error {
-		return s.svc.UploadFromFile(ctx, hostID, localPath, remotePath, s.progressEmitter(transferID))
+		return s.svc.UploadPath(ctx, hostID, localPath, remotePath, s.progressEmitter(transferID))
 	})
 	return nil
 }
@@ -204,6 +207,78 @@ func (s *SftpService) LocalExists(path string) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+// RemoteExists reports whether a remote path exists — the paste-side
+// same-name conflict check for remote destinations.
+func (s *SftpService) RemoteExists(hostID, remotePath string) (bool, error) {
+	_, _, err := s.svc.StatPath(hostID, remotePath)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, appsvc.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
+}
+
+// ── Local pane operations (the SFTP panel's local window) ────────────────
+
+// ListLocalDir lists a local directory (empty dir → the user's home).
+func (s *SftpService) ListLocalDir(dir string) ([]FileEntryDTO, error) {
+	entries, err := s.svc.LocalListDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("list local dir: %w", err)
+	}
+	out := make([]FileEntryDTO, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, FileEntryDTO{
+			Name:    e.Name,
+			Size:    e.Size,
+			Mode:    e.Mode,
+			ModTime: e.ModTime,
+			IsDir:   e.IsDir,
+		})
+	}
+	return out, nil
+}
+
+// LocalDefaultDir returns the local pane's initial directory (home).
+func (s *SftpService) LocalDefaultDir() (string, error) {
+	return s.svc.LocalDefaultDir()
+}
+
+// LocalMkdir creates a local directory.
+func (s *SftpService) LocalMkdir(path string) error {
+	return s.svc.LocalMkdir(path)
+}
+
+// LocalRename renames/moves a local path.
+func (s *SftpService) LocalRename(oldPath, newPath string) error {
+	return s.svc.LocalRename(oldPath, newPath)
+}
+
+// LocalDelete removes a local file or empty directory.
+func (s *SftpService) LocalDelete(path string) error {
+	return s.svc.LocalDelete(path)
+}
+
+// StartLocalCopy copies a local file or tree to another local path in the
+// background (progress/cancel events as with transfers).
+func (s *SftpService) StartLocalCopy(srcPath, dstPath, transferID string) error {
+	s.runStreamTransfer(transferID, func(ctx context.Context) error {
+		return s.svc.CopyLocal(ctx, srcPath, dstPath, s.progressEmitter(transferID))
+	})
+	return nil
+}
+
+// StartRemoteCopy copies a remote file or tree to another path on the same
+// host in the background (progress/cancel events as with transfers).
+func (s *SftpService) StartRemoteCopy(hostID, srcPath, dstPath, transferID string) error {
+	s.runStreamTransfer(transferID, func(ctx context.Context) error {
+		return s.svc.CopyWithinHost(ctx, hostID, srcPath, dstPath, s.progressEmitter(transferID))
+	})
+	return nil
 }
 
 // UploadClipboardImage decodes base64 image data and stores it as /tmp/<name>

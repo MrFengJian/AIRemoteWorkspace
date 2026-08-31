@@ -83,6 +83,7 @@ func (s *SystemService) GetLocalIP() (LocalIPResult, error) {
 // package so it doesn't shadow the application interface.)
 type ConfigService struct {
 	svc appsvc.ConfigService
+	app *application.App
 }
 
 // NewConfigService wires the Wails ConfigService to its application port.
@@ -94,7 +95,10 @@ func NewConfigService(svc appsvc.ConfigService) *ConfigService {
 func (c *ConfigService) ServiceName() string { return "ConfigService" }
 
 // ServiceStartup runs when the service is registered with the app.
-func (c *ConfigService) ServiceStartup(_ context.Context, _ application.ServiceOptions) error { return nil }
+func (c *ConfigService) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
+	c.app = application.Get()
+	return nil
+}
 
 // GetAppConfig returns the persisted application configuration.
 // Returning the concrete domain.AppConfig lets Wails emit typed TS bindings.
@@ -102,7 +106,16 @@ func (c *ConfigService) GetAppConfig() (domain.AppConfig, error) {
 	return c.svc.GetAppConfig()
 }
 
-// SetAppConfig persists a new configuration.
+// SetAppConfig persists a new configuration and broadcasts "config:changed"
+// to every window — settings are global but each window applies its own
+// chrome (theme/fonts/shortcuts), so aux windows like the standalone SFTP
+// window follow changes made anywhere.
 func (c *ConfigService) SetAppConfig(cfg domain.AppConfig) error {
-	return c.svc.SetAppConfig(cfg)
+	if err := c.svc.SetAppConfig(cfg); err != nil {
+		return err
+	}
+	if c.app != nil {
+		c.app.Event.Emit("config:changed")
+	}
+	return nil
 }

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -11,6 +12,11 @@ import (
 // SftpProgress reports transfer progress. transferred/total are in bytes;
 // total is 0 when the size is unknown.
 type SftpProgress func(transferred, total int64)
+
+// ErrNotExist is returned when a remote path does not exist (mapped by the
+// infrastructure adapter from the SFTP no-such-file status code). The UI
+// uses it to distinguish an absent paste target from a real failure.
+var ErrNotExist = errors.New("remote entry does not exist")
 
 // SftpClient is the port the SFTP service depends on. Implemented by
 // infrastructure/sftp.Manager; kept as an interface for testability.
@@ -27,6 +33,10 @@ type SftpClient interface {
 	StatSize(host domain.Host, creds domain.Credentials, remotePath string) (int64, error)
 	DownloadToFile(ctx context.Context, host domain.Host, creds domain.Credentials, remotePath, localPath string, chunk int64, progress SftpProgress) error
 	UploadFromFile(ctx context.Context, host domain.Host, creds domain.Credentials, localPath, remotePath string, chunk int64, progress SftpProgress) error
+	// Copy support: stat a path (tree planning) and stream one remote file
+	// to another on the same host (the SFTP protocol has no server-side copy).
+	StatPath(host domain.Host, creds domain.Credentials, remotePath string) (size int64, isDir bool, err error)
+	CopyRemote(ctx context.Context, host domain.Host, creds domain.Credentials, srcPath, dstPath string, chunk int64, progress SftpProgress) error
 }
 
 // SftpEntry mirrors the remote filesystem entry for the application layer.
@@ -101,6 +111,16 @@ func (s *SftpService) ListDir(hostID string, creds domain.Credentials, dir strin
 		return nil, err
 	}
 	return s.client.ListDir(host, c, dir)
+}
+
+// StatPath stats a remote path (size + directory flag), reporting
+// application.ErrNotExist for absent paths.
+func (s *SftpService) StatPath(hostID, remotePath string) (int64, bool, error) {
+	host, c, err := s.resolve(hostID, domain.Credentials{})
+	if err != nil {
+		return 0, false, err
+	}
+	return s.client.StatPath(host, c, remotePath)
 }
 
 // DownloadFile downloads a remote file into memory, reporting progress.

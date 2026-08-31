@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Events } from "@wailsio/runtime";
 import {
   Palette,
   Languages,
@@ -319,7 +320,12 @@ function LanguageSection({ i18n }: { i18n: ReturnType<typeof useTranslation>["i1
             <Label>{t("settings.language")}</Label>
             <Select
               value={i18n.language?.split("-")[0] ?? "en"}
-              onChange={(e) => i18n.changeLanguage(e.target.value)}
+              onChange={(e) => {
+                void i18n.changeLanguage(e.target.value);
+                // Language lives in (shared) localStorage, not AppConfig —
+                // still broadcast so other windows re-align immediately.
+                void Events.Emit("config:changed");
+              }}
               className="max-w-xs"
             >
               <option value="en">English</option>

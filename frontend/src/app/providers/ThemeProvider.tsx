@@ -1,4 +1,6 @@
 import { useEffect, type ReactNode } from "react";
+import { Events } from "@wailsio/runtime";
+import i18n from "i18next";
 
 import { ConfigService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 
@@ -7,28 +9,46 @@ interface ThemeProviderProps {
 }
 
 /**
- * ThemeProvider applies the persisted AppConfig theme and font settings to the
- * document on app startup. It reads AppConfig once and sets:
- *
- *   - <html data-theme="light|dark|auto"> for CSS variable switching
- *   - --app-font-stack / --app-font-size CSS variables on :root
- *
- * SettingsView updates these live when the user changes a setting.
+ * ThemeProvider applies the persisted AppConfig theme and font settings to
+ * the document. It reads AppConfig on startup AND whenever the backend
+ * broadcasts "config:changed" — settings saved in any window (the standalone
+ * SFTP window included) re-apply everywhere, since each window is a separate
+ * webview with its own DOM.
  */
 export function ThemeProvider({ children }: ThemeProviderProps) {
   useEffect(() => {
-    ConfigService.GetAppConfig()
-      .then((cfg) => {
-        applyTheme(cfg.theme || "dark");
-        applyFonts(cfg.uiFont, cfg.cjkFont, cfg.fontSize || 13);
-      })
-      .catch(() => {
-        // defaults: dark theme, system fonts, 13px
-        applyTheme("dark");
-      });
+    const apply = () => {
+      ConfigService.GetAppConfig()
+        .then((cfg) => {
+          applyTheme(cfg.theme || "dark");
+          applyFonts(cfg.uiFont, cfg.cjkFont, cfg.fontSize || 13);
+          syncLanguage();
+        })
+        .catch(() => {
+          // defaults: dark theme, system fonts, 13px
+          applyTheme("dark");
+        });
+    };
+    void apply();
+    const off = Events.On("config:changed", apply);
+    return () => {
+      off();
+    };
   }, []);
 
   return <>{children}</>;
+}
+
+/**
+ * Language is persisted in localStorage (the i18next detector cache), which
+ * the windows of the app share. When another window switched the language,
+ * this window's i18n instance only finds out here — re-align with storage.
+ */
+function syncLanguage() {
+  const stored = localStorage.getItem("lang")?.split("-")[0];
+  if (stored && stored !== i18n.language?.split("-")[0]) {
+    void i18n.changeLanguage(stored);
+  }
 }
 
 /** Apply the colour-scheme mode to the document root. */

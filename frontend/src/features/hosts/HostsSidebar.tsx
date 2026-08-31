@@ -7,6 +7,7 @@ import {
   Pencil,
   Trash2,
   Folder,
+  FolderTree,
   ChevronRight,
   Monitor,
   PanelLeftClose,
@@ -16,12 +17,13 @@ import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useHosts, useOpenTerminal, useOpenLocalTerminal, useDeleteHost } from "@/features/hosts/hooks";
-import { type HostDTO } from "@/features/hosts/api";
+import { hostsApi, type HostDTO } from "@/features/hosts/api";
 import { osInfo } from "@/features/hosts/osIcons";
 import { useHostsUIStore } from "@/features/hosts/store";
 import { useTerminalStore } from "@/features/terminal/terminal.store";
 import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabMenu";
 import { useConfirm } from "@/lib/useConfirm";
+import { toast, errorMessage } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 /**
@@ -147,11 +149,23 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
     deleteHost.mutateAsync(host.id).catch(() => {});
   };
 
+  /** Open the standalone dual-pane SFTP window for the host. */
+  const openSftp = (host: HostDTO) => {
+    hostsApi.openSftpWindow(host.id).catch((e) => {
+      toast.error(`${t("hosts.sftpOpenFailed")}: ${errorMessage(e)}`);
+    });
+  };
+
   const buildMenuItems = (host: HostDTO): MenuItem[] => [
     {
       label: t("hosts.newTab"),
       icon: TerminalSquare,
       onClick: () => forceConnect(host),
+    },
+    {
+      label: t("hosts.sftp"),
+      icon: FolderTree,
+      onClick: () => openSftp(host),
     },
     {
       label: t("common.edit"),
@@ -252,6 +266,7 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
                         status={hostStatus(host.id)}
                         onActivate={() => activateOrConnect(host)}
                         onForceConnect={() => forceConnect(host)}
+                        onOpenSftp={() => openSftp(host)}
                         onEdit={() => openEditor(host)}
                         onDelete={() => handleDelete(host)}
                         onContextMenu={(e) => {
@@ -309,6 +324,7 @@ function HostRow({
   status,
   onActivate,
   onForceConnect,
+  onOpenSftp,
   onEdit,
   onDelete,
   onContextMenu,
@@ -317,6 +333,7 @@ function HostRow({
   status: "connected" | "connecting" | null;
   onActivate: () => void;
   onForceConnect: () => void;
+  onOpenSftp: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
@@ -370,6 +387,18 @@ function HostRow({
           className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <TerminalSquare className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenSftp();
+          }}
+          title={t("hosts.sftp")}
+          aria-label={t("hosts.sftp")}
+          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <FolderTree className="h-3.5 w-3.5" />
         </button>
         <button
           type="button"

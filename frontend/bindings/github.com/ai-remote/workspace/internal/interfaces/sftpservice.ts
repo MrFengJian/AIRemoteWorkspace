@@ -53,6 +53,27 @@ export function ListDir(hostID: string, dir: string): $CancellablePromise<$model
 }
 
 /**
+ * ListLocalDir lists a local directory (empty dir → the user's home).
+ */
+export function ListLocalDir(dir: string): $CancellablePromise<$models.FileEntryDTO[] | null> {
+    return $Call.ByID(676872852, dir);
+}
+
+/**
+ * LocalDefaultDir returns the local pane's initial directory (home).
+ */
+export function LocalDefaultDir(): $CancellablePromise<string> {
+    return $Call.ByID(3171967633);
+}
+
+/**
+ * LocalDelete removes a local file or empty directory.
+ */
+export function LocalDelete(path: string): $CancellablePromise<void> {
+    return $Call.ByID(1820406302, path);
+}
+
+/**
  * LocalExists reports whether a local path exists — the download-side
  * same-name conflict check (the UI offers overwrite vs auto-rename).
  */
@@ -61,10 +82,32 @@ export function LocalExists(path: string): $CancellablePromise<boolean> {
 }
 
 /**
+ * LocalMkdir creates a local directory.
+ */
+export function LocalMkdir(path: string): $CancellablePromise<void> {
+    return $Call.ByID(2184252068, path);
+}
+
+/**
+ * LocalRename renames/moves a local path.
+ */
+export function LocalRename(oldPath: string, newPath: string): $CancellablePromise<void> {
+    return $Call.ByID(559212471, oldPath, newPath);
+}
+
+/**
  * Mkdir creates a remote directory.
  */
 export function Mkdir(hostID: string, remotePath: string): $CancellablePromise<void> {
     return $Call.ByID(1479971433, hostID, remotePath);
+}
+
+/**
+ * RemoteExists reports whether a remote path exists — the paste-side
+ * same-name conflict check for remote destinations.
+ */
+export function RemoteExists(hostID: string, remotePath: string): $CancellablePromise<boolean> {
+    return $Call.ByID(1268176344, hostID, remotePath);
 }
 
 /**
@@ -79,14 +122,33 @@ export function RenameFile(hostID: string, oldPath: string, newPath: string): $C
  * save dialog. Returns immediately; progress and completion arrive as
  * events (see the type comment). The remote size is pre-checked against the
  * configured ceiling — an oversized file fails with the limit named.
+ * The source may be a directory: the whole tree downloads then, mirroring
+ * the remote layout under localPath.
  */
 export function StartDownload(hostID: string, remotePath: string, localPath: string, transferID: string): $CancellablePromise<void> {
     return $Call.ByID(245680938, hostID, remotePath, localPath, transferID);
 }
 
 /**
+ * StartLocalCopy copies a local file or tree to another local path in the
+ * background (progress/cancel events as with transfers).
+ */
+export function StartLocalCopy(srcPath: string, dstPath: string, transferID: string): $CancellablePromise<void> {
+    return $Call.ByID(461616728, srcPath, dstPath, transferID);
+}
+
+/**
+ * StartRemoteCopy copies a remote file or tree to another path on the same
+ * host in the background (progress/cancel events as with transfers).
+ */
+export function StartRemoteCopy(hostID: string, srcPath: string, dstPath: string, transferID: string): $CancellablePromise<void> {
+    return $Call.ByID(1803994509, hostID, srcPath, dstPath, transferID);
+}
+
+/**
  * StartUpload streams a local file (native-open dialog path) to a remote
- * path, staging via ".airw-part" and renaming on completion.
+ * path, staging via ".airw-part" and renaming on completion. The source may
+ * be a directory: the whole tree uploads then, mirrored under remotePath.
  */
 export function StartUpload(hostID: string, localPath: string, remotePath: string, transferID: string): $CancellablePromise<void> {
     return $Call.ByID(2542626223, hostID, localPath, remotePath, transferID);

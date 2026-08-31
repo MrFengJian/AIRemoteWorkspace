@@ -118,6 +118,7 @@ func main() {
 	monitorService := interfaces.NewMonitorService(monitorSvc)
 	dockerService := interfaces.NewDockerService(dockerSvc)
 	sftpService := interfaces.NewSftpService(sftpSvc)
+	windowService := interfaces.NewWindowService(hostSvc)
 	providerService := interfaces.NewModelProviderService(providerSvc)
 	agentService := interfaces.NewAgentService(agentRuntime, permGate, convSvc)
 
@@ -135,6 +136,7 @@ func main() {
 			wailsapp.NewService(monitorService),
 			wailsapp.NewService(dockerService),
 			wailsapp.NewService(sftpService),
+			wailsapp.NewService(windowService),
 			wailsapp.NewService(providerService),
 			wailsapp.NewService(agentService),
 		},

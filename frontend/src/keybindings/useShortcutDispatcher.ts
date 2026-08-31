@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Events } from "@wailsio/runtime";
 
 import { ConfigService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { describeEvent } from "@/keybindings/match";
@@ -12,22 +13,27 @@ import {
 import { useKeybindingStore } from "@/keybindings/store";
 
 /**
- * Global shortcut dispatcher — mounted once in AppShell. A single
- * window-level keydown listener in the CAPTURE phase: it fires before
- * xterm's textarea handlers, so a matched binding is swallowed
- * (preventDefault + stopPropagation) and never reaches the PTY; unmatched
- * keys keep flowing to whatever is focused. Also loads the persisted
- * overrides once at startup.
+ * Global shortcut dispatcher — mounted once in AppShell (and in the
+ * standalone SFTP window). A single window-level keydown listener in the
+ * CAPTURE phase: it fires before xterm's textarea handlers, so a matched
+ * binding is swallowed (preventDefault + stopPropagation) and never reaches
+ * the PTY; unmatched keys keep flowing to whatever is focused. Also loads
+ * the persisted overrides at startup and re-loads them when any window
+ * saves new settings ("config:changed" broadcast).
  */
 export function useShortcutDispatcher() {
   useEffect(() => {
-    ConfigService.GetAppConfig()
-      .then((cfg) => {
-        const state = useKeybindingStore.getState();
-        state.load(cfg.shortcuts ?? {});
-        state.setMouseMiddleClick(normalizeMiddleClickAction(cfg.middleClickAction));
-      })
-      .catch(() => {});
+    const load = () => {
+      ConfigService.GetAppConfig()
+        .then((cfg) => {
+          const state = useKeybindingStore.getState();
+          state.load(cfg.shortcuts ?? {});
+          state.setMouseMiddleClick(normalizeMiddleClickAction(cfg.middleClickAction));
+        })
+        .catch(() => {});
+    };
+    load();
+    const offConfigChanged = Events.On("config:changed", load);
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.isComposing || e.repeat || isKeyCaptured()) return;
@@ -42,7 +48,10 @@ export function useShortcutDispatcher() {
       handler();
     };
     window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      offConfigChanged();
+    };
   }, []);
 }
 

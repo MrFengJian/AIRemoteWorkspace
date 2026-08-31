@@ -3,9 +3,10 @@ import { create } from "zustand";
 /**
  * Top-level navigation views. The terminal workspace IS the app — the hosts
  * sidebar, session tabs, SFTP and the agent all live inside it. Settings is
- * the only separate page.
+ * the only separate page. "sftp" is used by the standalone SFTP window (the
+ * stores are per-webview, so it never leaks into the main window).
  */
-export type AppView = "terminal" | "settings";
+export type AppView = "terminal" | "settings" | "sftp";
 
 /** Settings sidebar categories. Global so other views can deep-link into one. */
 export type SettingsCategory =

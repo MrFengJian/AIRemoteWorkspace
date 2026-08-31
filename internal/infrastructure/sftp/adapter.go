@@ -2,7 +2,12 @@ package sftp
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"os"
 	"time"
+
+	sf "github.com/pkg/sftp"
 
 	"github.com/ai-remote/workspace/internal/application"
 	"github.com/ai-remote/workspace/internal/domain"
@@ -62,6 +67,31 @@ func (a *AppClient) DownloadToFile(ctx context.Context, host domain.Host, creds 
 
 func (a *AppClient) UploadFromFile(ctx context.Context, host domain.Host, creds domain.Credentials, localPath, remotePath string, chunk int64, progress application.SftpProgress) error {
 	return a.m.UploadFromFile(ctx, host, creds, localPath, remotePath, chunk, progress)
+}
+
+func (a *AppClient) StatPath(host domain.Host, creds domain.Credentials, remotePath string) (int64, bool, error) {
+	size, isDir, err := a.m.StatPath(host, creds, remotePath)
+	return size, isDir, mapNotExist(err)
+}
+
+func (a *AppClient) CopyRemote(ctx context.Context, host domain.Host, creds domain.Credentials, srcPath, dstPath string, chunk int64, progress application.SftpProgress) error {
+	return a.m.CopyRemote(ctx, host, creds, srcPath, dstPath, chunk, progress)
+}
+
+// mapNotExist translates the SFTP no-such-file status into the application's
+// ErrNotExist sentinel so callers can test absence without string matching.
+// pkg/sftp normalises Stat/Open misses into os.ErrNotExist (the StatusError
+// itself never escapes), so both error shapes must be recognised.
+func mapNotExist(err error) error {
+	if err == nil {
+		return nil
+	}
+	var status *sf.StatusError
+	if (errors.As(err, &status) && status.FxCode() == sf.ErrSSHFxNoSuchFile) ||
+		errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("%w: %w", application.ErrNotExist, err)
+	}
+	return err
 }
 
 func toAppEntry(e Entry) application.SftpEntry {

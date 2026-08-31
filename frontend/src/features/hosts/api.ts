@@ -5,6 +5,7 @@
 
 import {
   HostService,
+  WindowService,
   type HostDTO,
   type HostInputDTO,
   type CredentialsDTO,
@@ -32,6 +33,8 @@ export const hostsApi = {
     HostService.SaveCredentials(hostId, creds, remember),
   getRemembered: (hostId: string) =>
     HostService.GetRememberedCredentials(hostId),
+  /** Open the standalone dual-pane SFTP window for the host. */
+  openSftpWindow: (hostId: string) => WindowService.OpenSftpWindow(hostId),
 };
 
 /** Auth type values match domain.AuthType on the backend. Labels are

@@ -25,7 +25,10 @@ export function GetAppConfig(): $CancellablePromise<domain$0.AppConfig> {
 }
 
 /**
- * SetAppConfig persists a new configuration.
+ * SetAppConfig persists a new configuration and broadcasts "config:changed"
+ * to every window — settings are global but each window applies its own
+ * chrome (theme/fonts/shortcuts), so aux windows like the standalone SFTP
+ * window follow changes made anywhere.
  */
 export function SetAppConfig(cfg: domain$0.AppConfig): $CancellablePromise<void> {
     return $Call.ByID(2422394692, cfg);
