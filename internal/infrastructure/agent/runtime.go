@@ -393,8 +393,9 @@ func (r *Runtime) systemPrompt(sessionID string) string {
 			"Container workloads: if Docker Desktop or a local engine is installed, use the docker CLI through local_exec " +
 			"(docker ps / logs / stats / inspect). Prefer bounded output (docker logs --tail) to keep responses small.\n\n" +
 			"Permissions: state-changing operations (file writes, package/service mutations, container lifecycle control " +
-			"such as docker run/stop/restart, destructive commands) require the " +
-			"user's approval. If a tool result says the user DENIED the operation, do NOT retry it — explain and propose an alternative."
+				"such as docker run/stop/restart, destructive commands) are subject to the session's approval policy — " +
+				"the user may be asked to approve them. If a tool result says the user DENIED the operation, " +
+				"do NOT retry it — explain and propose an alternative."
 	} else {
 		host, ok := r.sshMgr.HostOfSession(sessionID)
 		name := "unknown"
@@ -416,7 +417,8 @@ func (r *Runtime) systemPrompt(sessionID string) string {
 				"container diagnostics. Prefer bounded output (docker logs --tail, kubectl logs --tail) to keep responses small.\n\n"+
 				"Permissions: state-changing operations (file writes, uploads, package/service mutations, container lifecycle "+
 				"control such as docker run/stop/restart, destructive commands) "+
-				"require the user's approval. If a tool result says the user DENIED the operation, do NOT retry it — "+
+				"are subject to the session's approval policy — the user may be asked to approve them. "+
+				"If a tool result says the user DENIED the operation, do NOT retry it — "+
 				"explain what you were about to do and propose an alternative.",
 			name,
 		)

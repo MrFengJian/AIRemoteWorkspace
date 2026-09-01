@@ -12,6 +12,7 @@ import (
 	wailsapp "github.com/wailsapp/wails/v3/pkg/application"
 
 	appsvc "github.com/ai-remote/workspace/internal/application"
+	"github.com/ai-remote/workspace/internal/domain"
 	"github.com/ai-remote/workspace/internal/infrastructure/agent"
 )
 
@@ -207,6 +208,18 @@ func (a *AgentService) DeleteConversation(conversationID string) error {
 // ApproveToolCall resolves a pending approval request.
 func (a *AgentService) ApproveToolCall(reqID string, approved bool) error {
 	return a.gate.Resolve(reqID, approved)
+}
+
+// SetSessionPolicy sets the approval policy a session's agent runs (the
+// dropdown in the agent input bar). "strict" asks for every WRITE/DANGEROUS
+// call; "auto_write" silently approves WRITE and keeps asking for DANGEROUS.
+// Unknown values normalize to strict.
+func (a *AgentService) SetSessionPolicy(sessionID, policy string) error {
+	if a.gate == nil {
+		return fmt.Errorf("permission gate not available")
+	}
+	a.gate.SetSessionPolicy(sessionID, domain.SessionPolicy(policy))
+	return nil
 }
 
 // --- agentEventsEmitter bridges agent.AgentEvents to Wails events ---

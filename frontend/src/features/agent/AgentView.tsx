@@ -21,6 +21,7 @@ import {
   ClipboardPaste,
   History as HistoryIcon,
   MessageSquarePlus,
+  ShieldCheck,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { agentApi, type ConversationDTO } from "@/features/agent/api";
 import { ContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
-import { useAgentStore, type ChatMessage } from "@/features/agent/store";
+import { useAgentStore, type ChatMessage, type SessionPolicy } from "@/features/agent/store";
 import { useTerminalStore } from "@/features/terminal/terminal.store";
 import { useModelProviders } from "@/features/settings/hooks";
 import { useHosts } from "@/features/hosts/hooks";
@@ -71,8 +72,10 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
     histories,
     streaming,
     activeConvBySession,
+    policies,
     addMessage,
     setActiveConv,
+    setPolicy,
     appendToLast,
     setStreaming,
     setToolResult,
@@ -185,6 +188,22 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
     setAgentModel(activeSessionId, agentProviderId, model);
     persistModel(agentProviderId, model);
   };
+
+  // Session approval policy (input-bar dropdown). DANGEROUS always prompts —
+  // the policy only decides whether WRITE auto-passes.
+  const sessionPolicy: SessionPolicy = policies[activeSessionId ?? ""] ?? "strict";
+
+  const handlePolicyChange = (policy: SessionPolicy) => {
+    if (!activeSessionId) return;
+    setPolicy(activeSessionId, policy);
+  };
+
+  // Keep the backend gate in sync with the selected policy. Idempotent, and
+  // re-arms the gate after an app restart (its policy map starts empty).
+  useEffect(() => {
+    if (!activeSessionId) return;
+    agentApi.setSessionPolicy(activeSessionId, sessionPolicy).catch(() => {});
+  }, [activeSessionId, sessionPolicy]);
 
   // Persisted conversation history (fetched when the panel opens).
   const { data: conversations, isLoading: convsLoading } = useQuery({
@@ -760,6 +779,17 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
                 aria-label={t("agent.model")}
               />
             )}
+            <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <Select
+              value={sessionPolicy}
+              onChange={(e) => handlePolicyChange(e.target.value as SessionPolicy)}
+              className="h-7 w-auto shrink-0 text-xs"
+              title={t("agent.policyTitle")}
+              aria-label={t("agent.policyTitle")}
+            >
+              <option value="strict">{t("agent.policyStrict")}</option>
+              <option value="auto_write">{t("agent.policyAutoWrite")}</option>
+            </Select>
           </div>
         ) : providersLoaded ? (
           <div className="flex items-center gap-2 pb-2 text-xs text-muted-foreground">

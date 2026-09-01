@@ -22,6 +22,28 @@ const (
 	PermissionDangerous Permission = "dangerous"
 )
 
+// SessionPolicy is the per-session approval aggressiveness the user picks in
+// the agent input bar (AGENT.md §14). It decides who approves a WRITE — the
+// gate or the user. DANGEROUS always reaches the user regardless of policy:
+// on production hosts that decision is never delegated.
+type SessionPolicy string
+
+const (
+	// PolicyStrict asks for every WRITE and DANGEROUS call (the default).
+	PolicyStrict SessionPolicy = "strict"
+	// PolicyAutoWrite silently approves WRITE calls; DANGEROUS still prompts.
+	PolicyAutoWrite SessionPolicy = "auto_write"
+)
+
+// NormalizeSessionPolicy maps unknown/empty values to the safe default so a
+// malformed frontend payload can never widen permissions.
+func NormalizeSessionPolicy(p SessionPolicy) SessionPolicy {
+	if p == PolicyAutoWrite {
+		return PolicyAutoWrite
+	}
+	return PolicyStrict
+}
+
 // Result is what every Tool returns.
 type Result struct {
 	Output string

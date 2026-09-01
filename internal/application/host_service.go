@@ -51,6 +51,7 @@ type CreateHostInput struct {
 	TerminalFontSize int    // per-host terminal font size in px; 0 = follow global setting
 	Group            string // host group (test/stage/production/custom)
 	Tags             []string
+	Tunnels          []domain.TunnelConfig // SSH tunnel rules (host settings)
 }
 
 // Create validates and persists a new host, returning the stored Host with its
@@ -70,11 +71,13 @@ func (s *HostService) Create(in CreateHostInput) (domain.Host, error) {
 		Port:             port,
 		Username:         in.Username,
 		AuthType:         in.AuthType,
+		KeyPath:          in.KeyPath,
 		TerminalTheme:    in.TerminalTheme,
 		TerminalFont:     in.TerminalFont,
 		TerminalFontSize: in.TerminalFontSize,
 		Group:            in.Group,
 		Tags:             in.Tags,
+		Tunnels:          in.Tunnels,
 	}
 	if err := s.repo.Save(h); err != nil {
 		return domain.Host{}, err
@@ -100,11 +103,13 @@ func (s *HostService) Update(id string, in CreateHostInput) (domain.Host, error)
 	existing.Port = port
 	existing.Username = in.Username
 	existing.AuthType = in.AuthType
+	existing.KeyPath = in.KeyPath
 	existing.TerminalTheme = in.TerminalTheme
 	existing.TerminalFont = in.TerminalFont
 	existing.TerminalFontSize = in.TerminalFontSize
 	existing.Group = in.Group
 	existing.Tags = in.Tags
+	existing.Tunnels = in.Tunnels
 	if err := s.repo.Save(existing); err != nil {
 		return domain.Host{}, err
 	}
@@ -158,10 +163,21 @@ func (s *HostService) SetAgentModel(hostID, providerID, model string) error {
 // If the caller supplied a full secret (password/passphrase), it is used as-is.
 // Otherwise the remembered secret is loaded from the OS vault when available.
 //
+// Non-secret auth material is filled from the host record regardless of what
+// the caller sent: the key path (persisted on the host) and the ssh-agent
+// flag (derived from the auth type). Background dials — tunnel auto-start,
+// reconnects — call this with empty creds and must still authenticate.
+//
 // This lets "remember password" work transparently: callers pass an empty
 // Credentials and get the remembered one back.
 func (s *HostService) ResolveCredentials(host domain.Host, provided domain.Credentials) (domain.Credentials, error) {
 	creds := provided
+	if creds.KeyPath == "" {
+		creds.KeyPath = host.KeyPath
+	}
+	if !creds.UseAgent && host.AuthType == domain.AuthAgent {
+		creds.UseAgent = true
+	}
 	if s.secrets == nil {
 		return creds, nil
 	}

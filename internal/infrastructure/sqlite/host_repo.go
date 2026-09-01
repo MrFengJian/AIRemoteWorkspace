@@ -60,6 +60,10 @@ func (r *HostRepo) Save(h domain.Host) error {
 	if err != nil {
 		return fmt.Errorf("marshal tags: %w", err)
 	}
+	tunnelsJSON, err := json.Marshal(h.Tunnels)
+	if err != nil {
+		return fmt.Errorf("marshal tunnels: %w", err)
+	}
 
 	return r.store.db.Save(&hostModel{
 		ID:               h.ID,
@@ -69,6 +73,7 @@ func (r *HostRepo) Save(h domain.Host) error {
 		Username:         h.Username,
 		AuthType:         string(h.AuthType),
 		SecretRef:        h.SecretRef,
+		KeyPath:          h.KeyPath,
 		TerminalTheme:    h.TerminalTheme,
 		TerminalFont:     h.TerminalFont,
 		TerminalFontSize: h.TerminalFontSize,
@@ -77,6 +82,7 @@ func (r *HostRepo) Save(h domain.Host) error {
 		OS:               h.OS,
 		AgentProviderID:  h.AgentProviderID,
 		AgentModel:       h.AgentModel,
+		Tunnel:           string(tunnelsJSON),
 		CreatedAt:        h.CreatedAt,
 		UpdatedAt:        h.UpdatedAt,
 	}).Error
@@ -91,6 +97,7 @@ func (r *HostRepo) Delete(id string) error {
 func hostFromModel(m hostModel) domain.Host {
 	var tags []string
 	_ = json.Unmarshal([]byte(m.Tags), &tags) // tolerate empty/legacy values
+	tunnels := tunnelsFromJSON(m.Tunnel)
 	return domain.Host{
 		ID:               m.ID,
 		Name:             m.Name,
@@ -99,6 +106,7 @@ func hostFromModel(m hostModel) domain.Host {
 		Username:         m.Username,
 		AuthType:         domain.AuthType(m.AuthType),
 		SecretRef:        m.SecretRef,
+		KeyPath:          m.KeyPath,
 		TerminalTheme:    m.TerminalTheme,
 		TerminalFont:     m.TerminalFont,
 		TerminalFontSize: m.TerminalFontSize,
@@ -107,7 +115,26 @@ func hostFromModel(m hostModel) domain.Host {
 		OS:               m.OS,
 		AgentProviderID:  m.AgentProviderID,
 		AgentModel:       m.AgentModel,
+		Tunnels:          tunnels,
 		CreatedAt:        m.CreatedAt,
 		UpdatedAt:        m.UpdatedAt,
 	}
+}
+
+// tunnelsFromJSON decodes the tunnel column: an array of rules today, with a
+// fallback for the interim single-object format ('' / legacy → no tunnels).
+func tunnelsFromJSON(s string) []domain.TunnelConfig {
+	var out []domain.TunnelConfig
+	if s == "" {
+		return out
+	}
+	if err := json.Unmarshal([]byte(s), &out); err == nil {
+		return out
+	}
+	// Interim single-rule format from before multi-tunnel support.
+	var one domain.TunnelConfig
+	if err := json.Unmarshal([]byte(s), &one); err == nil && one.Type != "" {
+		return []domain.TunnelConfig{one}
+	}
+	return nil
 }

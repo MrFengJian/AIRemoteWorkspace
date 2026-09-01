@@ -55,14 +55,16 @@ type TerminalService struct {
 	hostSvc     *appsvc.HostService
 	connManager appsvc.ConnectionManager
 	localMgr    *localpty.Manager
+	tunnels     *ssh.TunnelManager
 
 	mu sync.Mutex
 }
 
 // NewTerminalService wires the TerminalService. The *Application is injected
 // via ServiceStartup (Wails constructs the app after services are registered).
-func NewTerminalService(hostSvc *appsvc.HostService, connManager appsvc.ConnectionManager, localMgr *localpty.Manager) *TerminalService {
-	return &TerminalService{hostSvc: hostSvc, connManager: connManager, localMgr: localMgr}
+// tunnels (may be nil) hosts the per-host SSH tunnels a session auto-starts.
+func NewTerminalService(hostSvc *appsvc.HostService, connManager appsvc.ConnectionManager, localMgr *localpty.Manager, tunnels *ssh.TunnelManager) *TerminalService {
+	return &TerminalService{hostSvc: hostSvc, connManager: connManager, localMgr: localMgr, tunnels: tunnels}
 }
 
 // ServiceName lets Wails register the service under a stable name.
@@ -118,6 +120,15 @@ func (t *TerminalService) OpenSession(req OpenSessionRequest) (OpenSessionResult
 		hostID := req.HostID
 		sid := sessionID
 		go t.hostSvc.EnsureOS(hostID, sid)
+	}
+
+	// Auto-start the host's SSH tunnels when configured ("打开标签页时自动拉起").
+	// Ensure dedupes per rule, so many sessions share one tunnel per rule. It
+	// runs in the background — dial failures surface as tunnel status events
+	// and must never block or fail the terminal itself.
+	if len(host.Tunnels) > 0 && t.tunnels != nil {
+		tunnels := t.tunnels
+		go tunnels.Ensure(host, creds)
 	}
 
 	return OpenSessionResult{SessionID: sessionID}, nil

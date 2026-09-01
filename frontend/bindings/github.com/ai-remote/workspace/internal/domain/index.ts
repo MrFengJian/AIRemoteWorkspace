@@ -3,7 +3,9 @@
 
 export {
     Permission,
-    SecurityMode
+    SecurityMode,
+    TunnelState,
+    TunnelType
 } from "./models.js";
 
 export type {
@@ -23,5 +25,7 @@ export type {
     MonitorPort,
     MonitorProcess,
     MonitorTCPState,
-    TransferConfig
+    TransferConfig,
+    TunnelConfig,
+    TunnelStatus
 } from "./models.js";

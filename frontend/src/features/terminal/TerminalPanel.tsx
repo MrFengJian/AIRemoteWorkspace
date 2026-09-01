@@ -467,6 +467,7 @@ export function TerminalPanel({
           terminalFontSize: fontSize,
           group: host.group ?? "",
           tags: host.tags ?? [],
+          tunnels: host.tunnels ?? [],
         },
       },
       {

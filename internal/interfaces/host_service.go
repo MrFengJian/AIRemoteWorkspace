@@ -8,6 +8,7 @@ import (
 
 	appsvc "github.com/ai-remote/workspace/internal/application"
 	"github.com/ai-remote/workspace/internal/domain"
+	ssh "github.com/ai-remote/workspace/internal/infrastructure/ssh"
 )
 
 // HostDTO is the frontend-facing host representation. It mirrors domain.Host
@@ -30,8 +31,10 @@ type HostDTO struct {
 	OS                 string   `json:"os"` // detected distro id; read-only, never editable
 	// Last-used agent model preference; read-only for the host form, written
 	// via SetAgentModel by the agent panel.
-	AgentProviderID    string   `json:"agentProviderId"`
-	AgentModel         string   `json:"agentModel"`
+	AgentProviderID string `json:"agentProviderId"`
+	AgentModel      string `json:"agentModel"`
+	// SSH tunnel rules (host settings form; several allowed per host).
+	Tunnels []domain.TunnelConfig `json:"tunnels"`
 }
 
 // HostInputDTO is what the frontend sends to create/update a host.
@@ -47,6 +50,7 @@ type HostInputDTO struct {
 	TerminalFontSize int      `json:"terminalFontSize"`
 	Group            string   `json:"group"`
 	Tags             []string `json:"tags"`
+	Tunnels          []domain.TunnelConfig `json:"tunnels"`
 }
 
 // CredentialsDTO carries connect-time secret material supplied by the UI.
@@ -60,12 +64,14 @@ type CredentialsDTO struct {
 
 // HostService exposes host CRUD + connection testing to the frontend.
 type HostService struct {
-	svc *appsvc.HostService
+	svc     *appsvc.HostService
+	tunnels *ssh.TunnelManager
 }
 
 // NewHostService wires the Wails HostService to its application port.
-func NewHostService(svc *appsvc.HostService) *HostService {
-	return &HostService{svc: svc}
+// tunnels (may be nil) is synced with tunnel config changes on update/delete.
+func NewHostService(svc *appsvc.HostService, tunnels *ssh.TunnelManager) *HostService {
+	return &HostService{svc: svc, tunnels: tunnels}
 }
 
 // ServiceName lets Wails register the service under a stable name.
@@ -115,12 +121,50 @@ func (h *HostService) UpdateHost(id string, in HostInputDTO) (HostDTO, error) {
 	if err != nil {
 		return HostDTO{}, err
 	}
+	h.syncTunnel(host)
 	return toHostDTO(host), nil
 }
 
 // DeleteHost removes a host by id.
 func (h *HostService) DeleteHost(id string) error {
+	if h.tunnels != nil {
+		h.tunnels.Remove(id) // no orphaned tunnels for deleted hosts
+	}
 	return h.svc.Delete(id)
+}
+
+// syncTunnel reconciles the host's running tunnels with its just-saved rule
+// list:
+//   - no valid rules → stop everything;
+//   - rules changed while at least one tunnel is running → reconcile (changed
+//     rules restart, removed ones stop, new ones start);
+//   - manually stopped tunnels stay stopped — saving a host edit must not
+//     silently bring them back (the next session open or panel start does).
+func (h *HostService) syncTunnel(host domain.Host) {
+	if h.tunnels == nil {
+		return
+	}
+	hasValid := false
+	for _, c := range host.Tunnels {
+		if c.Valid() {
+			hasValid = true
+			break
+		}
+	}
+	if !hasValid {
+		h.tunnels.Stop(host.ID)
+		return
+	}
+	for _, st := range h.tunnels.Statuses() {
+		if st.HostID == host.ID && st.State != domain.TunnelStopped {
+			creds, err := h.svc.ResolveCredentials(host, domain.Credentials{})
+			if err != nil {
+				return
+			}
+			h.tunnels.Ensure(host, creds)
+			return
+		}
+	}
 }
 
 // SetAgentModel persists the host's last-used agent provider + model (hidden
@@ -175,6 +219,7 @@ func toHostInput(in HostInputDTO) appsvc.CreateHostInput {
 		TerminalFontSize: in.TerminalFontSize,
 		Group:            in.Group,
 		Tags:             in.Tags,
+		Tunnels:          in.Tunnels,
 	}
 }
 
@@ -186,6 +231,7 @@ func toHostDTO(h domain.Host) HostDTO {
 		Port:               h.Port,
 		Username:           h.Username,
 		AuthType:           string(h.AuthType),
+		KeyPath:            h.KeyPath,
 		TerminalTheme:      h.TerminalTheme,
 		TerminalFont:       h.TerminalFont,
 		TerminalFontSize:   h.TerminalFontSize,
@@ -194,6 +240,7 @@ func toHostDTO(h domain.Host) HostDTO {
 		OS:                 h.OS,
 		AgentProviderID:    h.AgentProviderID,
 		AgentModel:         h.AgentModel,
+		Tunnels:            h.Tunnels,
 	}
 }
 

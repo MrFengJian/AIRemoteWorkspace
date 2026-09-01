@@ -86,6 +86,16 @@ export function ResumeConversation(sessionID: string, conversationID: string): $
 }
 
 /**
+ * SetSessionPolicy sets the approval policy a session's agent runs (the
+ * dropdown in the agent input bar). "strict" asks for every WRITE/DANGEROUS
+ * call; "auto_write" silently approves WRITE and keeps asking for DANGEROUS.
+ * Unknown values normalize to strict.
+ */
+export function SetSessionPolicy(sessionID: string, policy: string): $CancellablePromise<void> {
+    return $Call.ByID(1997586712, sessionID, policy);
+}
+
+/**
  * StartChat kicks off a streaming agent chat against the selected provider +
  * model. Output flows via events:
  *   agent:<sessionID>:chunk    — incremental LLM text

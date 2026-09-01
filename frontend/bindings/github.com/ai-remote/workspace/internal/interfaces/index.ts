@@ -10,6 +10,7 @@ import * as MonitorService from "./monitorservice.js";
 import * as SftpService from "./sftpservice.js";
 import * as SystemService from "./systemservice.js";
 import * as TerminalService from "./terminalservice.js";
+import * as TunnelService from "./tunnelservice.js";
 import * as WindowService from "./windowservice.js";
 export {
     AgentService,
@@ -21,6 +22,7 @@ export {
     SftpService,
     SystemService,
     TerminalService,
+    TunnelService,
     WindowService
 };
 
@@ -40,5 +42,6 @@ export type {
     SaveProviderInput,
     SystemInfoResult,
     TestConnectionResult,
-    TestProviderInput
+    TestProviderInput,
+    TunnelStatusDTO
 } from "./models.js";

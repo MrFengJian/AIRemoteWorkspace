@@ -23,6 +23,9 @@ type hostModel struct {
 	Username      string `gorm:"not null;size:100"`
 	AuthType      string `gorm:"not null;default:password;size:20"`
 	SecretRef     string `gorm:"not null;default:'';size:255"`
+	// Private key path for AuthKey hosts (not a secret; persisted so
+	// background dials — tunnels, reconnect — can authenticate).
+	KeyPath       string `gorm:"not null;default:'';size:255"`
 	TerminalTheme string `gorm:"not null;default:'';size:50"`
 	// Per-host terminal font overrides; "" / 0 = follow the global settings.
 	TerminalFont     string `gorm:"not null;default:'';size:100"`
@@ -33,6 +36,8 @@ type hostModel struct {
 	// Last-used agent model preference (hidden; not in the host edit form).
 	AgentProviderID string `gorm:"not null;default:'';size:64"`
 	AgentModel      string `gorm:"not null;default:'';size:200"`
+	// SSH tunnel definition (domain.TunnelConfig as JSON; '' = no tunnel).
+	Tunnel string `gorm:"not null;default:'';type:text"`
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

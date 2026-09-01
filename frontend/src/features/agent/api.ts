@@ -17,6 +17,9 @@ export const agentApi = {
   clearHistory: (sessionID: string) => AgentService.ClearHistory(sessionID),
   approveToolCall: (reqID: string, approved: boolean) =>
     AgentService.ApproveToolCall(reqID, approved),
+  /** Set a session's approval policy ("strict" | "auto_write"). */
+  setSessionPolicy: (sessionID: string, policy: string) =>
+    AgentService.SetSessionPolicy(sessionID, policy),
   /** Persisted conversation history (newest first; filter by host client-side).
    *  The generated bindings mark slice returns nullable; normalize to []. */
   listConversations: () => AgentService.ListConversations().then((r) => r ?? []),

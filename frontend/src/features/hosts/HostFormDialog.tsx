@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Plug, Save, Trash2, KeyRound } from "lucide-react";
+import { Loader2, Plug, Save, Trash2, KeyRound, Network } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -36,6 +36,12 @@ import { useHostsUIStore } from "@/features/hosts/store";
 import { TERMINAL_THEMES, getTerminalTheme } from "@/features/terminal/themes";
 import { TERMINAL_FONTS, terminalFontFamily } from "@/features/terminal/fonts";
 import { osInfo } from "@/features/hosts/osIcons";
+import {
+  EMPTY_TUNNEL,
+  TUNNEL_TYPES,
+  tunnelApi,
+  type TunnelConfig,
+} from "@/features/tunnel/api";
 import { useConfirm } from "@/lib/useConfirm";
 import { cn } from "@/lib/utils";
 
@@ -51,12 +57,13 @@ const EMPTY_INPUT: HostInputDTO = {
   terminalFontSize: 0,
   group: "",
   tags: [],
+  tunnels: [],
 };
 
 const EMPTY_CREDS: CredentialsDTO = { password: "", keyPath: "", keyPassphrase: "", useAgent: false };
 
-/** Dialog tab groups, Xshell-style: connection / appearance / organisation. */
-type FormTab = "connection" | "appearance" | "organisation";
+/** Dialog tab groups, Xshell-style: connection / appearance / organisation / tunnel. */
+type FormTab = "connection" | "appearance" | "organisation" | "tunnel";
 
 /**
  * HostFormDialog — create/edit/delete + test-connect + open-terminal, with
@@ -114,6 +121,7 @@ export function HostFormDialog() {
         terminalFontSize: existing.terminalFontSize || 0,
         group: existing.group || "",
         tags: existing.tags ?? [],
+        tunnels: existing.tunnels ?? [],
       });
       // Check if a remembered secret already exists for this host.
       hostsApi
@@ -150,6 +158,19 @@ export function HostFormDialog() {
   const updateCreds = (patch: Partial<CredentialsDTO>) =>
     setCreds((v) => ({ ...v, ...patch }));
 
+  // ── Tunnel rule list helpers ────────────────────────────────────────
+  const updateRule = (i: number, patch: Partial<TunnelConfig>) => {
+    update({
+      tunnels: (input.tunnels ?? []).map((r, j) => (j === i ? { ...r, ...patch } : r)),
+    });
+  };
+  const addRule = () => {
+    update({ tunnels: [...(input.tunnels ?? []), { ...EMPTY_TUNNEL }] });
+  };
+  const removeRule = (i: number) => {
+    update({ tunnels: (input.tunnels ?? []).filter((_, j) => j !== i) });
+  };
+
   const buildCreds = (): CredentialsDTO => ({
     password: input.authType === "password" ? creds.password : "",
     keyPath: input.authType === "key" ? (creds.keyPath || input.keyPath) : "",
@@ -166,6 +187,34 @@ export function HostFormDialog() {
     if (!Number.isInteger(input.port) || input.port < 1 || input.port > 65535) {
       errs.port = t("hostForm.errPort");
     }
+    // Tunnel rules only bind when the rule is enabled.
+    const seenLocalPorts = new Set<number>();
+    (input.tunnels ?? []).forEach((tun, i) => {
+      if (!tun.enabled) return;
+      const tag = (k: string) => `tunnel-${i}-${k}`;
+      if (!Number.isInteger(tun.listenPort) || tun.listenPort < 1 || tun.listenPort > 65535) {
+        errs[tag("listenPort")] = t("hostForm.errPort");
+      }
+      if (tun.type === "local" || tun.type === "remote") {
+        if (!tun.targetHost?.trim()) errs[tag("targetHost")] = t("hostForm.errRequired");
+        if (
+          typeof tun.targetPort !== "number" ||
+          !Number.isInteger(tun.targetPort) ||
+          tun.targetPort < 1 ||
+          tun.targetPort > 65535
+        ) {
+          errs[tag("targetPort")] = t("hostForm.errPort");
+        }
+      }
+      // Two enabled LOCAL-side listeners (local/dynamic) on the same port can
+      // never coexist — flag it directly instead of prompting at save.
+      if (tun.type !== "remote" && Number.isInteger(tun.listenPort) && tun.listenPort > 0) {
+        if (seenLocalPorts.has(tun.listenPort)) {
+          errs[tag("listenPort")] = t("hostForm.errTunnelDupPort");
+        }
+        seenLocalPorts.add(tun.listenPort);
+      }
+    });
     return errs;
   };
 
@@ -174,7 +223,8 @@ export function HostFormDialog() {
     const errs = validate();
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      setTab("connection"); // all validated fields live on the connection tab
+      const hasTunnelErr = Object.keys(errs).some((k) => k.startsWith("tunnel"));
+      setTab(hasTunnelErr ? "tunnel" : "connection");
       return false;
     }
     return true;
@@ -193,6 +243,25 @@ export function HostFormDialog() {
     if (!validateOrSwitch()) return;
     submitting.current = true;
     try {
+      // Save-time port conflict pre-check: enabled LOCAL-side listeners
+      // (local/dynamic rules) must not collide with ports already held by
+      // other processes or other hosts' tunnels. Ports belonging to this
+      // host's own tunnels are exempt on the backend. Prompting, not
+      // blocking — the user may know better.
+      const ports = (input.tunnels ?? [])
+        .filter((r) => r.enabled && r.type !== "remote" && r.listenPort > 0)
+        .map((r) => r.listenPort);
+      if (ports.length > 0) {
+        const busy = await tunnelApi.checkPorts(existing?.id ?? "", ports);
+        if (busy.length > 0) {
+          const ok = await askConfirm({
+            title: t("hostForm.tunnelPortConflictTitle"),
+            message: t("hostForm.tunnelPortConflict", { ports: busy.join(", ") }),
+            confirmLabel: t("common.save"),
+          });
+          if (!ok) return;
+        }
+      }
       const saved = existing
         ? await updateHost.mutateAsync({ id: existing.id, input })
         : await createHost.mutateAsync(input);
@@ -305,6 +374,7 @@ export function HostFormDialog() {
     { id: "connection", label: t("hostForm.connection") },
     { id: "appearance", label: t("hostForm.appearance") },
     { id: "organisation", label: t("hostForm.organisation") },
+    { id: "tunnel", label: t("hostForm.tunnel") },
   ];
 
   return (
@@ -715,6 +785,173 @@ export function HostFormDialog() {
                   }}
                 />
               </div>
+            </div>
+          )}
+
+          {/* ── Tab: Tunnel (SSH port forwarding rules per host) ─────── */}
+          {tab === "tunnel" && (
+            <div
+              role="tabpanel"
+              id="host-form-panel-tunnel"
+              aria-labelledby="host-form-tab-tunnel"
+              className="flex flex-col gap-3"
+            >
+              <p className="flex items-start gap-1.5 rounded-[var(--radius)] bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground">
+                <Network className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {t("hostForm.tunnelHint")}
+              </p>
+
+              {(input.tunnels ?? []).length === 0 && (
+                <p className="py-2 text-center text-xs text-muted-foreground">
+                  {t("hostForm.tunnelNone")}
+                </p>
+              )}
+
+              {(input.tunnels ?? []).map((rule, i) => {
+                const tag = (k: string) => `tunnel-${i}-${k}`;
+                return (
+                  <div
+                    key={i}
+                    className={cn(
+                      "flex flex-col gap-3 rounded-[var(--radius)] border p-3",
+                      rule.enabled ? "border-border bg-background/30" : "border-dashed border-border/60 opacity-70",
+                    )}
+                  >
+                    {/* Rule header: enable toggle + type + remove */}
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        checked={rule.enabled}
+                        onCheckedChange={(v) => updateRule(i, { enabled: v === true })}
+                        aria-label={t("hostForm.tunnelRuleEnable")}
+                      />
+                      <span className="text-xs font-semibold text-foreground">
+                        {t("hostForm.tunnelRuleN", { n: i + 1 })}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
+                        {t(`hostForm.tunnelType_${rule.type}`)}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                        onClick={() => removeRule(i)}
+                        aria-label={t("hostForm.tunnelRuleDelete")}
+                        title={t("hostForm.tunnelRuleDelete")}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="grid gap-1.5">
+                        <Label htmlFor={`tunnelType-${i}`}>{t("hostForm.tunnelType")}</Label>
+                        <Select
+                          id={`tunnelType-${i}`}
+                          value={rule.type}
+                          onChange={(e) =>
+                            updateRule(i, {
+                              type: e.target.value as (typeof TUNNEL_TYPES)[number],
+                            })
+                          }
+                        >
+                          {TUNNEL_TYPES.map((tt) => (
+                            <option key={tt} value={tt}>
+                              {t(`hostForm.tunnelType_${tt}`)}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+
+                      <div className="grid gap-1.5">
+                        <Label htmlFor={`tunnelBind-${i}`}>{t("hostForm.tunnelBindHost")}</Label>
+                        <Select
+                          id={`tunnelBind-${i}`}
+                          value={rule.bindHost || "127.0.0.1"}
+                          onChange={(e) => updateRule(i, { bindHost: e.target.value })}
+                        >
+                          <option value="127.0.0.1">{t("hostForm.tunnelBindLoopback")}</option>
+                          <option value="0.0.0.0">{t("hostForm.tunnelBindAll")}</option>
+                        </Select>
+                      </div>
+
+                      <div className="grid gap-1.5">
+                        <Label htmlFor={`tunnelListenPort-${i}`}>
+                          {rule.type === "remote"
+                            ? t("hostForm.tunnelListenPortRemote")
+                            : t("hostForm.tunnelListenPort")}
+                        </Label>
+                        <Input
+                          id={`tunnelListenPort-${i}`}
+                          type="number"
+                          min={1}
+                          max={65535}
+                          value={rule.listenPort || ""}
+                          onChange={(e) => updateRule(i, { listenPort: Number(e.target.value) })}
+                          placeholder={rule.type === "remote" ? "8080" : "13306"}
+                          aria-invalid={!!errors[tag("listenPort")]}
+                        />
+                        {errors[tag("listenPort")] && (
+                          <FieldError message={errors[tag("listenPort")]} />
+                        )}
+                      </div>
+                    </div>
+
+                    {rule.type !== "dynamic" && (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="grid gap-1.5">
+                          <Label htmlFor={`tunnelTargetHost-${i}`}>
+                            {t("hostForm.tunnelTargetHost")}
+                            <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                              {rule.type === "remote"
+                                ? t("hostForm.tunnelTargetFromLocal")
+                                : t("hostForm.tunnelTargetFromServer")}
+                            </span>
+                          </Label>
+                          <Input
+                            id={`tunnelTargetHost-${i}`}
+                            value={rule.targetHost ?? ""}
+                            onChange={(e) => updateRule(i, { targetHost: e.target.value })}
+                            placeholder="127.0.0.1"
+                            aria-invalid={!!errors[tag("targetHost")]}
+                          />
+                          {errors[tag("targetHost")] && (
+                            <FieldError message={errors[tag("targetHost")]} />
+                          )}
+                        </div>
+                        <div className="grid gap-1.5">
+                          <Label htmlFor={`tunnelTargetPort-${i}`}>
+                            {t("hostForm.tunnelTargetPort")}
+                          </Label>
+                          <Input
+                            id={`tunnelTargetPort-${i}`}
+                            type="number"
+                            min={1}
+                            max={65535}
+                            value={rule.targetPort || ""}
+                            onChange={(e) => updateRule(i, { targetPort: Number(e.target.value) })}
+                            placeholder="3306"
+                            aria-invalid={!!errors[tag("targetPort")]}
+                          />
+                          {errors[tag("targetPort")] && (
+                            <FieldError message={errors[tag("targetPort")]} />
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-fit"
+                onClick={addRule}
+              >
+                <Network className="h-3.5 w-3.5" /> {t("hostForm.tunnelAdd")}
+              </Button>
             </div>
           )}
         </form>

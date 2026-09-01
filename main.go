@@ -59,6 +59,11 @@ func main() {
 	// Connection manager needs a HostKeyStore; adapt the app-layer repo.
 	connManager := ssh.NewManager(ssh.FromHostKeyRepo(hostKeyRepo))
 
+	// Per-host SSH tunnel manager (host settings → auto-start on session
+	// open, one tunnel per host, auto-reconnect). Its status emitter is wired
+	// to the TunnelService once that exists.
+	tunnelMgr := ssh.NewTunnelManager(ssh.FromHostKeyRepo(hostKeyRepo))
+
 	// SFTP manager dials its own (cached) connections per host, reusing the
 	// same dial logic + host-key verification as the terminal connection.
 	keyStore := ssh.FromHostKeyRepo(hostKeyRepo)
@@ -112,9 +117,10 @@ func main() {
 	// Wails-facing services (interface adapter layer).
 	systemService := interfaces.NewSystemService(appName, appVersion)
 	configService := interfaces.NewConfigService(configSvc)
-	hostService := interfaces.NewHostService(hostSvc)
+	hostService := interfaces.NewHostService(hostSvc, tunnelMgr)
 	localPtyMgr := localpty.NewManager()
-	terminalService := interfaces.NewTerminalService(hostSvc, connManager, localPtyMgr)
+	terminalService := interfaces.NewTerminalService(hostSvc, connManager, localPtyMgr, tunnelMgr)
+	tunnelService := interfaces.NewTunnelService(tunnelMgr, hostSvc)
 	monitorService := interfaces.NewMonitorService(monitorSvc)
 	dockerService := interfaces.NewDockerService(dockerSvc)
 	sftpService := interfaces.NewSftpService(sftpSvc)
@@ -133,6 +139,7 @@ func main() {
 			wailsapp.NewService(configService),
 			wailsapp.NewService(hostService),
 			wailsapp.NewService(terminalService),
+			wailsapp.NewService(tunnelService),
 			wailsapp.NewService(monitorService),
 			wailsapp.NewService(dockerService),
 			wailsapp.NewService(sftpService),

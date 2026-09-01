@@ -20,6 +20,10 @@ type Host struct {
 	Username  string
 	AuthType  AuthType
 	SecretRef string // keychain handle; empty in Secure mode (ask each time)
+	// Path to the private key for AuthKey hosts. Not a secret (no keychain
+	// needed) but must be persisted — background dials (tunnel auto-start,
+	// reconnect) have no form in front of the user to supply it.
+	KeyPath string
 
 	TerminalTheme string   // per-host terminal colour scheme id; "" = use default
 	// Per-host terminal font overrides; "" / 0 mean "follow the global
@@ -35,6 +39,11 @@ type Host struct {
 	// selector; deliberately NOT part of the host edit form.
 	AgentProviderID string
 	AgentModel      string
+
+	// SSH tunnel definitions (host settings form; a host may have several).
+	// Enabled tunnels auto-start when a session opens on this host; the
+	// tunnel manager dedupes per host + rule.
+	Tunnels []TunnelConfig
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

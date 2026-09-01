@@ -5,6 +5,12 @@ import { create } from "zustand";
  * The activeSessionId ties the agent to a terminal tab. Approval requests
  * live in their own global store (approval.store.ts) rendered by ApprovalHost.
  */
+
+/** Session approval policy — mirrors domain.SessionPolicy on the backend.
+ *  "strict" asks for every WRITE/DANGEROUS call; "auto_write" silently
+ *  approves WRITE and keeps asking for DANGEROUS (the hard floor). */
+export type SessionPolicy = "strict" | "auto_write";
+
 export interface ChatMessage {
   /** Stable identity for list keys — survives streaming appends/reorders. */
   id: number;
@@ -27,9 +33,12 @@ interface AgentState {
   streaming: Record<string, boolean>;
   /** Which persisted conversation each session is showing (history highlight). */
   activeConvBySession: Record<string, string>;
+  /** Approval policy per session (the input-bar dropdown). */
+  policies: Record<string, SessionPolicy>;
 
   addMessage: (sessionID: string, msg: Omit<ChatMessage, "id">) => void;
   setActiveConv: (sessionID: string, conversationID: string | null) => void;
+  setPolicy: (sessionID: string, policy: SessionPolicy) => void;
   appendToLast: (sessionID: string, text: string) => void;
   setStreaming: (sessionID: string, v: boolean) => void;
   /** Attach a tool execution result to its step (matched by call id; an empty
@@ -52,6 +61,7 @@ export const useAgentStore = create<AgentState>((set) => ({
   histories: {},
   streaming: {},
   activeConvBySession: {},
+  policies: {},
 
   setActiveConv: (sessionID, conversationID) =>
     set((s) => {
@@ -60,6 +70,9 @@ export const useAgentStore = create<AgentState>((set) => ({
       else next[sessionID] = conversationID;
       return { activeConvBySession: next };
     }),
+
+  setPolicy: (sessionID, policy) =>
+    set((s) => ({ policies: { ...s.policies, [sessionID]: policy } })),
 
   addMessage: (sessionID, msg) =>
     set((s) => ({

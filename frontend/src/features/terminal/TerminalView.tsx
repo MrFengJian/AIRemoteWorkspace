@@ -17,6 +17,7 @@ import {
   Container,
   Monitor,
   PanelLeftOpen,
+  Network,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -31,6 +32,7 @@ import { agentApi } from "@/features/agent/api";
 import { SftpView } from "@/features/sftp/SftpView";
 import { MonitorView } from "@/features/monitor/MonitorView";
 import { DockerView } from "@/features/docker/DockerView";
+import { TunnelPanel } from "@/features/tunnel/TunnelPanel";
 import { useOpenTerminal, useOpenLocalTerminal, useHosts } from "@/features/hosts/hooks";
 import { useHostsUIStore } from "@/features/hosts/store";
 import { HostsSidebar } from "@/features/hosts/HostsSidebar";
@@ -91,9 +93,9 @@ export function TerminalView() {
     y: number;
   } | null>(null);
 
-  // Right panel visibility + active tab (SFTP / Agent / Monitor share one panel).
+  // Right panel visibility + active tab (SFTP / Agent / Monitor / Tunnel share one panel).
   const [rightOpen, setRightOpen] = useState(false);
-  const [rightTab, setRightTab] = useState<"sftp" | "agent" | "monitor" | "docker">("agent");
+  const [rightTab, setRightTab] = useState<"sftp" | "agent" | "monitor" | "docker" | "tunnel">("agent");
   const [copied, setCopied] = useState(false);
   // Hosts sidebar collapsed state — persisted so the preference survives
   // restarts; collapsing gives the terminal area more room.
@@ -805,6 +807,30 @@ export function TerminalView() {
             >
               <Container className="h-4 w-4" />
             </button>
+            {/* Tunnel toggle — like SFTP, SSH tunnels are per host, so local
+                sessions have nothing to show. */}
+            <button
+              type="button"
+              disabled={activeSession ? isLocalSession(activeSession) : false}
+              onClick={() => {
+                if (rightOpen && rightTab === "tunnel") {
+                  setRightOpen(false);
+                } else {
+                  setRightTab("tunnel");
+                  setRightOpen(true);
+                }
+              }}
+              title={t("tunnel.title")}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
+                "disabled:pointer-events-none disabled:opacity-40",
+                rightOpen && rightTab === "tunnel"
+                  ? "bg-accent text-primary"
+                  : "text-muted-foreground hover:bg-accent/50",
+              )}
+            >
+              <Network className="h-4 w-4" />
+            </button>
           </div>
 
           {/* Terminal panels: only active tab is visible, all stay mounted. */}
@@ -955,6 +981,20 @@ export function TerminalView() {
               </button>
               <button
                 type="button"
+                onClick={() => setRightTab("tunnel")}
+                title={t("tunnel.title")}
+                aria-label={t("tunnel.title")}
+                className={cn(
+                  "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
+                  rightTab === "tunnel"
+                    ? "bg-accent text-primary"
+                    : "text-muted-foreground hover:bg-accent/50",
+                )}
+              >
+                <Network className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
                 onClick={() => setRightOpen(false)}
                 className="ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
                 title={t("common.close")}
@@ -977,6 +1017,10 @@ export function TerminalView() {
               ) : rightTab === "docker" ? (
                 <DockerView
                   embeddedSessionID={activeSession.id}
+                />
+              ) : rightTab === "tunnel" ? (
+                <TunnelPanel
+                  embeddedHostID={activeSession.hostID}
                 />
               ) : (
                 <AgentView
