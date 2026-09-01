@@ -74,6 +74,14 @@ export interface AppConfig {
     "terminalFontSize": number;
 
     /**
+     * Terminal content highlighting (http/https links, ERROR/WARN keywords).
+     * Inverted flags: an older settings row without the fields keeps both
+     * highlights enabled — the out-of-box default.
+     */
+    "disableLinkHighlight": boolean;
+    "disableKeywordHighlight": boolean;
+
+    /**
      * AI agent provider config (API key in SecretStore)
      */
     "llm": LLMConfig;

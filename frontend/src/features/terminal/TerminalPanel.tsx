@@ -36,6 +36,8 @@ import { useUIStore } from "@/stores/ui.store";
 import { terminalFontFamily } from "@/features/terminal/fonts";
 import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabMenu";
 import { TerminalAppearanceDialog } from "@/features/terminal/TerminalAppearanceDialog";
+import { PasteConfirmDialog } from "@/features/terminal/PasteConfirmDialog";
+import { BufferHighlighter, type HighlightOptions } from "@/features/terminal/terminalHighlight";
 import { useHosts, useUpdateHost } from "@/features/hosts/hooks";
 import { getTerminalTheme } from "@/features/terminal/themes";
 import { useKeybindingStore } from "@/keybindings/store";
@@ -73,6 +75,7 @@ export function TerminalPanel({
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
+  const highlighterRef = useRef<BufferHighlighter | null>(null);
   const setSessionStatus = useTerminalStore((s) => s.setSessionStatus);
   const setSessionAppearance = useTerminalStore((s) => s.setSessionAppearance);
   const removeSession = useTerminalStore((s) => s.removeSession);
@@ -89,6 +92,9 @@ export function TerminalPanel({
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showAppearanceDialog, setShowAppearanceDialog] = useState(false);
+  // Staged multi-line paste: shown for review in PasteConfirmDialog before
+  // anything is written to the session.
+  const [pasteDraft, setPasteDraft] = useState<string | null>(null);
   // Live font zoom for this pane (Ctrl+= / Ctrl+- shortcuts). Applied on top
   // of the session's base size; the appearance dialog writes absolute sizes
   // into the session snapshot and resets this to 0, so the two stay in sync.
@@ -114,6 +120,27 @@ export function TerminalPanel({
       termRef.current.options.theme = getTerminalTheme(session.terminalTheme).theme;
     }
   }, [session.terminalTheme]);
+
+  // Content-highlight settings (global config). Loaded on mount and re-read
+  // whenever the config changes anywhere (SettingsView saves → "config:changed").
+  const [hlOptions, setHlOptions] = useState<HighlightOptions>({ links: true, keywords: true });
+  useEffect(() => {
+    const load = () => {
+      ConfigService.GetAppConfig()
+        .then((cfg) =>
+          setHlOptions({
+            links: !cfg.disableLinkHighlight,
+            keywords: !cfg.disableKeywordHighlight,
+          }),
+        )
+        .catch(() => {});
+    };
+    load();
+    const cancel = Events.On("config:changed", load);
+    return () => {
+      if (typeof cancel === "function") cancel();
+    };
+  }, []);
 
   // Auto-focus: when the terminal view is showing and this pane belongs to the
   // active tab, grab focus so typing works immediately (no manual click).
@@ -148,6 +175,8 @@ export function TerminalPanel({
     term.loadAddon(fit);
     term.loadAddon(search);
     term.open(container);
+    const highlighter = new BufferHighlighter(term, { links: true, keywords: true });
+    highlighterRef.current = highlighter;
     try {
       fit.fit();
     } catch {
@@ -162,6 +191,21 @@ export function TerminalPanel({
     const selDisp = term.onSelectionChange(() => {
       setHasSelection(term.hasSelection());
     });
+
+    // Single paste choke point: a CAPTURE-phase listener on the container
+    // runs before xterm's own textarea listener for every paste (Ctrl+V,
+    // Shift+Insert, WebView edit menu…). Always suppress the default —
+    // otherwise content lands in the shell while the multi-line review
+    // dialog is still open — then route through the guard, which either
+    // stages it for review or lets it through via term.paste() (keeps
+    // bracketed-paste semantics).
+    const onPasteCapture = (e: ClipboardEvent) => {
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      e.preventDefault();
+      e.stopPropagation();
+      if (text) guardedPaste(text);
+    };
+    container.addEventListener("paste", onPasteCapture, true);
 
     // Report focus for shortcut routing: copy/paste/zoom act on the pane
     // that last had keyboard focus (falls back to the tab's first pane).
@@ -255,10 +299,12 @@ export function TerminalPanel({
       if (typeof data === "string" && data.length > 0) {
         try {
           // Write raw bytes: xterm's built-in UTF-8 parser handles multi-byte
-          // characters even when a read splits them across events.
-          term.write(base64ToBytes(data));
+          // characters even when a read splits them across events. The write
+          // callback fires after the parser consumed the chunk — the point
+          // where newly appended buffer lines can be scanned for highlights.
+          term.write(base64ToBytes(data), () => highlighterRef.current?.scanNew());
         } catch {
-          term.write(data);
+          term.write(data, () => highlighterRef.current?.scanNew());
         }
       }
     });
@@ -289,10 +335,13 @@ export function TerminalPanel({
       term.textarea?.removeEventListener("focus", onTermFocus);
       container.removeEventListener("contextmenu", onContext);
       container.removeEventListener("mousedown", onMiddleDown);
+      container.removeEventListener("paste", onPasteCapture, true);
       if (typeof outCancel === "function") outCancel();
       if (typeof exitCancel === "function") exitCancel();
       ro.disconnect();
       search.dispose();
+      highlighter.dispose();
+      highlighterRef.current = null;
       term.dispose();
       termRef.current = null;
       fitRef.current = null;
@@ -300,6 +349,12 @@ export function TerminalPanel({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id]);
+
+  // Apply highlight setting changes to the live buffer (declared after the
+  // mount effect so the highlighter exists when this first runs).
+  useEffect(() => {
+    highlighterRef.current?.update(hlOptions);
+  }, [hlOptions]);
 
   // Live font application (appearance dialog + Ctrl+= / Ctrl+- shortcuts):
   // update the xterm options, re-fit the grid and tell the backend so the
@@ -338,6 +393,32 @@ export function TerminalPanel({
     TerminalService.WriteStdin(session.id, encodeBase64(text)).catch(() => {});
   };
 
+  /**
+   * Multi-line paste guard: content carrying line breaks executes the moment
+   * it lands in a shell. Instead of writing directly, stage the text in the
+   * PasteConfirmDialog — the user reviews the exact payload (line breaks
+   * included) and only an explicit "paste" writes it to the session. A single
+   * line WITH a trailing newline counts too (it would send an extra Enter).
+   * Everything funnels through term.paste(), preserving bracketed-paste
+   * semantics on the way in.
+   */
+  const guardedPaste = (text: string) => {
+    if (!text) return;
+    const trimmedEnd = text.replace(/[\r\n]+$/, "");
+    const innerBreaks = /[\r\n]/.test(trimmedEnd);
+    const trailingBreak = trimmedEnd.length !== text.length;
+    if (!innerBreaks && !trailingBreak) {
+      termRef.current?.paste(text);
+      return;
+    }
+    setPasteDraft(text);
+  };
+
+  const confirmPaste = () => {
+    if (pasteDraft) termRef.current?.paste(pasteDraft);
+    setPasteDraft(null);
+  };
+
   const handleCopy = async () => {
     const sel = termRef.current?.getSelection();
     if (!sel) return;
@@ -362,13 +443,13 @@ export function TerminalPanel({
 
   const handlePasteSelected = () => {
     const sel = termRef.current?.getSelection();
-    if (sel) writeToStdin(sel);
+    if (sel) guardedPaste(sel);
   };
 
   const handlePaste = async () => {
     try {
       const text = await navigator.clipboard.readText();
-      if (text) writeToStdin(text);
+      guardedPaste(text);
     } catch {
       toast.error(t("common.clipboardFailed"));
     }
@@ -687,6 +768,16 @@ export function TerminalPanel({
           y={menu.y}
           onClose={() => setMenu(null)}
           items={buildMenuItems()}
+        />
+      )}
+
+      {/* Multi-line paste review: shows the exact payload; pastes only on
+          explicit confirm. */}
+      {pasteDraft !== null && (
+        <PasteConfirmDialog
+          text={pasteDraft}
+          onConfirm={confirmPaste}
+          onClose={() => setPasteDraft(null)}
         />
       )}
 

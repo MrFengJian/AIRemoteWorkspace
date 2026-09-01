@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -49,6 +50,8 @@ const DEFAULT_CONFIG: AppConfig = {
   terminalTheme: "",
   terminalFont: "",
   terminalFontSize: 0,
+  disableLinkHighlight: false,
+  disableKeywordHighlight: false,
   middleClickAction: "pasteSelection",
   monitorIntervalSeconds: 60,
   agent: {
@@ -297,6 +300,30 @@ function AppearanceSection({
               </span>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Terminal content highlighting (global, applies to every pane) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">{t("settings.termHighlight")}</CardTitle>
+          <CardDescription>{t("settings.termHighlightDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <Checkbox
+              checked={!config.disableLinkHighlight}
+              onCheckedChange={(v) => update({ disableLinkHighlight: v !== true })}
+            />
+            <span>{t("settings.highlightLinks")}</span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <Checkbox
+              checked={!config.disableKeywordHighlight}
+              onCheckedChange={(v) => update({ disableKeywordHighlight: v !== true })}
+            />
+            <span>{t("settings.highlightKeywords")}</span>
+          </label>
         </CardContent>
       </Card>
     </div>

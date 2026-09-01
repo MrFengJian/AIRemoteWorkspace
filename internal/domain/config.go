@@ -17,6 +17,11 @@ type AppConfig struct {
 	TerminalTheme     string `json:"terminalTheme"`
 	TerminalFont      string `json:"terminalFont"`
 	TerminalFontSize  int    `json:"terminalFontSize"`
+	// Terminal content highlighting (http/https links, ERROR/WARN keywords).
+	// Inverted flags: an older settings row without the fields keeps both
+	// highlights enabled — the out-of-box default.
+	DisableLinkHighlight    bool `json:"disableLinkHighlight"`
+	DisableKeywordHighlight bool `json:"disableKeywordHighlight"`
 	LLM               LLMConfig    `json:"llm"` // AI agent provider config (API key in SecretStore)
 	// Keyboard shortcut overrides (Xshell-style). Key = command id
 	// ("terminal.copy"), value = binding string ("Ctrl+Shift+C"). Only entries
