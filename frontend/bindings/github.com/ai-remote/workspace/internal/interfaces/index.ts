@@ -27,9 +27,11 @@ export {
 };
 
 export type {
+    ContextPathDTO,
     ConversationDTO,
     ConversationMessageDTO,
     CredentialsDTO,
+    DataDirInfoDTO,
     FileEntryDTO,
     HostDTO,
     HostInputDTO,
@@ -40,6 +42,7 @@ export type {
     PtySizeDTO,
     RememberedCredentialsDTO,
     SaveProviderInput,
+    SkillDTO,
     SystemInfoResult,
     TestConnectionResult,
     TestProviderInput,

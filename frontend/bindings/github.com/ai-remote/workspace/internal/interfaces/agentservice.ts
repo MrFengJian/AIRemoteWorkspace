@@ -69,11 +69,26 @@ export function GetConversationMessages(conversationID: string): $CancellablePro
 }
 
 /**
+ * ListContextPaths lists a directory for the @-completion popup (remote
+ * session → SFTP listing; local session → disk listing).
+ */
+export function ListContextPaths(sessionID: string, dir: string): $CancellablePromise<$models.ContextPathDTO[] | null> {
+    return $Call.ByID(2029077267, sessionID, dir);
+}
+
+/**
  * ListConversations returns all persisted agent conversations (newest
  * first); the frontend filters by host.
  */
 export function ListConversations(): $CancellablePromise<$models.ConversationDTO[] | null> {
     return $Call.ByID(4124442514);
+}
+
+/**
+ * ListSkills returns the metadata of every available skill (the `/` picker).
+ */
+export function ListSkills(): $CancellablePromise<$models.SkillDTO[] | null> {
+    return $Call.ByID(1215304444);
 }
 
 /**

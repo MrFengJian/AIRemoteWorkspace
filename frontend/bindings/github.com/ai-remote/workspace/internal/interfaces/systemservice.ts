@@ -16,12 +16,45 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * GetDataDirInfo returns the current data directory (path + size + whether
+ * it is still the default location).
+ */
+export function GetDataDirInfo(): $CancellablePromise<$models.DataDirInfoDTO> {
+    return $Call.ByID(4198088101);
+}
+
+/**
  * GetLocalIP returns the machine's primary outbound IPv4 address by dialing
  * a public address (no actual connection is established — UDP dial just
  * resolves the route). Used by the terminal right-click "paste local IP".
  */
 export function GetLocalIP(): $CancellablePromise<$models.LocalIPResult> {
     return $Call.ByID(1333072652);
+}
+
+/**
+ * MigrateDataDir moves the whole data directory (database + skills) to the
+ * target and repoints the app in place — the UI keeps working from the new
+ * location without a restart.
+ */
+export function MigrateDataDir(target: string): $CancellablePromise<$models.DataDirInfoDTO> {
+    return $Call.ByID(2309162650, target);
+}
+
+/**
+ * OpenDataDir opens the current data directory in the OS file browser
+ * (Explorer / Finder / xdg-open).
+ */
+export function OpenDataDir(): $CancellablePromise<void> {
+    return $Call.ByID(93499361);
+}
+
+/**
+ * PickDataDir opens a native directory chooser and returns the picked path
+ * ("" when the user cancels).
+ */
+export function PickDataDir(): $CancellablePromise<string> {
+    return $Call.ByID(751084698);
 }
 
 /**

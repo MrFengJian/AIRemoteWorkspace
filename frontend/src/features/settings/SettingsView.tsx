@@ -9,15 +9,22 @@ import {
   Bot,
   BrainCircuit,
   Check,
+  X,
+  Copy,
   Keyboard,
   Sun,
   Moon,
   Monitor,
+  FolderCog,
+  FolderInput,
+  FolderOpen,
+  Loader2,
 } from "lucide-react";
 
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -27,11 +34,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ConfigService, SystemService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
+import {
+  ConfigService,
+  SystemService,
+  type DataDirInfoDTO,
+} from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import {
   SecurityMode,
+  HighlightRule,
   type AppConfig,
 } from "@/../bindings/github.com/ai-remote/workspace/internal/domain/models";
+import { HL_COLOR_IDS } from "@/features/terminal/terminalHighlight";
 import { applyTheme, applyFonts } from "@/app/providers/ThemeProvider";
 import { useUIStore, type SettingsCategory } from "@/stores/ui.store";
 import { ModelSettingsSection } from "@/features/settings/ModelSettingsSection";
@@ -39,6 +52,7 @@ import { ShortcutSettingsSection } from "@/features/settings/ShortcutSettingsSec
 import { AgentSettingsSection } from "@/features/settings/AgentSettingsSection";
 import { cn } from "@/lib/utils";
 import { toast, errorMessage } from "@/lib/toast";
+import { useConfirm } from "@/lib/useConfirm";
 
 const DEFAULT_CONFIG: AppConfig = {
   securityMode: SecurityMode.SecurityBalanced,
@@ -324,6 +338,86 @@ function AppearanceSection({
             />
             <span>{t("settings.highlightKeywords")}</span>
           </label>
+
+          {/* User-defined rules: regex + color scheme */}
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {t("settings.hlRules")}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs"
+              disabled={(config.highlightRules ?? []).length >= 20}
+              onClick={() =>
+                update({
+                  highlightRules: [...(config.highlightRules ?? []), { pattern: "", color: "cyan" }],
+                })
+              }
+            >
+              {t("settings.hlAddRule")}
+            </Button>
+          </div>
+
+          {(config.highlightRules ?? []).length === 0 && (
+            <p className="text-xs text-muted-foreground">{t("settings.hlNone")}</p>
+          )}
+          {(config.highlightRules ?? []).map((rule, i) => {
+            const updateRule = (patch: Partial<HighlightRule>) => {
+              update({
+                highlightRules: (config.highlightRules ?? []).map((r, j) =>
+                  j === i ? { ...r, ...patch } : r,
+                ),
+              });
+            };
+            const removeRule = () => {
+              update({ highlightRules: (config.highlightRules ?? []).filter((_, j) => j !== i) });
+            };
+            let patternValid = true;
+            try {
+              if (rule.pattern) new RegExp(rule.pattern);
+            } catch {
+              patternValid = false;
+            }
+            return (
+              <div key={i} className="flex flex-col gap-1">
+                <div className="grid grid-cols-[1fr_8.5rem_auto] items-center gap-2">
+                  <Input
+                    value={rule.pattern}
+                    onChange={(e) => updateRule({ pattern: e.target.value })}
+                    placeholder={t("settings.hlPatternPlaceholder")}
+                    className={cn("h-8 font-mono text-xs", !patternValid && "border-destructive")}
+                    aria-invalid={!patternValid}
+                  />
+                  <Select
+                    value={rule.color}
+                    onChange={(e) => updateRule({ color: e.target.value })}
+                    className="h-8 text-xs"
+                    aria-label={t("settings.hlColor")}
+                  >
+                    {HL_COLOR_IDS.map((id) => (
+                      <option key={id} value={id}>
+                        {t(`settings.hl_${id}`)}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    onClick={removeRule}
+                    aria-label={t("common.delete")}
+                    title={t("common.delete")}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                {!patternValid && (
+                  <p className="text-xs text-destructive">{t("settings.hlPatternInvalid")}</p>
+                )}
+              </div>
+            );
+          })}
         </CardContent>
       </Card>
     </div>
@@ -482,7 +576,118 @@ function AdvancedSection({
           </dl>
         </CardContent>
       </Card>
+      <DataDirCard />
     </div>
+  );
+}
+
+/**
+ * DataDirCard shows the application data directory (database, skills,
+ * conversation history…) and offers a full migration to a new location.
+ * The backend moves the files and swaps the live database handle, so the app
+ * keeps working without a restart.
+ */
+function DataDirCard() {
+  const { t } = useTranslation();
+  const { askConfirm } = useConfirm();
+  const [info, setInfo] = useState<DataDirInfoDTO | null>(null);
+  const [migrating, setMigrating] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    SystemService.GetDataDirInfo()
+      .then(setInfo)
+      .catch(() => {});
+  }, []);
+
+  const pickAndMigrate = async () => {
+    try {
+      const target = await SystemService.PickDataDir();
+      if (!target) return; // user cancelled the folder picker
+      const ok = await askConfirm({
+        title: t("settings.dataDirMigrateTitle"),
+        message: t("settings.dataDirMigrateMsg", { target }),
+        confirmLabel: t("settings.dataDirMigrate"),
+      });
+      if (!ok) return;
+      setMigrating(true);
+      const next = await SystemService.MigrateDataDir(target);
+      setInfo(next);
+      toast.success(t("settings.dataDirMigrated"));
+    } catch (e) {
+      toast.error(`${t("settings.dataDirMigrateFailed")}: ${errorMessage(e)}`);
+    } finally {
+      setMigrating(false);
+    }
+  };
+
+  const copyPath = async () => {
+    if (!info) return;
+    try {
+      await navigator.clipboard.writeText(info.path);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error(t("common.clipboardFailed"));
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">{t("settings.dataDir")}</CardTitle>
+        <CardDescription>{t("settings.dataDirDesc")}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex items-center gap-2 rounded-[var(--radius)] bg-muted/30 px-2.5 py-2">
+          <FolderCog className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 break-all font-mono text-xs text-foreground">
+            {info?.path ?? "…"}
+          </span>
+          {!info?.isDefault && (
+            <Badge variant="secondary" className="shrink-0 text-[10px]">
+              {t("settings.dataDirCustom")}
+            </Badge>
+          )}
+          <button
+            type="button"
+            onClick={() => void copyPath()}
+            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label={t("common.copy")}
+            title={t("common.copy")}
+          >
+            {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              SystemService.OpenDataDir().catch((e) =>
+                toast.error(`${t("settings.dataDirOpenFailed")}: ${errorMessage(e)}`),
+              );
+            }}
+            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label={t("settings.dataDirOpen")}
+            title={t("settings.dataDirOpen")}
+          >
+            <FolderOpen className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-fit"
+          disabled={migrating || !info}
+          onClick={() => void pickAndMigrate()}
+        >
+          {migrating ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <FolderInput className="h-3.5 w-3.5" />
+          )}
+          {t("settings.dataDirMigrate")}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 

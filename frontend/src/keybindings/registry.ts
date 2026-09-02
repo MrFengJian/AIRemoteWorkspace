@@ -35,6 +35,10 @@ export interface PaneActions {
   zoomOut: () => void;
   zoomReset: () => void;
   focus: () => void;
+  /** Buffer metrics for @-mentions (1-based absolute line numbers). */
+  bufferInfo?: () => { total: number; visibleStart: number; visibleEnd: number };
+  /** Text of buffer lines [start, end] (1-based inclusive). */
+  bufferLines?: (start: number, end: number) => string | null;
 }
 
 const paneActions = new Map<string, PaneActions>();

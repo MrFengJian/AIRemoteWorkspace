@@ -4,9 +4,11 @@ import {
   AgentService,
   type ConversationDTO,
   type ConversationMessageDTO,
+  type SkillDTO,
+  type ContextPathDTO,
 } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 
-export type { ConversationDTO, ConversationMessageDTO };
+export type { ConversationDTO, ConversationMessageDTO, SkillDTO, ContextPathDTO };
 
 export const agentApi = {
   /** Start a streaming chat on a session using the selected provider + model. */
@@ -20,6 +22,11 @@ export const agentApi = {
   /** Set a session's approval policy ("strict" | "auto_write"). */
   setSessionPolicy: (sessionID: string, policy: string) =>
     AgentService.SetSessionPolicy(sessionID, policy),
+  /** Skill metadata for the input-box `/` picker. */
+  listSkills: () => AgentService.ListSkills().then((r) => r ?? []),
+  /** Directory listing for the @-completion popup. */
+  listContextPaths: (sessionID: string, dir: string) =>
+    AgentService.ListContextPaths(sessionID, dir).then((r) => r ?? []),
   /** Persisted conversation history (newest first; filter by host client-side).
    *  The generated bindings mark slice returns nullable; normalize to []. */
   listConversations: () => AgentService.ListConversations().then((r) => r ?? []),

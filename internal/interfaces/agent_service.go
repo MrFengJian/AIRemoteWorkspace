@@ -41,6 +41,19 @@ type ConversationMessageDTO struct {
 	Content string `json:"content"`
 }
 
+// SkillDTO is one agent skill's metadata for the input-box `/` picker.
+type SkillDTO struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// ContextPathDTO is one entry of an @-mention directory listing.
+type ContextPathDTO struct {
+	Name  string `json:"name"`
+	IsDir bool   `json:"isDir"`
+	Size  int64  `json:"size"`
+}
+
 // AgentService exposes the AI agent to the frontend. Provider/model selection
 // is per chat call; provider management lives in ModelProviderService.
 type AgentService struct {
@@ -48,12 +61,43 @@ type AgentService struct {
 	runtime *agent.Runtime
 	gate    *appsvc.PermissionGate
 	convs   *appsvc.ConversationService
+	skills  *appsvc.SkillService
 }
 
 // NewAgentService wires the AgentService. The *Application is injected via
-// ServiceStartup.
-func NewAgentService(runtime *agent.Runtime, gate *appsvc.PermissionGate, convs *appsvc.ConversationService) *AgentService {
-	return &AgentService{runtime: runtime, gate: gate, convs: convs}
+// ServiceStartup. skills (may be nil) backs the input-box `/` skill picker.
+func NewAgentService(runtime *agent.Runtime, gate *appsvc.PermissionGate, convs *appsvc.ConversationService, skills *appsvc.SkillService) *AgentService {
+	return &AgentService{runtime: runtime, gate: gate, convs: convs, skills: skills}
+}
+
+// ListSkills returns the metadata of every available skill (the `/` picker).
+func (a *AgentService) ListSkills() ([]SkillDTO, error) {
+	if a.skills == nil {
+		return []SkillDTO{}, nil
+	}
+	skills, err := a.skills.ListSkills()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SkillDTO, 0, len(skills))
+	for _, s := range skills {
+		out = append(out, SkillDTO{Name: s.Name, Description: s.Description})
+	}
+	return out, nil
+}
+
+// ListContextPaths lists a directory for the @-completion popup (remote
+// session → SFTP listing; local session → disk listing).
+func (a *AgentService) ListContextPaths(sessionID, dir string) ([]ContextPathDTO, error) {
+	entries, err := a.runtime.ListContextPaths(sessionID, dir)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ContextPathDTO, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, ContextPathDTO{Name: e.Name, IsDir: e.IsDir, Size: e.Size})
+	}
+	return out, nil
 }
 
 func (a *AgentService) ServiceName() string { return "AgentService" }

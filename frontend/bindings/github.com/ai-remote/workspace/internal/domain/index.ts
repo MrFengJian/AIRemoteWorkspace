@@ -19,6 +19,7 @@ export type {
     DockerNetworkContainer,
     DockerNetworkDetail,
     DockerNetworkSubnet,
+    HighlightRule,
     LLMConfig,
     MonitorDiskUsage,
     MonitorOverview,

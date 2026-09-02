@@ -27,12 +27,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { agentApi, type ConversationDTO } from "@/features/agent/api";
+import {
+  agentApi,
+  type ConversationDTO,
+  type ContextPathDTO,
+} from "@/features/agent/api";
 import { ContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
 import { useAgentStore, type ChatMessage, type SessionPolicy } from "@/features/agent/store";
 import { useTerminalStore } from "@/features/terminal/terminal.store";
 import { useModelProviders } from "@/features/settings/hooks";
 import { useHosts } from "@/features/hosts/hooks";
+import { getPaneActions } from "@/keybindings/registry";
 import { AgentMarkdown } from "@/features/agent/AgentMarkdown";
 import { HostService, TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { useUIStore } from "@/stores/ui.store";
@@ -89,6 +94,76 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
   const [input, setInput] = useState("");
   const [inputHistory, setInputHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState<number | null>(null);
+
+  // ── Input completion (`/` skills, `@` files & terminal ranges) ──────
+  type Completion =
+    | { kind: "skill"; start: number; query: string }
+    | { kind: "path"; start: number; dir: string; prefix: string };
+  type CompletionItem = { key: string; label: string; desc: string; apply: () => void };
+  const [completion, setCompletion] = useState<Completion | null>(null);
+  const [completionIdx, setCompletionIdx] = useState(0);
+  const [pathEntries, setPathEntries] = useState<ContextPathDTO[] | null>(null);
+
+  const detectCompletion = (value: string, caret: number) => {
+    const before = value.slice(0, caret);
+    // Skill: "/name" as the first token of the message.
+    const skillM = /^\s*\/([\w-]*)$/.exec(before);
+    if (skillM) {
+      setCompletion({ kind: "skill", start: caret - skillM[1].length - 1, query: skillM[1] });
+      setCompletionIdx(0);
+      return;
+    }
+    // Path: "@..." token (remote host paths or local paths).
+    const pathM = /@([\w./~-]*)$/.exec(before);
+    if (pathM) {
+      const q = pathM[1];
+      const dir = q.includes("/") ? q.slice(0, q.lastIndexOf("/") + 1) : "";
+      setCompletion({
+        kind: "path",
+        start: caret - 1 - q.length,
+        dir,
+        prefix: q.slice(dir.length),
+      });
+      setCompletionIdx(0);
+      return;
+    }
+    setCompletion(null);
+  };
+
+  /** Replace the active @//token span with text; keep the picker open for
+   *  directory selections so the next level lists immediately. */
+  const replaceToken = (tokenText: string, close: boolean) => {
+    if (!completion) return;
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? input.length;
+    let next = input.slice(0, completion.start) + tokenText;
+    const pos = next.length;
+    if (close) next += " ";
+    next += input.slice(caret);
+    setInput(next);
+    setCompletion(null);
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(pos, pos);
+      if (!close) detectCompletion(next, pos);
+    });
+  };
+
+  /** Insert a `@终端（a-b行）` token computed from the live pane buffer. */
+  const insertTerminalRange = (kind: "visible" | "last50") => {
+    const info = activeSessionId ? getPaneActions(activeSessionId)?.bufferInfo?.() : undefined;
+    if (!info || info.total === 0) {
+      setCompletion(null);
+      return;
+    }
+    let a = info.visibleStart;
+    let b = info.visibleEnd;
+    if (kind === "last50") {
+      b = info.total;
+      a = Math.max(1, b - 49);
+    }
+    replaceToken(`@终端（${a}-${b}行）`, true);
+  };
   // Conversation-history panel: open state + host filter scope.
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyAllHosts, setHistoryAllHosts] = useState(false);
@@ -125,6 +200,77 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
   // Hosts query — used to seed the session's selection from the host's saved
   // last-used preference (and to persist changes back to it).
   const { data: hosts } = useHosts();
+
+  // Available skills for the `/` picker.
+  const { data: agentSkills } = useQuery({
+    queryKey: ["agent-skills"],
+    queryFn: agentApi.listSkills,
+    enabled: !!activeSessionId,
+  });
+
+  // @-completion: directory entries for the path currently being typed.
+  const completionDir = completion?.kind === "path" ? completion.dir : null;
+  useEffect(() => {
+    if (completionDir === null || !activeSessionId) {
+      setPathEntries(null);
+      return;
+    }
+    let cancelled = false;
+    setPathEntries(null);
+    agentApi
+      .listContextPaths(activeSessionId, completionDir || "/")
+      .then((entries) => !cancelled && setPathEntries(entries))
+      .catch(() => !cancelled && setPathEntries([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [completionDir, activeSessionId]);
+
+  // Completion items for the current picker state.
+  const completionItems: CompletionItem[] = (() => {
+    if (!completion) return [];
+    if (completion.kind === "skill") {
+      const q = completion.query.toLowerCase();
+      return (agentSkills ?? [])
+        .filter((s) => s.name.toLowerCase().startsWith(q))
+        .map((s) => ({
+          key: s.name,
+          label: `/${s.name}`,
+          desc: s.description,
+          apply: () => replaceToken(`/${s.name} `, true),
+        }));
+    }
+    const q = completion.prefix;
+    const items: CompletionItem[] = [];
+    // Terminal buffer ranges (the local xterm scrollback of this session).
+    if ("终端".startsWith(q)) {
+      items.push(
+        {
+          key: "term-visible",
+          label: "@终端（可见区域）",
+          desc: t("agent.mentionVisible"),
+          apply: () => insertTerminalRange("visible"),
+        },
+        {
+          key: "term-last50",
+          label: "@终端（最近50行）",
+          desc: t("agent.mentionLast50"),
+          apply: () => insertTerminalRange("last50"),
+        },
+      );
+    }
+    for (const e of pathEntries ?? []) {
+      if (!e.name.toLowerCase().startsWith(q.toLowerCase())) continue;
+      const insert = `@${completion.dir}${e.name}${e.isDir ? "/" : ""}`;
+      items.push({
+        key: e.name,
+        label: `${e.name}${e.isDir ? "/" : ""}`,
+        desc: e.isDir ? t("agent.mentionDir") : "",
+        apply: () => replaceToken(insert, !e.isDir),
+      });
+    }
+    return items;
+  })();
 
   // Persist the selection as the host's hidden last-used preference so the
   // next agent session on this host starts where the last one left off.
@@ -326,19 +472,38 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
 
   // ── Sending ──────────────────────────────────────────────────────────
 
+  /** Expand `@终端（a-b行）` tokens into the actual terminal buffer text as
+   *  <terminal> context blocks. The buffer lives in the pane's xterm, so
+   *  this is the one mention kind resolved on the frontend; the raw text
+   *  (compact token) is what the user sees in the transcript. */
+  const expandTerminalMentions = (text: string): string => {
+    if (!activeSessionId || !text.includes("@终端（")) return text;
+    return text.replace(/@终端（(\d+)-(\d+)行）/g, (token, a, b) => {
+      const content = getPaneActions(activeSessionId)?.bufferLines?.(Number(a), Number(b));
+      if (content == null) return token;
+      return `<terminal lines="${a}-${b}">\n${content}\n</terminal>`;
+    });
+  };
+
   const send = async (text: string) => {
     if (!activeSessionId || !text.trim() || streaming[activeSessionId]) return;
     if (!modelChosen) return;
     setInputHistory((h) => [...h.slice(-MAX_INPUT_HISTORY + 1), text.trim()]);
     setHistoryIdx(null);
     setInput("");
+    setCompletion(null);
     addMessage(activeSessionId, { role: "user", content: text.trim() });
     setStreaming(activeSessionId, true);
     // Seed an empty assistant message for streaming append.
     addMessage(activeSessionId, { role: "assistant", content: "" });
     atBottomRef.current = true;
     try {
-      await agentApi.startChat(activeSessionId, agentProviderId, agentModel, text.trim());
+      await agentApi.startChat(
+        activeSessionId,
+        agentProviderId,
+        agentModel,
+        expandTerminalMentions(text.trim()),
+      );
     } catch (e) {
       setStreaming(activeSessionId, false);
       dropTrailingEmptyAssistant(activeSessionId);
@@ -742,7 +907,29 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
       </div>
 
       {/* Input area: inline model selector + message box */}
-      <div className="border-t border-border bg-card px-3 py-2">
+      <div className="relative border-t border-border bg-card px-3 py-2">
+        {/* `/` skill + `@` file/terminal completion picker */}
+        {completion && completionItems.length > 0 && (
+          <div className="absolute bottom-full left-3 right-3 z-30 mb-1 max-h-52 overflow-auto rounded-[var(--radius)] border border-border bg-popover py-1 shadow-lg">
+            {completionItems.map((it, i) => (
+              <button
+                key={it.key}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault(); // keep textarea focus/selection
+                  it.apply();
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors",
+                  i === completionIdx ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50",
+                )}
+              >
+                <span className="shrink-0 font-mono font-medium text-foreground">{it.label}</span>
+                <span className="min-w-0 flex-1 truncate">{it.desc}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {providers.length > 0 ? (
           <div className="flex items-center gap-1.5 pb-2">
             <Cpu className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -811,13 +998,40 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
                 : t("agent.placeholderNoModel")
             }
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              detectCompletion(e.target.value, e.target.selectionStart ?? 0);
+            }}
             aria-label={t("agent.placeholderConfigured")}
             onContextMenu={(e) => {
               e.preventDefault();
               setMenu({ kind: "input", x: e.clientX, y: e.clientY });
             }}
             onKeyDown={(e) => {
+              // Completion navigation takes precedence while the picker is
+              // open (IME composing still goes to the candidate window).
+              if (completion && completionItems.length > 0 && !e.nativeEvent.isComposing) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setCompletionIdx((i) => (i + 1) % completionItems.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setCompletionIdx((i) => (i - 1 + completionItems.length) % completionItems.length);
+                  return;
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                  e.preventDefault();
+                  completionItems[Math.min(completionIdx, completionItems.length - 1)].apply();
+                  return;
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setCompletion(null);
+                  return;
+                }
+              }
               // IME safety: Enter during composition confirms the candidate,
               // it must not send the message.
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {

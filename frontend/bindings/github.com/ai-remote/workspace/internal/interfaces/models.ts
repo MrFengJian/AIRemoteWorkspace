@@ -6,6 +6,15 @@
 import * as domain$0 from "../domain/models.js";
 
 /**
+ * ContextPathDTO is one entry of an @-mention directory listing.
+ */
+export interface ContextPathDTO {
+    "name": string;
+    "isDir": boolean;
+    "size": number;
+}
+
+/**
  * ConversationDTO is a persisted agent conversation for the history list.
  */
 export interface ConversationDTO {
@@ -37,6 +46,15 @@ export interface CredentialsDTO {
     "keyPath"?: string;
     "keyPassphrase"?: string;
     "useAgent"?: boolean;
+}
+
+/**
+ * DataDirInfoDTO describes the current data directory.
+ */
+export interface DataDirInfoDTO {
+    "path": string;
+    "isDefault": boolean;
+    "totalBytes": number;
 }
 
 /**
@@ -195,6 +213,14 @@ export interface SaveProviderInput {
      * empty = keep existing; " " = clear
      */
     "apiKey": string;
+}
+
+/**
+ * SkillDTO is one agent skill's metadata for the input-box `/` picker.
+ */
+export interface SkillDTO {
+    "name": string;
+    "description": string;
 }
 
 /**

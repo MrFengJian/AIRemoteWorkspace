@@ -64,6 +64,19 @@ func (s *Store) Close() error {
 	return raw.Close()
 }
 
+// ReopenAt closes the current connection and reopens the database at path.
+// Used by data-dir migration: repos keep their *Store pointer, so every
+// service transparently follows the new handle. The old pool's Close drains
+// in-flight queries before the files are moved; the reopen runs after.
+func (s *Store) ReopenAt(path string) error {
+	fresh, err := Open(path)
+	if err != nil {
+		return err
+	}
+	s.db = fresh.db
+	return nil
+}
+
 // DB exposes the underlying *gorm.DB for repositories.
 func (s *Store) DB() *gorm.DB { return s.db }
 

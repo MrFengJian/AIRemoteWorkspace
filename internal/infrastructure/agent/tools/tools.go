@@ -29,6 +29,14 @@ type PermissionGate interface {
 	Check(ctx context.Context, sessionID, toolName string, perm domain.Permission, argsJSON string) error
 }
 
+// SkillBackend lists and loads agent skills — SKILL.md files under the skills
+// root, mirroring eino's adk/middlewares/skill Backend contract (List/Get).
+// May be nil: the `skill` tool is then simply not offered to the model.
+type SkillBackend interface {
+	ListSkills() ([]domain.Skill, error)
+	GetSkill(name string) (domain.Skill, error)
+}
+
 // SftpFileOps is the subset of the SFTP manager the file tools need. Progress
 // callbacks exist for the UI transfer path; tools pass nil.
 type SftpFileOps interface {
@@ -43,6 +51,9 @@ type Deps struct {
 	// OutputLimitBytes bounds a single tool result fed back to the model
 	// (0 = package default, 64KB). Fed from the global agent settings.
 	OutputLimitBytes int
+	// Skills (may be nil) enables the `skill` tool — the model loads a
+	// skill's instructions by name, eino skill-middleware style.
+	Skills SkillBackend
 }
 
 // CredsResolver returns credentials for a session's host (so SFTP tools can
@@ -58,6 +69,7 @@ type ToolSet struct {
 	gate        PermissionGate
 	observer    RunObserver
 	outputLimit int
+	skills      SkillBackend
 }
 
 // NewToolSet builds the 7 tools, each capturing sessionID at call time. The
@@ -70,6 +82,7 @@ func NewToolSet(deps Deps, resolver CredsResolver, gate PermissionGate, observer
 		gate:        gate,
 		observer:    observer,
 		outputLimit: deps.OutputLimitBytes,
+		skills:      deps.Skills,
 	}
 	if err := ts.build(); err != nil {
 		return nil, err
@@ -126,6 +139,13 @@ func (ts *ToolSet) BuildLocalForSession(sessionID string) ([]tool.BaseTool, erro
 	}
 	built = append(built, observe(t2, ss.sessionID, "local_read_file", ss.observer))
 
+	// The skill tool is host-agnostic — available on local sessions too.
+	if sk, err := ss.buildSkillTool(); err != nil {
+		return nil, err
+	} else if sk != nil {
+		built = append(built, sk)
+	}
+
 	return built, nil
 }
 
@@ -141,6 +161,52 @@ func (ss *sessionToolSet) gateCheck(ctx context.Context, name string, perm domai
 // capOutput bounds a tool result to the ToolSet's configured limit.
 func (ss *sessionToolSet) capOutput(s string) string {
 	return capOutputAt(s, ss.outputLimit)
+}
+
+// buildSkillTool builds the `skill` tool when a skill backend is wired —
+// the model loads a skill's full instructions by name (eino skill
+// middleware, inline mode). Returns nil when no backend is configured.
+func (ss *sessionToolSet) buildSkillTool() (tool.BaseTool, error) {
+	if ss.skills == nil {
+		return nil, nil
+	}
+	skills, err := ss.skills.ListSkills()
+	if err != nil {
+		skills = nil // listing failed — still offer the tool, generic description
+	}
+	desc := "Load the full instructions of an available skill into this conversation. " +
+		"Use it whenever the user asks to follow a skill, or before performing work covered by one.\nAvailable skills:"
+	for _, s := range skills {
+		desc += fmt.Sprintf("\n- %s: %s", s.Name, s.Description)
+	}
+	if len(skills) == 0 {
+		desc += "\n- (none)"
+	}
+	t, err := utils.InferTool(
+		"skill",
+		desc,
+		ss.loadSkill,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("build skill: %w", err)
+	}
+	return observe(t, ss.sessionID, "skill", ss.observer), nil
+}
+
+// loadSkill resolves a skill name to its markdown instructions (READ tier —
+// skills live on the user's machine and only extend the conversation).
+func (ss *sessionToolSet) loadSkill(ctx context.Context, a skillArgs) (string, error) {
+	if ss.skills == nil {
+		return "", fmt.Errorf("skills not available")
+	}
+	if err := ss.gateCheck(ctx, "skill", domain.PermissionRead, a); err != nil {
+		return "", err
+	}
+	sk, err := ss.skills.GetSkill(a.Skill)
+	if err != nil {
+		return "", err
+	}
+	return sk.Content, nil
 }
 
 // build constructs all 7 tools for this sessionToolSet.
@@ -224,6 +290,13 @@ func (ss *sessionToolSet) build() ([]tool.BaseTool, error) {
 	}
 	built = append(built, observe(t7, ss.sessionID, "download", ss.observer))
 
+	// 8. skill (only when a skill backend is wired)
+	if sk, err := ss.buildSkillTool(); err != nil {
+		return nil, err
+	} else if sk != nil {
+		built = append(built, sk)
+	}
+
 	return built, nil
 }
 
@@ -238,6 +311,10 @@ func (ts *ToolSet) build() error {
 
 type localExecArgs struct {
 	Command string `json:"command" jsonschema:"description=shell command to run locally,required"`
+}
+
+type skillArgs struct {
+	Skill string `json:"skill" jsonschema:"description=skill name (see the tool description list),required"`
 }
 
 type readPathArgs struct {

@@ -22,6 +22,9 @@ type AppConfig struct {
 	// highlights enabled — the out-of-box default.
 	DisableLinkHighlight    bool `json:"disableLinkHighlight"`
 	DisableKeywordHighlight bool `json:"disableKeywordHighlight"`
+	// User-defined highlight rules: a regex and the color scheme used to
+	// paint its matches. Invalid patterns are skipped by the renderer.
+	HighlightRules []HighlightRule `json:"highlightRules,omitempty"`
 	LLM               LLMConfig    `json:"llm"` // AI agent provider config (API key in SecretStore)
 	// Keyboard shortcut overrides (Xshell-style). Key = command id
 	// ("terminal.copy"), value = binding string ("Ctrl+Shift+C"). Only entries
@@ -37,6 +40,17 @@ type AppConfig struct {
 	Agent AgentConfig `json:"agent"`
 	// SFTP file-transfer tunables (streaming chunk size + size ceilings).
 	Transfer TransferConfig `json:"transfer"`
+}
+
+// HighlightRule is a user-defined terminal content highlight: a regular
+// expression and the color scheme used to paint its matches. The regex is
+// JavaScript-flavored (compiled in the renderer); invalid patterns are
+// ignored, never breaking the terminal.
+type HighlightRule struct {
+	Pattern string `json:"pattern"`
+	// Color scheme id from the highlight palette (red/orange/yellow/green/
+	// cyan/blue/purple/pink).
+	Color string `json:"color"`
 }
 
 // TransferConfig holds the SFTP streaming-transfer tunables exposed in

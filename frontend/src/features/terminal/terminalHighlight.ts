@@ -1,6 +1,8 @@
-// Buffer content highlighting for terminal panes: scans the xterm buffer for
-// http/https links and ERROR/WARN-class log keywords, then paints matches
-// with buffer decorations (always visible — not the hover-only link layer).
+// Buffer content highlighting for terminal panes — ONE unified pipeline:
+// every highlight (built-in HTTP/ERROR/WARN and user-defined) is a rule
+// {regex, color, underline?}. Rules are scanned over the xterm buffer and
+// matches painted with buffer decorations in the rule's color scheme
+// (always visible — not the hover-only link layer).
 //
 // Scanning is incremental: the panel calls scanNew() after each output write,
 // so every buffer line is regex-scanned exactly once; settings changes force
@@ -9,61 +11,111 @@
 
 import type { IDecoration, Terminal } from "@xterm/xterm";
 
-export interface HighlightOptions {
-  links: boolean;
-  keywords: boolean;
+export interface HighlightRuleCompiled {
+  re: RegExp;
+  color: string; // palette id (HL_COLORS)
+  underline?: boolean;
 }
 
+export interface HighlightOptions {
+  rules: HighlightRuleCompiled[];
+}
+
+/** Highlight color palette (ids double as i18n suffixes in the settings UI).
+ *  Backgrounds are translucent so the glyphs stay readable on any theme. */
+export const HL_COLORS: Record<string, { bg: string }> = {
+  red: { bg: "rgba(248, 113, 113, 0.30)" },
+  orange: { bg: "rgba(249, 115, 22, 0.30)" },
+  yellow: { bg: "rgba(250, 204, 21, 0.26)" },
+  green: { bg: "rgba(34, 197, 94, 0.28)" },
+  cyan: { bg: "rgba(34, 211, 238, 0.26)" },
+  blue: { bg: "rgba(59, 130, 246, 0.30)" },
+  purple: { bg: "rgba(168, 85, 247, 0.28)" },
+  pink: { bg: "rgba(236, 72, 153, 0.28)" },
+};
+
+/** Palette ids in display order. */
+export const HL_COLOR_IDS = Object.keys(HL_COLORS);
+
+// Built-in rule patterns — same regex+color rules as user-defined ones,
+// gated by the two settings toggles.
 const URL_RE = /https?:\/\/[^\s\x00-\x1f"'`<>(){}`[\]\\]+/gi;
-// Tier 1 (red): hard failures. Tier 2 (amber): warnings.
 const ERROR_RE = /\b(ERROR|ERRORS|FATAL|CRITICAL|FAILED|FAILURE|FAILURES)\b/g;
 const WARN_RE = /\b(WARN|WARNING|WARNINGS)\b/g;
+
+/** The built-in rule set: HTTP/HTTPS links (cyan), hard failures (red),
+ *  warnings (yellow). */
+export function builtinRules(links: boolean, keywords: boolean): HighlightRuleCompiled[] {
+  const out: HighlightRuleCompiled[] = [];
+  if (links) out.push({ re: URL_RE, color: "cyan", underline: true });
+  if (keywords) {
+    out.push({ re: ERROR_RE, color: "red" });
+    out.push({ re: WARN_RE, color: "yellow" });
+  }
+  return out;
+}
+
+/** Effective rule list: built-ins (per toggles) first, then user rules. */
+export function buildRules(
+  links: boolean,
+  keywords: boolean,
+  user: HighlightRuleCompiled[],
+): HighlightRuleCompiled[] {
+  return [...builtinRules(links, keywords), ...user];
+}
+
+/** Compile user patterns to regexes; invalid ones are dropped (never break
+ *  the terminal over a bad rule). */
+export function compileRules(
+  rules: Array<{ pattern?: string; color?: string }> | null | undefined,
+): HighlightRuleCompiled[] {
+  const out: HighlightRuleCompiled[] = [];
+  for (const r of rules ?? []) {
+    if (!r?.pattern || !r.color) continue;
+    try {
+      out.push({ re: new RegExp(r.pattern, "g"), color: r.color });
+    } catch {
+      /* invalid regex — skip */
+    }
+  }
+  return out;
+}
 
 // Decoration budget — a pathological output (a dumped JSON blob full of
 // URLs) must not register thousands of overlay elements.
 const MAX_DECORATIONS = 2000;
 
-interface Match {
-  col: number; // cell index of the match start
-  len: number; // width in cells
-  kind: "url" | "error" | "warn";
-}
-
 /** Styles applied to the decoration overlay element on every render. */
-const STYLES: Record<Match["kind"], (el: HTMLElement) => void> = {
-  url: (el) => {
+function applyStyle(el: HTMLElement, color: string, underline?: boolean): void {
+  el.style.pointerEvents = "none"; // never block text selection
+  const c = HL_COLORS[color];
+  if (c) el.style.backgroundColor = c.bg;
+  if (underline) {
     el.style.textDecoration = "underline";
     el.style.textUnderlineOffset = "2px";
     el.style.color = "#7dd3fc";
-  },
-  error: (el) => {
-    el.style.backgroundColor = "rgba(248, 113, 113, 0.28)";
-  },
-  warn: (el) => {
-    el.style.backgroundColor = "rgba(250, 204, 21, 0.24)";
-  },
-};
+  }
+}
 
-/** Collect non-overlapping matches on one line of plain text. */
-export function findMatches(text: string, opts: HighlightOptions): Match[] {
-  const raw: Array<{ s: number; e: number; kind: Match["kind"] }> = [];
-  const run = (re: RegExp, kind: Match["kind"]) => {
-    re.lastIndex = 0;
-    for (let m = re.exec(text); m; m = re.exec(text)) {
-      if (m[0]) raw.push({ s: m.index, e: m.index + m[0].length, kind });
+/** Collect non-overlapping matches on one line of plain text. Overlaps
+ *  resolve to the leftmost match (longest wins on ties). */
+export function findMatches(
+  text: string,
+  rules: HighlightRuleCompiled[],
+): Array<{ col: number; len: number; color: string; underline?: boolean }> {
+  const raw: Array<{ s: number; e: number; color: string; underline?: boolean }> = [];
+  for (const rule of rules) {
+    rule.re.lastIndex = 0;
+    for (let m = rule.re.exec(text); m; m = rule.re.exec(text)) {
+      if (m[0]) raw.push({ s: m.index, e: m.index + m[0].length, color: rule.color, underline: rule.underline });
     }
-  };
-  if (opts.links) run(URL_RE, "url");
-  if (opts.keywords) {
-    run(ERROR_RE, "error");
-    run(WARN_RE, "warn");
   }
   raw.sort((a, b) => a.s - b.s || b.e - a.e);
-  const out: Match[] = [];
+  const out: Array<{ col: number; len: number; color: string; underline?: boolean }> = [];
   let end = -1;
   for (const m of raw) {
-    if (m.s < end) continue; // overlaps an earlier match
-    out.push({ col: m.s, len: m.e - m.s, kind: m.kind });
+    if (m.s < end) continue;
+    out.push({ col: m.s, len: m.e - m.s, color: m.color, underline: m.underline });
     end = m.e;
   }
   return out;
@@ -81,10 +133,11 @@ export class BufferHighlighter {
     this.opts = opts;
   }
 
-  /** Apply new settings; a toggle change triggers a full buffer rescan. */
+  /** Apply new settings; a change triggers a full buffer rescan. */
   update(opts: HighlightOptions): void {
     const changed =
-      opts.links !== this.opts.links || opts.keywords !== this.opts.keywords;
+      JSON.stringify(this.opts.rules.map((r) => [r.re.source, r.color, r.underline ?? false])) !==
+      JSON.stringify(opts.rules.map((r) => [r.re.source, r.color, r.underline ?? false]));
     this.opts = opts;
     if (changed) this.scanAll();
   }
@@ -122,7 +175,7 @@ export class BufferHighlighter {
   }
 
   private scanRange(from: number, to: number): void {
-    if (!this.opts.links && !this.opts.keywords) return;
+    if (this.opts.rules.length === 0) return;
     const buf = this.term.buffer.active;
     const cursorAbs = buf.baseY + this.term.rows - 1;
     for (let i = from; i < to; i++) {
@@ -131,7 +184,7 @@ export class BufferHighlighter {
       if (!line) continue;
       const text = line.translateToString(true);
       if (!text) continue;
-      const matches = findMatches(text, this.opts);
+      const matches = findMatches(text, this.opts.rules);
       if (matches.length === 0) continue;
 
       // Character index → cell index map (built lazily; a wide char is one
@@ -155,10 +208,7 @@ export class BufferHighlighter {
           marker.dispose();
           continue;
         }
-        dec.onRender((el) => {
-          el.style.pointerEvents = "none"; // never block text selection
-          STYLES[m.kind](el);
-        });
+        dec.onRender((el) => applyStyle(el, m.color, m.underline));
         this.decorations.push({ dec, disposeMarker: () => marker.dispose() });
       }
     }

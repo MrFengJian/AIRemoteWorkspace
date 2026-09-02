@@ -1,10 +1,16 @@
 package agent
 
 import (
+	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cloudwego/eino/schema"
+
+	"github.com/ai-remote/workspace/internal/domain"
 )
 
 // newMsgStream builds a StreamReader that yields msgs then EOF.
@@ -78,5 +84,65 @@ func TestHybridCheckerEmptyStream(t *testing.T) {
 	}
 	if got {
 		t.Fatalf("empty stream must route to END")
+	}
+}
+
+// ── /skill and @path message resolution ─────────────────────────────────
+
+type fakeSkills struct{}
+
+func (fakeSkills) ListSkills() ([]domain.Skill, error) { return nil, nil }
+
+func (fakeSkills) GetSkill(name string) (domain.Skill, error) {
+	if name == "deploy" {
+		return domain.Skill{Name: name, Content: "DEPLOY STEPS"}, nil
+	}
+	return domain.Skill{}, fmt.Errorf("skill %q not found", name)
+}
+
+func TestResolveUserMessage(t *testing.T) {
+	dir := t.TempDir()
+	notes := filepath.Join(dir, "notes.txt")
+	if err := os.WriteFile(notes, []byte("hello-notes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := &Runtime{skills: fakeSkills{}}
+
+	// Leading /name injects the skill body inline (eino inline mode).
+	got := r.resolveUserMessage("sess-1", "/deploy rollout the api")
+	if !strings.HasPrefix(got, "DEPLOY STEPS") || !strings.HasSuffix(got, "rollout the api") {
+		t.Fatalf("skill injection failed: %q", got)
+	}
+
+	// Unknown skill: text passes through untouched.
+	if got := r.resolveUserMessage("sess-1", "/nope do things"); got != "/nope do things" {
+		t.Fatalf("unknown skill mutated: %q", got)
+	}
+
+	// @path on a local session loads the file content into a <file> block.
+	got = r.resolveUserMessage("local-1", "check @"+filepath.ToSlash(notes)+" please")
+	if !strings.Contains(got, "hello-notes") || !strings.Contains(got, `<file path=`) {
+		t.Fatalf("file mention failed: %q", got)
+	}
+
+	// Unknown path: token stays visible to the model.
+	if got := r.resolveUserMessage("local-1", "check @/no/such/file.log"); !strings.Contains(got, "@/no/such/file.log") {
+		t.Fatalf("unknown path mutated: %q", got)
+	}
+
+	// No skills source: /mention is plain text.
+	raw := &Runtime{}
+	if got := raw.resolveUserMessage("sess-1", "/deploy x"); got != "/deploy x" {
+		t.Fatalf("nil skills mutated message: %q", got)
+	}
+}
+
+func TestCapContext(t *testing.T) {
+	if got := capContext([]byte("short"), 1024); got != "short" {
+		t.Fatalf("small content mutated: %q", got)
+	}
+	got := capContext([]byte(strings.Repeat("x", 300)), 100)
+	if len(got) <= 100 || !strings.HasSuffix(got, "[truncated]") {
+		t.Fatalf("cap/truncation mark missing")
 	}
 }

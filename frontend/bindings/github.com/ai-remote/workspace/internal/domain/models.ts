@@ -82,6 +82,12 @@ export interface AppConfig {
     "disableKeywordHighlight": boolean;
 
     /**
+     * User-defined highlight rules: a regex and the color scheme used to
+     * paint its matches. Invalid patterns are skipped by the renderer.
+     */
+    "highlightRules"?: HighlightRule[] | null;
+
+    /**
      * AI agent provider config (API key in SecretStore)
      */
     "llm": LLMConfig;
@@ -262,6 +268,22 @@ export interface DockerNetworkDetail {
 export interface DockerNetworkSubnet {
     "subnet": string;
     "gateway": string;
+}
+
+/**
+ * HighlightRule is a user-defined terminal content highlight: a regular
+ * expression and the color scheme used to paint its matches. The regex is
+ * JavaScript-flavored (compiled in the renderer); invalid patterns are
+ * ignored, never breaking the terminal.
+ */
+export interface HighlightRule {
+    "pattern": string;
+
+    /**
+     * Color scheme id from the highlight palette (red/orange/yellow/green/
+     * cyan/blue/purple/pink).
+     */
+    "color": string;
 }
 
 /**

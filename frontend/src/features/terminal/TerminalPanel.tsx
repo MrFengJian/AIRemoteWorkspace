@@ -37,7 +37,12 @@ import { terminalFontFamily } from "@/features/terminal/fonts";
 import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabMenu";
 import { TerminalAppearanceDialog } from "@/features/terminal/TerminalAppearanceDialog";
 import { PasteConfirmDialog } from "@/features/terminal/PasteConfirmDialog";
-import { BufferHighlighter, type HighlightOptions } from "@/features/terminal/terminalHighlight";
+import {
+  BufferHighlighter,
+  buildRules,
+  compileRules,
+  type HighlightOptions,
+} from "@/features/terminal/terminalHighlight";
 import { useHosts, useUpdateHost } from "@/features/hosts/hooks";
 import { getTerminalTheme } from "@/features/terminal/themes";
 import { useKeybindingStore } from "@/keybindings/store";
@@ -121,16 +126,21 @@ export function TerminalPanel({
     }
   }, [session.terminalTheme]);
 
-  // Content-highlight settings (global config). Loaded on mount and re-read
-  // whenever the config changes anywhere (SettingsView saves → "config:changed").
-  const [hlOptions, setHlOptions] = useState<HighlightOptions>({ links: true, keywords: true });
+  // Content-highlight rules: built-ins (links / ERROR/WARN per toggles) plus
+  // user regex rules, all through one regex→color pipeline. Loaded on mount
+  // and re-read whenever the config changes anywhere (SettingsView saves →
+  // "config:changed").
+  const [hlOptions, setHlOptions] = useState<HighlightOptions>({ rules: [] });
   useEffect(() => {
     const load = () => {
       ConfigService.GetAppConfig()
         .then((cfg) =>
           setHlOptions({
-            links: !cfg.disableLinkHighlight,
-            keywords: !cfg.disableKeywordHighlight,
+            rules: buildRules(
+              !cfg.disableLinkHighlight,
+              !cfg.disableKeywordHighlight,
+              compileRules(cfg.highlightRules),
+            ),
           }),
         )
         .catch(() => {});
@@ -175,7 +185,7 @@ export function TerminalPanel({
     term.loadAddon(fit);
     term.loadAddon(search);
     term.open(container);
-    const highlighter = new BufferHighlighter(term, { links: true, keywords: true });
+    const highlighter = new BufferHighlighter(term, { rules: [] });
     highlighterRef.current = highlighter;
     try {
       fit.fit();
@@ -579,6 +589,30 @@ export function TerminalPanel({
       zoomOut: () => setZoomDelta((d) => Math.max(-10, d - 1)),
       zoomReset: () => setZoomDelta(0),
       focus: () => termRef.current?.focus(),
+      bufferInfo: () => {
+        const term = termRef.current;
+        if (!term) return { total: 0, visibleStart: 0, visibleEnd: 0 };
+        const b = term.buffer.active;
+        const visibleStart = b.viewportY + 1;
+        return {
+          total: b.length,
+          visibleStart,
+          visibleEnd: Math.min(b.length, visibleStart + term.rows - 1),
+        };
+      },
+      bufferLines: (start, end) => {
+        const term = termRef.current;
+        if (!term) return null;
+        const b = term.buffer.active;
+        const s = Math.max(1, start);
+        const e = Math.min(b.length, end);
+        const lines: string[] = [];
+        for (let i = s - 1; i < e; i++) {
+          const line = b.getLine(i);
+          if (line) lines.push(line.translateToString(true));
+        }
+        return lines.join("\n");
+      },
     });
   });
 

@@ -12,6 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -23,8 +25,17 @@ import (
 
 	"github.com/ai-remote/workspace/internal/domain"
 	"github.com/ai-remote/workspace/internal/infrastructure/agent/tools"
+	"github.com/ai-remote/workspace/internal/infrastructure/sftp"
 	"github.com/ai-remote/workspace/internal/infrastructure/ssh"
 )
+
+// SkillSource loads agent skills (SKILL.md files) — implemented by the
+// application layer's SkillService. May be nil: /skill resolution and the
+// model-facing skill tool are then disabled.
+type SkillSource interface {
+	ListSkills() ([]domain.Skill, error)
+	GetSkill(name string) (domain.Skill, error)
+}
 
 // AgentEvents delivers streaming agent output upward (to the Wails service).
 // A tool invocation is reported twice with the same stepID: once when it
@@ -97,6 +108,7 @@ type Runtime struct {
 	secrets  SecretsForResolver
 	sink     TurnSink
 	agentCfg AgentConfigSource
+	skills   SkillSource
 
 	mu        sync.Mutex
 	cancelFns map[string]context.CancelFunc
@@ -115,8 +127,9 @@ type SecretsForResolver interface {
 type AgentConfigSource func() domain.AgentConfig
 
 // NewRuntime wires the agent runtime. sink (may be nil) persists completed
-// turns — the application layer's ConversationService.
-func NewRuntime(llm LLMResolver, sshMgr *ssh.Manager, sftp SftpFileOps, gate PermissionGate, secrets SecretsForResolver, sink TurnSink, agentCfg AgentConfigSource) *Runtime {
+// turns — the application layer's ConversationService. skills (may be nil)
+// enables /skill invocation and the model-facing skill tool.
+func NewRuntime(llm LLMResolver, sshMgr *ssh.Manager, sftp SftpFileOps, gate PermissionGate, secrets SecretsForResolver, sink TurnSink, agentCfg AgentConfigSource, skills SkillSource) *Runtime {
 	return &Runtime{
 		llm:       llm,
 		sshMgr:    sshMgr,
@@ -125,6 +138,7 @@ func NewRuntime(llm LLMResolver, sshMgr *ssh.Manager, sftp SftpFileOps, gate Per
 		secrets:   secrets,
 		sink:      sink,
 		agentCfg:  agentCfg,
+		skills:    skills,
 		cancelFns: make(map[string]context.CancelFunc),
 		histories: make(map[string][]*schema.Message),
 	}
@@ -178,7 +192,8 @@ func (r *Runtime) Chat(ctx context.Context, sessionID, providerID, model, userMe
 	ts, err := tools.NewToolSet(tools.Deps{
 		SSH:               r.sshMgr,
 		SFTP:              r.sftp,
-		OutputLimitBytes: cfg.ToolOutputLimitKB * 1024,
+		OutputLimitBytes:  cfg.ToolOutputLimitKB * 1024,
+		Skills:            r.skills,
 	}, credsResolver, r.gate, eventsObserver{events})
 	if err != nil {
 		return fmt.Errorf("build toolset: %w", err)
@@ -214,13 +229,15 @@ func (r *Runtime) Chat(ctx context.Context, sessionID, providerID, model, userMe
 	r.registerCancel(sessionID, cancel)
 	defer r.unregisterCancel(sessionID)
 
-	// [system] + replayed history + this turn's user message.
+	// [system] + replayed history + this turn's user message. The message is
+	// resolved (/skill → instructions, @path → file content) for the model
+	// only — the raw text is what gets recorded into conversation memory.
 	msgs := make([]*schema.Message, 0, 8)
 	msgs = append(msgs, schema.SystemMessage(r.systemPrompt(sessionID)))
 	r.mu.Lock()
 	msgs = append(msgs, r.histories[sessionID]...)
 	r.mu.Unlock()
-	msgs = append(msgs, schema.UserMessage(userMessage))
+	msgs = append(msgs, schema.UserMessage(r.resolveUserMessage(sessionID, userMessage)))
 
 	reader, err := ag.Stream(chatCtx, msgs)
 	if err != nil {
@@ -345,6 +362,141 @@ func (r *Runtime) unregisterCancel(sessionID string) {
 	r.mu.Lock()
 	delete(r.cancelFns, sessionID)
 	r.mu.Unlock()
+}
+
+// ── Message context resolution (/skill and @path mentions) ─────────────
+
+var mentionRe = regexp.MustCompile(`@[^\s]+`)
+
+// resolveUserMessage expands the input-box shortcuts before the message
+// reaches the model:
+//   - a leading `/name` loads the skill's SKILL.md instructions inline
+//     (eino skill middleware's inline mode) and prepends them to the text;
+//   - `@/some/path` tokens are replaced by <file path="…"> blocks holding
+//     the file's content, loaded over SFTP (remote session) or from disk
+//     (local session).
+//
+// Unresolvable mentions are left untouched so the model sees what the user
+// typed. The recorded conversation history keeps the RAW message.
+func (r *Runtime) resolveUserMessage(sessionID, text string) string {
+	if r.skills != nil && strings.HasPrefix(text, "/") {
+		rest := strings.TrimLeft(text[1:], " \t")
+		name := rest
+		remainder := ""
+		if i := strings.IndexAny(rest, " \t\n\r"); i >= 0 {
+			name = rest[:i]
+			remainder = strings.TrimLeft(rest[i:], " \t")
+		}
+		if name != "" {
+			if sk, err := r.skills.GetSkill(name); err == nil {
+				text = strings.TrimSpace(sk.Content) + "\n\n---\n\n" + strings.TrimSpace(remainder)
+			}
+			// Unknown skill: leave the message exactly as typed.
+		}
+	}
+	text = mentionRe.ReplaceAllStringFunc(text, func(tok string) string {
+		path := strings.TrimPrefix(tok, "@")
+		if path == "" {
+			return tok
+		}
+		content, err := r.loadContextFile(sessionID, path)
+		if err != nil {
+			return tok // leave unknown paths visible to the model
+		}
+		return fmt.Sprintf("<file path=%q>\n%s\n</file>", path, content)
+	})
+	return text
+}
+
+// loadContextFile reads one @-mentioned file: from disk for local sessions,
+// over SFTP for remote ones. Content is capped at the agent's tool output
+// budget so a huge log cannot flood the context.
+func (r *Runtime) loadContextFile(sessionID, path string) (string, error) {
+	if strings.HasPrefix(sessionID, "local-") {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", err
+		}
+		return capContext(data, r.agentConfig().ToolOutputLimitKB*1024), nil
+	}
+	if r.sftp == nil {
+		return "", fmt.Errorf("sftp not available")
+	}
+	host, creds, err := r.buildResolver()(sessionID)
+	if err != nil {
+		return "", err
+	}
+	data, err := r.sftp.DownloadFile(host, creds, path, nil)
+	if err != nil {
+		return "", err
+	}
+	return capContext(data, r.agentConfig().ToolOutputLimitKB*1024), nil
+}
+
+// capContext bounds the injected content and marks the elision.
+func capContext(data []byte, limit int) string {
+	if limit <= 0 || len(data) <= limit {
+		return string(data)
+	}
+	return string(data[:limit]) + "\n…[truncated]"
+}
+
+// PathEntry is one entry of an @-mention directory listing.
+type PathEntry struct {
+	Name  string
+	IsDir bool
+	Size  int64
+}
+
+// dirLister is the directory-listing capability of the concrete SFTP manager
+// (the narrow SftpFileOps interface the runtime normally holds lacks it).
+type dirLister interface {
+	ListDir(host domain.Host, creds domain.Credentials, dir string) ([]sftp.Entry, error)
+}
+
+// ListContextPaths lists a directory for the @-completion popup: from disk
+// for local sessions, over SFTP for remote ones.
+func (r *Runtime) ListContextPaths(sessionID, dir string) ([]PathEntry, error) {
+	if strings.HasPrefix(sessionID, "local-") {
+		if dir == "" {
+			dir = "."
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]PathEntry, 0, len(entries))
+		for _, e := range entries {
+			size := int64(0)
+			if !e.IsDir() {
+				if info, err := e.Info(); err == nil {
+					size = info.Size()
+				}
+			}
+			out = append(out, PathEntry{Name: e.Name(), IsDir: e.IsDir(), Size: size})
+		}
+		return out, nil
+	}
+	lister, ok := r.sftp.(dirLister)
+	if !ok {
+		return nil, fmt.Errorf("directory listing not available")
+	}
+	host, creds, err := r.buildResolver()(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if dir == "" {
+		dir = "/"
+	}
+	entries, err := lister.ListDir(host, creds, dir)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PathEntry, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, PathEntry{Name: e.Name, IsDir: e.IsDir, Size: e.Size})
+	}
+	return out, nil
 }
 
 // hybridToolCallChecker routes the model's streamed output using only

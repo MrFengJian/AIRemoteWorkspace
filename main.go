@@ -26,6 +26,9 @@ import (
 const (
 	appName    = "AI Remote Workspace"
 	appVersion = "0.1.0"
+	// appDirName is the single directory name used under xdg.DataHome /
+	// xdg.ConfigHome (database + skills + the data-dir pointer file).
+	appDirName = "ai-remote-workspace"
 )
 
 // Wails embeds the built frontend (frontend/dist) into the binary so the app
@@ -41,11 +44,20 @@ func init() {
 }
 
 func main() {
-	store, err := initStorage()
+	// Data directory: the pointer file remembers a migrated location; absent
+	// pointer → the xdg default. Must resolve before anything opens the store.
+	defaultDataDir := filepath.Join(xdg.DataHome, appDirName)
+	pointerPath := filepath.Join(xdg.ConfigHome, appDirName, "data-dir.txt")
+	dataDir := application.ResolveDataDir(pointerPath, defaultDataDir)
+
+	store, err := initStorage(dataDir)
 	if err != nil {
 		log.Fatalf("storage init failed: %v", err)
 	}
 	defer func() { _ = store.Close() }()
+
+	// Data-dir migration service (settings → 显示/迁移数据目录).
+	dataDirSvc := application.NewDataDirService(defaultDataDir, pointerPath, store)
 
 	// Repositories (infrastructure).
 	configRepo := sqlite.NewConfigRepo(store)
@@ -104,7 +116,15 @@ func main() {
 	// tool runtime (eino ReAct agent per session; turns persisted via convSvc).
 	// The config source feeds the user-adjustable agent settings (prompt,
 	// max steps, history budget, tool output cap); read per chat so changes
-	// apply without a restart.
+	// apply without a restart. Skills load from <data>/skills/<name>/SKILL.md
+	// (eino skill convention): `/name` in the agent input and the model-facing
+	// `skill` tool both resolve through it.
+	skillsDir := filepath.Join(dataDir, "skills")
+	skillSvc := application.NewSkillService(skillsDir)
+	// Repoint the skills root after a successful data-dir migration.
+	dataDirSvc.SetOnMigrated(func(newDataDir string) {
+		skillSvc.SetDir(filepath.Join(newDataDir, "skills"))
+	})
 	permGate := application.NewPermissionGate(nil)
 	agentRuntime := agent.NewRuntime(providerSvc, connManager, sftpMgr, permGate, &secretResolver{secretSvc}, convSvc, func() domain.AgentConfig {
 		cfg, err := configSvc.GetAppConfig()
@@ -112,10 +132,10 @@ func main() {
 			return domain.AgentConfig{}
 		}
 		return cfg.Agent
-	})
+	}, skillSvc)
 
 	// Wails-facing services (interface adapter layer).
-	systemService := interfaces.NewSystemService(appName, appVersion)
+	systemService := interfaces.NewSystemService(appName, appVersion, dataDirSvc)
 	configService := interfaces.NewConfigService(configSvc)
 	hostService := interfaces.NewHostService(hostSvc, tunnelMgr)
 	localPtyMgr := localpty.NewManager()
@@ -126,7 +146,7 @@ func main() {
 	sftpService := interfaces.NewSftpService(sftpSvc)
 	windowService := interfaces.NewWindowService(hostSvc)
 	providerService := interfaces.NewModelProviderService(providerSvc)
-	agentService := interfaces.NewAgentService(agentRuntime, permGate, convSvc)
+	agentService := interfaces.NewAgentService(agentRuntime, permGate, convSvc, skillSvc)
 
 	// Wire the approval emitter now that AgentService exists.
 	permGate.SetEmitter(agentService)
@@ -190,8 +210,8 @@ func main() {
 
 // initStorage opens (and migrates) the SQLite database in the per-user data
 // directory. The path follows the OS convention (AGENT.md §2.1 local-first).
-func initStorage() (*sqlite.Store, error) {
-	dbPath := filepath.Join(xdg.DataHome, "ai-remote-workspace", "workspace.db")
+func initStorage(dataDir string) (*sqlite.Store, error) {
+	dbPath := filepath.Join(dataDir, "workspace.db")
 	return sqlite.Open(dbPath)
 }
 
