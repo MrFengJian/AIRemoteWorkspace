@@ -266,6 +266,8 @@ export const zh = {
     toolRunning: "执行中…",
     noProviders: "尚未配置任何模型供应商。",
     goSettings: "打开设置",
+    providersLoading: "正在加载模型供应商…",
+    providersReload: "重新加载",
     send: "发送",
     stop: "停止",
     emptyHint: "让助手诊断这台主机——例如「检查 CPU 和内存」。",

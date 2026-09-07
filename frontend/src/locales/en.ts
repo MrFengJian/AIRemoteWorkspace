@@ -266,6 +266,8 @@ export const en = {
     toolRunning: "running…",
     noProviders: "No model providers configured yet.",
     goSettings: "Open Settings",
+    providersLoading: "Loading model providers…",
+    providersReload: "Reload",
     send: "Send",
     stop: "Stop",
     emptyHint: "Ask the agent to diagnose this host — e.g. \u201Ccheck CPU and memory\u201D.",

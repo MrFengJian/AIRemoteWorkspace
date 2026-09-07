@@ -25,6 +25,7 @@ import {
   Stethoscope,
   BookMarked,
   Sparkles,
+  RefreshCw,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -191,8 +192,16 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
   >(null);
 
   // Shared provider query (same cache as Settings → Models), filtered to
-  // enabled providers for the inline selector.
-  const { data: allProviders, isLoading: providersLoading } = useModelProviders();
+  // enabled providers for the inline selector. The panel remounts on every
+  // open and the query re-syncs on mount, so a wedged startup fetch heals by
+  // closing and reopening the panel (or via the manual reload button).
+  const {
+    data: allProviders,
+    isLoading: providersLoading,
+    isError: providersError,
+    error: providersErrorValue,
+    refetch: refetchProviders,
+  } = useModelProviders();
   const providers = useMemo(
     () => (allProviders ?? []).filter((p) => p.enabled),
     [allProviders],
@@ -1027,15 +1036,36 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
               <option value="auto_write">{t("agent.policyAutoWrite")}</option>
             </Select>
           </div>
-        ) : providersLoaded ? (
+        ) : providersLoading ? (
+          // Startup fetch still in flight (incl. automatic retries) — show it
+          // instead of rendering nothing, which read as a dead panel.
           <div className="flex items-center gap-2 pb-2 text-xs text-muted-foreground">
-            <span>{t("agent.noProviders")}</span>
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>{t("agent.providersLoading")}</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 pb-2 text-xs text-muted-foreground">
+            <span className="min-w-0 flex-1 truncate">
+              {providersError
+                ? `${t("agent.errorPrefix")} ${providersErrorValue instanceof Error ? providersErrorValue.message : String(providersErrorValue)}`
+                : t("agent.noProviders")}
+            </span>
+            {/* Manual escape hatch: re-sync the shared provider cache. */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => void refetchProviders()}
+            >
+              <RefreshCw className="h-3 w-3" />
+              {t("agent.providersReload")}
+            </Button>
             <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={goSettings}>
               <Settings2 className="h-3 w-3" />
               {t("agent.goSettings")}
             </Button>
           </div>
-        ) : null}
+        )}
         <div className="flex items-end gap-2">
           <button
             type="button"
