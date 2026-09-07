@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/components/tool"
@@ -35,6 +36,13 @@ import (
 type SkillSource interface {
 	ListSkills() ([]domain.Skill, error)
 	GetSkill(name string) (domain.Skill, error)
+}
+
+// SnapshotSource collects the deterministic health-check snapshot for a
+// session's host (application layer's MonitorService). May be nil: diagnosis
+// chats then start without triage context instead of failing.
+type SnapshotSource interface {
+	Snapshot(ctx context.Context, sessionID string) (string, error)
 }
 
 // AgentEvents delivers streaming agent output upward (to the Wails service).
@@ -101,18 +109,20 @@ const (
 // Conversation history is kept in memory per session and replayed on each
 // turn (multi-turn memory); ClearHistory drops it.
 type Runtime struct {
-	llm      LLMResolver
-	sshMgr   *ssh.Manager
-	sftp     SftpFileOps
-	gate     PermissionGate
-	secrets  SecretsForResolver
-	sink     TurnSink
-	agentCfg AgentConfigSource
-	skills   SkillSource
+	llm       LLMResolver
+	sshMgr    *ssh.Manager
+	sftp      SftpFileOps
+	gate      PermissionGate
+	secrets   SecretsForResolver
+	sink      TurnSink
+	agentCfg  AgentConfigSource
+	skills    SkillSource
+	snapshots SnapshotSource
 
 	mu        sync.Mutex
 	cancelFns map[string]context.CancelFunc
 	histories map[string][]*schema.Message
+	diagnosis map[string]bool // sessions currently in diagnosis mode
 }
 
 // SecretsForResolver provides remembered host secrets for credential resolution.
@@ -128,8 +138,9 @@ type AgentConfigSource func() domain.AgentConfig
 
 // NewRuntime wires the agent runtime. sink (may be nil) persists completed
 // turns — the application layer's ConversationService. skills (may be nil)
-// enables /skill invocation and the model-facing skill tool.
-func NewRuntime(llm LLMResolver, sshMgr *ssh.Manager, sftp SftpFileOps, gate PermissionGate, secrets SecretsForResolver, sink TurnSink, agentCfg AgentConfigSource, skills SkillSource) *Runtime {
+// enables /skill invocation and the model-facing skill tool. snapshots (may
+// be nil) enables the diagnosis mode's health-check snapshot.
+func NewRuntime(llm LLMResolver, sshMgr *ssh.Manager, sftp SftpFileOps, gate PermissionGate, secrets SecretsForResolver, sink TurnSink, agentCfg AgentConfigSource, skills SkillSource, snapshots SnapshotSource) *Runtime {
 	return &Runtime{
 		llm:       llm,
 		sshMgr:    sshMgr,
@@ -139,8 +150,10 @@ func NewRuntime(llm LLMResolver, sshMgr *ssh.Manager, sftp SftpFileOps, gate Per
 		sink:      sink,
 		agentCfg:  agentCfg,
 		skills:    skills,
+		snapshots: snapshots,
 		cancelFns: make(map[string]context.CancelFunc),
 		histories: make(map[string][]*schema.Message),
+		diagnosis: make(map[string]bool),
 	}
 }
 
@@ -167,6 +180,87 @@ func (r *Runtime) agentConfig() domain.AgentConfig {
 // provider + model. The session's conversation history is replayed so the
 // model keeps context across turns.
 func (r *Runtime) Chat(ctx context.Context, sessionID, providerID, model, userMessage string, events AgentEvents) error {
+	return r.runChat(ctx, sessionID, providerID, model, userMessage, userMessage, events)
+}
+
+// StartDiagnosis runs a diagnosis-mode chat turn: it flips the session into
+// the diagnosis system prompt, collects the deterministic health snapshot
+// (best-effort — collection problems degrade to a note, never a failure) and
+// attaches it to the symptom as the first turn's context. The conversation
+// memory records the bare symptom so follow-ups replay compactly.
+func (r *Runtime) StartDiagnosis(ctx context.Context, sessionID, providerID, model, symptom string, events AgentEvents) error {
+	r.SetDiagnosisMode(sessionID, true)
+
+	snapshot := ""
+	if r.snapshots != nil {
+		sctx, cancel := context.WithTimeout(ctx, snapshotTimeout)
+		snap, snapErr := r.snapshots.Snapshot(sctx, sessionID)
+		cancel()
+		if snapErr != nil {
+			if events != nil {
+				// Pre-turn notice: the model message will also carry the note.
+				events.OnChunk(sessionID, fmt.Sprintf("> %s\n\n", snapshotUnavailableNote(snapErr)))
+			}
+		} else {
+			snapshot = snap
+		}
+	}
+	return r.runChat(ctx, sessionID, providerID, model, symptom, composeDiagnosisMessage(symptom, snapshot), events)
+}
+
+// SetDiagnosisMode toggles the diagnosis system-prompt template for a
+// session's turns. Cleared with the session's history (new chat).
+func (r *Runtime) SetDiagnosisMode(sessionID string, on bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if on {
+		r.diagnosis[sessionID] = true
+	} else {
+		delete(r.diagnosis, sessionID)
+	}
+}
+
+func (r *Runtime) inDiagnosisMode(sessionID string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.diagnosis[sessionID]
+}
+
+// snapshotTimeout bounds the deterministic health-check round: overview and
+// process collection each sleep 1s between samples, plus transfer overhead.
+const snapshotTimeout = 30 * time.Second
+
+// snapshotUnavailableNote is the user-visible pre-turn notice and the model
+// message note when snapshot collection fails.
+func snapshotUnavailableNote(err error) string {
+	return fmt.Sprintf("体检快照不可用（%v），请直接通过只读命令采集所需上下文。/ Health snapshot unavailable (%v); gather context via read-only commands instead.", err, err)
+}
+
+// composeDiagnosisMessage builds the model-facing first turn: the user's
+// symptom plus the health snapshot as a structured context block.
+func composeDiagnosisMessage(symptom, snapshot string) string {
+	var b strings.Builder
+	b.WriteString(strings.TrimSpace(symptom))
+	if snapshot != "" {
+		if len(snapshot) > snapshotCharBudget {
+			snapshot = snapshot[:snapshotCharBudget] + "\n…[truncated]"
+		}
+		b.WriteString("\n\n<health-snapshot>\n")
+		b.WriteString(snapshot)
+		b.WriteString("\n</health-snapshot>")
+	} else {
+		b.WriteString("\n\n(no health snapshot available — start from read-only evidence gathering)")
+	}
+	return b.String()
+}
+
+// snapshotCharBudget bounds the injected snapshot (≈2k tokens).
+const snapshotCharBudget = 8 * 1024
+
+// runChat is the shared streaming pipeline: rawUser is what the conversation
+// memory records; modelUser is what the model actually receives (context
+// expansion already applied).
+func (r *Runtime) runChat(ctx context.Context, sessionID, providerID, model, rawUser, modelUser string, events AgentEvents) error {
 	ep, err := r.llm.ResolveLLM(providerID, model)
 	if err != nil {
 		return err
@@ -237,7 +331,7 @@ func (r *Runtime) Chat(ctx context.Context, sessionID, providerID, model, userMe
 	r.mu.Lock()
 	msgs = append(msgs, r.histories[sessionID]...)
 	r.mu.Unlock()
-	msgs = append(msgs, schema.UserMessage(r.resolveUserMessage(sessionID, userMessage)))
+	msgs = append(msgs, schema.UserMessage(r.resolveUserMessage(sessionID, modelUser)))
 
 	reader, err := ag.Stream(chatCtx, msgs)
 	if err != nil {
@@ -266,7 +360,7 @@ func (r *Runtime) Chat(ctx context.Context, sessionID, providerID, model, userMe
 			// of a gap (tool results live only inside the aborted eino run,
 			// but the partial narration still anchors the continuation).
 			if finalText.Len() > 0 {
-				r.recordTurn(sessionID, userMessage, finalText.String())
+				r.recordTurn(sessionID, rawUser, finalText.String())
 			}
 			return err
 		}
@@ -284,7 +378,7 @@ func (r *Runtime) Chat(ctx context.Context, sessionID, providerID, model, userMe
 	// Record the completed turn for multi-turn memory. Failed/cancelled turns
 	// are not recorded (the user saw no complete answer).
 	if finalText.Len() > 0 {
-		r.recordTurn(sessionID, userMessage, finalText.String())
+		r.recordTurn(sessionID, rawUser, finalText.String())
 	}
 	return nil
 }
@@ -299,10 +393,13 @@ func (r *Runtime) Cancel(sessionID string) {
 	}
 }
 
-// ClearHistory forgets a session's conversation (frontend "clear chat").
+// ClearHistory forgets a session's conversation (frontend "clear chat") and
+// resets the diagnosis-mode prompt with it — the next conversation starts
+// from the default template.
 func (r *Runtime) ClearHistory(sessionID string) {
 	r.mu.Lock()
 	delete(r.histories, sessionID)
+	delete(r.diagnosis, sessionID)
 	r.mu.Unlock()
 }
 
@@ -531,11 +628,16 @@ func hybridToolCallChecker(_ context.Context, sr *schema.StreamReader[*schema.Me
 
 // systemPrompt is the LLM-facing contract: tools, workflow, and approval
 // semantics (a DENIED result must change the plan, never be retried).
-// Local terminal sessions get a local-only variant. The user's standing
-// instructions from global settings are appended to either variant.
+// Local terminal sessions get a local-only variant, and sessions in
+// diagnosis mode get the triage template instead. The user's standing
+// instructions from global settings are appended to every variant.
 func (r *Runtime) systemPrompt(sessionID string) string {
+	isLocal := strings.HasPrefix(sessionID, "local-")
 	var base string
-	if strings.HasPrefix(sessionID, "local-") {
+	switch {
+	case r.inDiagnosisMode(sessionID):
+		base = r.diagnosisPrompt(sessionID, isLocal)
+	case isLocal:
 		base = "You are an AI operations assistant working on the user's LOCAL machine (a local terminal session, no remote host).\n\n" +
 			"Tools:\n" +
 			"- local_exec(command): run a shell command locally. Returns combined stdout+stderr; a non-zero exit is reported as " +
@@ -548,7 +650,7 @@ func (r *Runtime) systemPrompt(sessionID string) string {
 				"such as docker run/stop/restart, destructive commands) are subject to the session's approval policy — " +
 				"the user may be asked to approve them. If a tool result says the user DENIED the operation, " +
 				"do NOT retry it — explain and propose an alternative."
-	} else {
+	default:
 		host, ok := r.sshMgr.HostOfSession(sessionID)
 		name := "unknown"
 		if ok {
@@ -579,6 +681,104 @@ func (r *Runtime) systemPrompt(sessionID string) string {
 		base += "\n\n# The user's standing instructions (highest priority short of safety rules)\n" + custom
 	}
 	return base
+}
+
+// diagnosisPrompt is the triage-mode system prompt: an evidence-first method
+// built around the deterministic health snapshot and the scenario playbooks,
+// a strict conclusion format (现象/根因/证据/建议/风险), and unchanged
+// approval semantics.
+func (r *Runtime) diagnosisPrompt(sessionID string, isLocal bool) string {
+	var b strings.Builder
+	if isLocal {
+		b.WriteString("You are an AI site-reliability diagnostician working on the user's LOCAL machine " +
+			"(a local terminal session, no remote host). Gather evidence with local_exec / local_read_file " +
+			"(and the docker/kubectl CLI through local_exec where installed).\n\n")
+	} else {
+		host, ok := r.sshMgr.HostOfSession(sessionID)
+		name := "unknown"
+		if ok {
+			name = fmt.Sprintf("%s@%s", host.Username, host.Host)
+		}
+		fmt.Fprintf(&b, "You are an AI site-reliability diagnostician embedded in an SSH workspace, connected to host %s. "+
+			"Gather evidence with ssh_exec / ssh_read_file (docker/kubectl CLIs through ssh_exec); "+
+			"use local_exec only for the user's local context.\n\n", name)
+	}
+	b.WriteString("Diagnosis method (evidence first):\n" +
+		"1. The user's message may carry a <health-snapshot> block — a deterministic read-only collection " +
+		"(CPU / memory / disk / load, top processes, listening ports, recent errors). Read it FIRST and do NOT " +
+		"re-run those checks; escalate depth only where it points.\n" +
+		"2. Match the symptom to a scenario playbook and load it with the `skill` tool (its description lists the " +
+		"available playbooks, e.g. cpu-high, disk-full, memory-oom, service-down, port-unreachable, " +
+		"container-restart-loop). Follow the playbook's decision tree; if none fits, continue with your own " +
+		"read-only investigation.\n" +
+		"3. One hypothesis at a time. Every claim needs evidence — quote the exact command and output lines that " +
+		"prove or refute it. Do not conclude from plausibility alone.\n" +
+		"4. Keep every command read-only and bounded (head / tail / --no-pager / timeout). Never loop sampling " +
+		"or re-check what the snapshot already covered.\n\n" +
+		"Output contract — end every diagnosis with a markdown summary using exactly these sections:\n" +
+		"- **现象 / Phenomenon**: what was observed\n" +
+		"- **根因 / Root cause**: the confirmed (or most-likely) cause\n" +
+		"- **证据 / Evidence**: the commands run and their decisive output lines\n" +
+		"- **建议 / Next steps**: concrete actions, each tagged [READ] / [WRITE] / [DANGEROUS]\n" +
+		"- **风险 / Risk**: impact of each action and what to watch afterwards\n\n" +
+		"Safety: read-only evidence gathering needs no approval. NEVER execute a state-changing fix (restart, kill, " +
+		"delete, config edit, package or container mutation) on your own — propose it under 建议 and wait for the " +
+		"user's explicit approval. If a tool result says the user DENIED an operation, do NOT retry it — explain " +
+		"and propose an alternative.")
+	return b.String()
+}
+
+// transcriptCharBudget bounds the conversation transcript fed to the
+// distillation call (≈10k tokens covers any persisted conversation).
+const transcriptCharBudget = 40 * 1024
+
+// DistillScenario asks the LLM to distill a pasted troubleshooting
+// conversation into a reusable diagnosis scenario: the full SKILL.md content
+// (frontmatter included), ready for preview and saving via SkillService.
+// One-shot completion — no tools, non-streaming.
+func (r *Runtime) DistillScenario(ctx context.Context, providerID, model, transcript string) (string, error) {
+	ep, err := r.llm.ResolveLLM(providerID, model)
+	if err != nil {
+		return "", err
+	}
+	apiKey := ep.APIKey
+	if apiKey == "" {
+		apiKey = "local-no-key"
+	}
+	chatModel, err := openaimodel.NewChatModel(ctx, &openaimodel.ChatModelConfig{
+		BaseURL: ep.BaseURL,
+		APIKey:  apiKey,
+		Model:   ep.Model,
+	})
+	if err != nil {
+		return "", fmt.Errorf("create chat model: %w", err)
+	}
+	if len(transcript) > transcriptCharBudget {
+		// Keep the tail — root cause and fix usually live in the last turns.
+		transcript = "…[earlier turns omitted]\n" + transcript[len(transcript)-transcriptCharBudget:]
+	}
+
+	sys := "You distill an AI-assisted troubleshooting conversation into a reusable diagnosis scenario " +
+		"for a playbook library (the user's team will reuse it whenever the same symptom appears).\n\n" +
+		"Return ONLY the complete SKILL.md file content — no commentary, no wrapping code fence.\n" +
+		"Structure:\n" +
+		"1. A YAML frontmatter block: `name:` (lowercase kebab-case, letters/digits/'-', max 32 chars, " +
+		"descriptive of the symptom, e.g. redis-conn-refused) and `description:` (one sentence describing the " +
+		"symptom, in Chinese, used for matching).\n" +
+		"2. A markdown body: a decision-tree troubleshooting guide for this scenario — numbered read-only steps " +
+		"with exact POSIX commands (bounded output: head/tail/--no-pager), what each result implies, common root " +
+		"causes, and a safety note that state-changing actions need user confirmation.\n\n" +
+		"Rules: generalize — no hostnames, IPs, usernames or conversation-specific paths in commands; never " +
+		"include secrets or tokens; keep the body under ~80 lines; narrate in Chinese, commands in English."
+
+	resp, err := chatModel.Generate(ctx, []*schema.Message{
+		schema.SystemMessage(sys),
+		schema.UserMessage(transcript),
+	})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(resp.Content), nil
 }
 
 func (r *Runtime) buildResolver() CredsResolver {

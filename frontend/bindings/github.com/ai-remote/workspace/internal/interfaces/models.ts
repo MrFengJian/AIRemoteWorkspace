@@ -216,11 +216,25 @@ export interface SaveProviderInput {
 }
 
 /**
- * SkillDTO is one agent skill's metadata for the input-box `/` picker.
+ * ScenarioDraftDTO is an LLM-distilled scenario draft (Phase B 沉淀闭环):
+ * the conversation transcript distilled into SKILL.md content, plus the
+ * name/description parsed out of its frontmatter for the preview form.
+ */
+export interface ScenarioDraftDTO {
+    "name": string;
+    "description": string;
+    "content": string;
+}
+
+/**
+ * SkillDTO is one agent skill's metadata for the input-box `/` picker and
+ * the scenario manager. Content is only filled by GetSkill (editor use).
  */
 export interface SkillDTO {
     "name": string;
     "description": string;
+    "content"?: string;
+    "builtin"?: boolean;
 }
 
 /**

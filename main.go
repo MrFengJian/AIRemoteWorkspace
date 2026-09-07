@@ -127,13 +127,15 @@ func main() {
 		skillSvc.SetDir(filepath.Join(newDataDir, "skills"))
 	})
 	permGate := application.NewPermissionGate(nil)
+	// monitorSvc doubles as the diagnosis snapshot source (deterministic
+	// health-check context injected into diagnosis-mode chats).
 	agentRuntime := agent.NewRuntime(providerSvc, connManager, sftpMgr, permGate, &secretResolver{secretSvc}, convSvc, func() domain.AgentConfig {
 		cfg, err := configSvc.GetAppConfig()
 		if err != nil {
 			return domain.AgentConfig{}
 		}
 		return cfg.Agent
-	}, skillSvc)
+	}, skillSvc, monitorSvc)
 
 	// MCP server (Phase 6): exposes host/SSH/SFTP capabilities to external
 	// agents over streamable HTTP on 127.0.0.1. Lifecycle follows the

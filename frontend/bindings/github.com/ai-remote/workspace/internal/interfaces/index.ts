@@ -44,6 +44,7 @@ export type {
     PtySizeDTO,
     RememberedCredentialsDTO,
     SaveProviderInput,
+    ScenarioDraftDTO,
     SkillDTO,
     SystemInfoResult,
     TestConnectionResult,

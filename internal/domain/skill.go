@@ -10,4 +10,8 @@ type Skill struct {
 	// Content is the markdown body (instructions). Empty in list results.
 	Content string `json:"content,omitempty"`
 	Path    string `json:"path,omitempty"`
+	// Builtin marks skills seeded from the binary's embedded scenario packs
+	// (the diagnosis knowledge base). They are only shown as a badge and
+	// re-seeded when missing unless the user deleted them (dismissed).
+	Builtin bool `json:"builtin,omitempty"`
 }

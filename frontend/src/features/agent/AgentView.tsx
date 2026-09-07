@@ -22,6 +22,9 @@ import {
   History as HistoryIcon,
   MessageSquarePlus,
   ShieldCheck,
+  Stethoscope,
+  BookMarked,
+  Sparkles,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -39,6 +42,8 @@ import { useModelProviders } from "@/features/settings/hooks";
 import { useHosts } from "@/features/hosts/hooks";
 import { getPaneActions } from "@/keybindings/registry";
 import { AgentMarkdown } from "@/features/agent/AgentMarkdown";
+import { DiagnosisDialog } from "@/features/agent/DiagnosisDialog";
+import { ScenarioManagerDialog, SaveScenarioDialog } from "@/features/agent/Scenarios";
 import { HostService, TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { useUIStore } from "@/stores/ui.store";
 import { decodeBase64, encodeBase64 } from "@/lib/base64";
@@ -94,6 +99,11 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
   const [input, setInput] = useState("");
   const [inputHistory, setInputHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState<number | null>(null);
+
+  // ── Diagnosis mode & scenario management (DIAGNOSIS_AGENT.md Phase A/B) ──
+  const [diagnosisOpen, setDiagnosisOpen] = useState(false);
+  const [scenariosOpen, setScenariosOpen] = useState(false);
+  const [saveScenarioConv, setSaveScenarioConv] = useState<ConversationDTO | null>(null);
 
   // ── Input completion (`/` skills, `@` files & terminal ranges) ──────
   type Completion =
@@ -517,6 +527,32 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
 
   const handleSend = () => send(input);
 
+  /** Start a diagnosis-mode conversation: the backend switches to the triage
+   *  prompt and auto-collects the health snapshot around the symptom. The
+   *  transcript/events pipeline is identical to a normal chat. */
+  const sendDiagnosis = (symptom: string) => {
+    if (!activeSessionId || !symptom.trim() || streaming[activeSessionId] || !modelChosen) return;
+    setInputHistory((h) => [...h.slice(-MAX_INPUT_HISTORY + 1), symptom.trim()]);
+    addMessage(activeSessionId, { role: "user", content: symptom.trim() });
+    setStreaming(activeSessionId, true);
+    addMessage(activeSessionId, { role: "assistant", content: "" });
+    atBottomRef.current = true;
+    agentApi
+      .startDiagnosis(activeSessionId, agentProviderId, agentModel, expandTerminalMentions(symptom.trim()))
+      .catch((e) => {
+        setStreaming(activeSessionId, false);
+        dropTrailingEmptyAssistant(activeSessionId);
+        addMessage(activeSessionId, {
+          role: "assistant",
+          variant: "error",
+          content: `${t("agent.errorPrefix")} ${e instanceof Error ? e.message : String(e)}`,
+        });
+      });
+  };
+
+  /** Builtin scenario packs, offered as one-click seeds in the diagnosis dialog. */
+  const builtinScenarios = (agentSkills ?? []).filter((s) => s.builtin);
+
   /** Retry: drop the trailing notice and resend the last user message. */
   const handleRetry = () => {
     if (!activeSessionId) return;
@@ -606,6 +642,7 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
       const c = menu.conv;
       return [
         { label: t("agent.menuResume"), icon: HistoryIcon, onClick: () => void handleResume(c) },
+        { label: t("agent.menuSaveScenario"), icon: Sparkles, onClick: () => setSaveScenarioConv(c) },
         { label: t("agent.menuDelete"), icon: Trash2, danger: true, onClick: () => void handleDeleteConv(c) },
       ];
     }
@@ -730,6 +767,18 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
           )}
         </div>
         <div className="relative flex shrink-0 items-center gap-0.5" ref={historyPanelRef}>
+          <button
+            type="button"
+            onClick={() => {
+              setHistoryOpen(false);
+              setScenariosOpen(true);
+            }}
+            aria-label={t("agent.scenarioManagerTitle")}
+            title={t("agent.scenarioManagerTitle")}
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <BookMarked className="h-3.5 w-3.5" />
+          </button>
           <button
             type="button"
             onClick={() => setHistoryOpen((v) => !v)}
@@ -988,6 +1037,16 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
           </div>
         ) : null}
         <div className="flex items-end gap-2">
+          <button
+            type="button"
+            onClick={() => setDiagnosisOpen(true)}
+            disabled={!modelChosen || isStreaming}
+            aria-label={t("agent.diagnoseTitle")}
+            title={t("agent.diagnoseTitle")}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius)] border border-border text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Stethoscope className="h-4 w-4" />
+          </button>
           <textarea
             ref={textareaRef}
             rows={1}
@@ -1089,6 +1148,24 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
           )}
         </div>
       </div>
+
+      {/* Diagnosis entry + scenario library + save-as-scenario dialogs */}
+      <DiagnosisDialog
+        open={diagnosisOpen}
+        onOpenChange={setDiagnosisOpen}
+        builtinScenarios={builtinScenarios}
+        onStart={sendDiagnosis}
+      />
+      <ScenarioManagerDialog open={scenariosOpen} onOpenChange={setScenariosOpen} />
+      <SaveScenarioDialog
+        conv={saveScenarioConv}
+        providerID={agentProviderId}
+        model={agentModel}
+        open={saveScenarioConv !== null}
+        onOpenChange={(v) => {
+          if (!v) setSaveScenarioConv(null);
+        }}
+      />
 
       {/* Panel context menu (conversation row / transcript / input box) */}
       {menu && (

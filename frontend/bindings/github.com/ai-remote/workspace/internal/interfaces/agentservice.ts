@@ -52,6 +52,25 @@ export function DeleteConversation(conversationID: string): $CancellablePromise<
 }
 
 /**
+ * DeleteSkill removes a skill; builtin packs stay deleted across restarts
+ * (dismissed list) until re-created.
+ */
+export function DeleteSkill(name: string): $CancellablePromise<void> {
+    return $Call.ByID(2268143614, name);
+}
+
+/**
+ * DraftScenario distills a persisted conversation into a SKILL.md scenario
+ * draft (诊断场景沉淀): the transcript is replayed to the LLM in a one-shot
+ * call, and the produced frontmatter name/description are returned alongside
+ * the content for the preview form. The draft is NOT saved — the frontend
+ * previews it and calls SaveSkill after the user confirms/edits.
+ */
+export function DraftScenario(conversationID: string, providerID: string, model: string): $CancellablePromise<$models.ScenarioDraftDTO> {
+    return $Call.ByID(2640901155, conversationID, providerID, model);
+}
+
+/**
  * EmitApproval sends an approval request to the frontend (implements
  * application.ApprovalEmitter). The frontend shows a dialog and calls
  * ApproveToolCall(reqID, approved).
@@ -66,6 +85,13 @@ export function EmitApproval(req: application$0.ApprovalRequest): $CancellablePr
  */
 export function GetConversationMessages(conversationID: string): $CancellablePromise<$models.ConversationMessageDTO[] | null> {
     return $Call.ByID(4084462485, conversationID);
+}
+
+/**
+ * GetSkill returns one skill including its markdown body (scenario editor).
+ */
+export function GetSkill(name: string): $CancellablePromise<$models.SkillDTO> {
+    return $Call.ByID(1318065623, name);
 }
 
 /**
@@ -85,7 +111,8 @@ export function ListConversations(): $CancellablePromise<$models.ConversationDTO
 }
 
 /**
- * ListSkills returns the metadata of every available skill (the `/` picker).
+ * ListSkills returns the metadata of every available skill (the `/` picker
+ * and the scenario manager list).
  */
 export function ListSkills(): $CancellablePromise<$models.SkillDTO[] | null> {
     return $Call.ByID(1215304444);
@@ -98,6 +125,13 @@ export function ListSkills(): $CancellablePromise<$models.SkillDTO[] | null> {
  */
 export function ResumeConversation(sessionID: string, conversationID: string): $CancellablePromise<void> {
     return $Call.ByID(4110104030, sessionID, conversationID);
+}
+
+/**
+ * SaveSkill creates or overwrites a skill's SKILL.md (scenario editor save).
+ */
+export function SaveSkill(name: string, content: string): $CancellablePromise<void> {
+    return $Call.ByID(736057924, name, content);
 }
 
 /**
@@ -121,4 +155,13 @@ export function SetSessionPolicy(sessionID: string, policy: string): $Cancellabl
  */
 export function StartChat(sessionID: string, providerID: string, model: string, message: string): $CancellablePromise<void> {
     return $Call.ByID(960310724, sessionID, providerID, model, message);
+}
+
+/**
+ * StartDiagnosis kicks off a diagnosis-mode chat: the runtime switches to the
+ * triage prompt, auto-collects the deterministic health snapshot and attaches
+ * it to the symptom as the first turn. Events flow exactly like StartChat.
+ */
+export function StartDiagnosis(sessionID: string, providerID: string, model: string, symptom: string): $CancellablePromise<void> {
+    return $Call.ByID(701729719, sessionID, providerID, model, symptom);
 }

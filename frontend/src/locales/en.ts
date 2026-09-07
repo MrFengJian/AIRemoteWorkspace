@@ -312,6 +312,34 @@ export const en = {
     msgCount: "{{count}} msgs",
     deleteConvTitle: "Delete conversation",
     deleteConvConfirm: 'Delete the conversation "{{title}}"? This cannot be undone.',
+    menuSaveScenario: "Save as scenario",
+    diagnoseTitle: "Start Diagnosis",
+    diagnoseHint:
+      "Describe the symptom — the agent triages it in diagnosis mode, following scenario playbooks.",
+    diagnosePlaceholder:
+      "Describe the symptom, e.g.\n- CPU pinned above 90%\n- nginx keeps crash-looping\n- port 8080 unreachable from outside",
+    diagnoseStart: "Start",
+    diagnoseSnapshotNote:
+      "On submit, a read-only health snapshot (CPU / memory / disk / ports / recent errors) is auto-collected as triage context; command execution still follows the session's approval policy.",
+    saveScenarioTitle: "Save as Diagnosis Scenario",
+    saveScenarioHint:
+      "AI distilled this conversation into a scenario draft. Confirm to save — then invoke it via /name.",
+    saveScenarioGenerating: "Distilling this conversation with AI…",
+    saveScenarioConfirm: "Save scenario",
+    scenarioManagerTitle: "Diagnosis Scenarios",
+    scenarioManagerHint:
+      "Scenarios are skills (SKILL.md): invoke with /name, or let the agent load them by symptom. Builtin packs ship with the app and can be edited or extended.",
+    scenarioName: "Name",
+    scenarioContent: "Content",
+    scenarioNew: "New scenario",
+    scenarioBuiltin: "builtin",
+    scenarioEmpty: "No scenarios yet — create one below.",
+    scenarioSaved: "Scenario saved",
+    scenarioDeleted: "Scenario deleted",
+    scenarioDeleteTitle: "Delete scenario",
+    scenarioDeleteConfirm:
+      'Delete scenario "{{name}}"? A deleted builtin can be restored by re-creating it.',
+    scenarioNameInvalid: "Name may only contain letters, digits, '-' and '_' (max 64 chars).",
   },
 
   // ── Settings ────────────────────────────────────────────────

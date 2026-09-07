@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -144,5 +145,81 @@ func TestCapContext(t *testing.T) {
 	got := capContext([]byte(strings.Repeat("x", 300)), 100)
 	if len(got) <= 100 || !strings.HasSuffix(got, "[truncated]") {
 		t.Fatalf("cap/truncation mark missing")
+	}
+}
+
+// ── diagnosis mode ────────────────────────────────────────────────────────
+
+type fakeSnapshots struct{ out string }
+
+func (f fakeSnapshots) Snapshot(_ context.Context, _ string) (string, error) {
+	return f.out, nil
+}
+
+func TestComposeDiagnosisMessage(t *testing.T) {
+	got := composeDiagnosisMessage("CPU 很高", "CPU: 90%")
+	if !strings.HasPrefix(got, "CPU 很高") {
+		t.Fatalf("symptom must lead: %q", got)
+	}
+	if !strings.Contains(got, "<health-snapshot>\nCPU: 90%\n</health-snapshot>") {
+		t.Fatalf("snapshot block missing: %q", got)
+	}
+
+	// Without a snapshot the model still gets an explicit note.
+	plain := composeDiagnosisMessage("s", "")
+	if !strings.Contains(plain, "no health snapshot available") {
+		t.Fatalf("missing-snapshot note absent: %q", plain)
+	}
+
+	// Oversized snapshots are truncated, with the marker kept.
+	huge := composeDiagnosisMessage("s", strings.Repeat("x", snapshotCharBudget+500))
+	if len(huge) > snapshotCharBudget+200 || !strings.Contains(huge, "[truncated]") {
+		t.Fatalf("oversized snapshot not truncated (%d chars)", len(huge))
+	}
+}
+
+// SetDiagnosisMode switches the system prompt to the triage template; it is
+// keyed per session and cleared together with the history.
+func TestDiagnosisPromptSwitch(t *testing.T) {
+	r := &Runtime{diagnosis: map[string]bool{}}
+
+	if r.inDiagnosisMode("sess-1") {
+		t.Fatal("diagnosis mode must default off")
+	}
+	normal := r.systemPrompt("local-1")
+	if strings.Contains(normal, "site-reliability diagnostician") {
+		t.Fatal("normal prompt leaked the diagnosis template")
+	}
+
+	r.SetDiagnosisMode("local-1", true)
+	diag := r.systemPrompt("local-1")
+	if !strings.Contains(diag, "site-reliability diagnostician") ||
+		!strings.Contains(diag, "现象 / Phenomenon") ||
+		!strings.Contains(diag, "<health-snapshot>") {
+		t.Fatalf("diagnosis prompt incomplete:\n%s", diag)
+	}
+
+	// Other sessions are unaffected.
+	if r.inDiagnosisMode("sess-2") {
+		t.Fatal("diagnosis mode leaked across sessions")
+	}
+
+	r.ClearHistory("local-1")
+	if r.inDiagnosisMode("local-1") {
+		t.Fatal("clear history must reset diagnosis mode")
+	}
+}
+
+// ClearHistory keeps other sessions' histories intact.
+func TestClearHistoryIsolation(t *testing.T) {
+	r := &Runtime{histories: map[string][]*schema.Message{}, diagnosis: map[string]bool{}}
+	r.recordTurn("a", "q", "ans-a")
+	r.recordTurn("b", "q", "ans-b")
+	r.ClearHistory("a")
+	if len(r.histories["b"]) != 2 {
+		t.Fatalf("session b history lost: %v", r.histories["b"])
+	}
+	if len(r.histories["a"]) != 0 {
+		t.Fatalf("session a history not cleared")
 	}
 }

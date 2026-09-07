@@ -155,12 +155,15 @@ Phase 7  Docker / Kubernetes    Docker 面板 ✅ · K8s 面板延后
 - Pod / Deployment / 日志 / 事件面板（kubectl CLI 同构方案）
 - 待 Docker 面板实际使用反馈后再排期
 
-### Diagnosis Agent
+### Diagnosis Agent ✅（Phase C 远期可选）
 
-实现思路与分期计划见 [DIAGNOSIS_AGENT.md](./DIAGNOSIS_AGENT.md)（已评审保留，待排期）：
+按 [DIAGNOSIS_AGENT.md](./DIAGNOSIS_AGENT.md) 交付，Phase A + B 已上线：
 
-- 故障定位知识库 —— 内置 SKILL.md 诊断场景包（Phase A）
-- 诊断场景沉淀（CPU 高、磁盘满、服务异常等）—— 会话转场景闭环（Phase B）
+- 故障定位知识库 —— 内置 9 个 SKILL.md 诊断场景包（CPU 高 / 磁盘满 / 内存 OOM / 服务异常 / 端口不通 / 容器重启循环 / 网络延迟 / 磁盘 IO 高 / SSH 登录慢），随二进制 `go:embed` 分发，启动时落入技能目录（不覆盖用户改动；删除内置包会被记住）
+- 确定性体检快照 —— `MonitorService.Snapshot` 聚合 CPU / 内存 / 磁盘 / Top 进程 / 监听端口 / journalctl·dmesg 近期错误，诊断会话首轮自动注入，不烧 LLM 的分诊上下文
+- 诊断模式 —— 独立系统提示词模板（快照优先、场景包决策树、证据优先，结论按 现象 / 根因 / 证据 / 建议 / 风险 输出）；Agent 面板一键诊断入口，症状输入自动带快照发起会话，权限策略零新机制
+- 沉淀闭环 —— 会话历史右键「保存为场景」，LLM 一次性提炼为 SKILL.md 草稿，预览编辑后写入技能目录，下次同类症状即被命中；场景库轻 UI（列表 / 新建 / 编辑 / 删除）
+- Phase C（远期可选）：历史诊断检索 / 结构化结论面板
 
 ---
 

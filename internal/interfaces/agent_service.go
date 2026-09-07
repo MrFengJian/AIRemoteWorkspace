@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -41,10 +42,22 @@ type ConversationMessageDTO struct {
 	Content string `json:"content"`
 }
 
-// SkillDTO is one agent skill's metadata for the input-box `/` picker.
+// SkillDTO is one agent skill's metadata for the input-box `/` picker and
+// the scenario manager. Content is only filled by GetSkill (editor use).
 type SkillDTO struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Content     string `json:"content,omitempty"`
+	Builtin     bool   `json:"builtin,omitempty"`
+}
+
+// ScenarioDraftDTO is an LLM-distilled scenario draft (Phase B 沉淀闭环):
+// the conversation transcript distilled into SKILL.md content, plus the
+// name/description parsed out of its frontmatter for the preview form.
+type ScenarioDraftDTO struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Content     string `json:"content"`
 }
 
 // ContextPathDTO is one entry of an @-mention directory listing.
@@ -70,7 +83,8 @@ func NewAgentService(runtime *agent.Runtime, gate *appsvc.PermissionGate, convs 
 	return &AgentService{runtime: runtime, gate: gate, convs: convs, skills: skills}
 }
 
-// ListSkills returns the metadata of every available skill (the `/` picker).
+// ListSkills returns the metadata of every available skill (the `/` picker
+// and the scenario manager list).
 func (a *AgentService) ListSkills() ([]SkillDTO, error) {
 	if a.skills == nil {
 		return []SkillDTO{}, nil
@@ -81,9 +95,38 @@ func (a *AgentService) ListSkills() ([]SkillDTO, error) {
 	}
 	out := make([]SkillDTO, 0, len(skills))
 	for _, s := range skills {
-		out = append(out, SkillDTO{Name: s.Name, Description: s.Description})
+		out = append(out, SkillDTO{Name: s.Name, Description: s.Description, Builtin: s.Builtin})
 	}
 	return out, nil
+}
+
+// GetSkill returns one skill including its markdown body (scenario editor).
+func (a *AgentService) GetSkill(name string) (SkillDTO, error) {
+	if a.skills == nil {
+		return SkillDTO{}, fmt.Errorf("skills not available")
+	}
+	s, err := a.skills.GetSkill(name)
+	if err != nil {
+		return SkillDTO{}, err
+	}
+	return SkillDTO{Name: s.Name, Description: s.Description, Content: s.Content, Builtin: s.Builtin}, nil
+}
+
+// SaveSkill creates or overwrites a skill's SKILL.md (scenario editor save).
+func (a *AgentService) SaveSkill(name, content string) error {
+	if a.skills == nil {
+		return fmt.Errorf("skills not available")
+	}
+	return a.skills.SaveSkill(name, content)
+}
+
+// DeleteSkill removes a skill; builtin packs stay deleted across restarts
+// (dismissed list) until re-created.
+func (a *AgentService) DeleteSkill(name string) error {
+	if a.skills == nil {
+		return fmt.Errorf("skills not available")
+	}
+	return a.skills.DeleteSkill(name)
 }
 
 // ListContextPaths lists a directory for the @-completion popup (remote
@@ -151,6 +194,30 @@ func (a *AgentService) StartChat(sessionID, providerID, model, message string) e
 			// Surface pre-stream failures (bad provider, disabled, …) to the
 			// frontend so it doesn't wait for events that will never come.
 			// The emitter dedupes if the stream already reported an error.
+			events.OnError(sid, err.Error())
+		}
+	}()
+	return nil
+}
+
+// StartDiagnosis kicks off a diagnosis-mode chat: the runtime switches to the
+// triage prompt, auto-collects the deterministic health snapshot and attaches
+// it to the symptom as the first turn. Events flow exactly like StartChat.
+func (a *AgentService) StartDiagnosis(sessionID, providerID, model, symptom string) error {
+	if a.runtime == nil {
+		return fmt.Errorf("agent runtime not available")
+	}
+	if a.convs != nil {
+		if _, err := a.convs.EnsureMapping(sessionID, symptom); err != nil {
+			log.Printf("[AgentService] ensure conversation: %v", err)
+		}
+	}
+	sid := sessionID
+	events := &agentEventsEmitter{app: a.app, sessionID: sid}
+	go func() {
+		ctx := context.Background()
+		if err := a.runtime.StartDiagnosis(ctx, sid, providerID, model, symptom, events); err != nil {
+			log.Printf("[AgentService] diagnosis for %s ended: %v", sid, err)
 			events.OnError(sid, err.Error())
 		}
 	}()
@@ -248,6 +315,45 @@ func (a *AgentService) DeleteConversation(conversationID string) error {
 	}
 	return nil
 }
+
+// DraftScenario distills a persisted conversation into a SKILL.md scenario
+// draft (诊断场景沉淀): the transcript is replayed to the LLM in a one-shot
+// call, and the produced frontmatter name/description are returned alongside
+// the content for the preview form. The draft is NOT saved — the frontend
+// previews it and calls SaveSkill after the user confirms/edits.
+func (a *AgentService) DraftScenario(conversationID, providerID, model string) (ScenarioDraftDTO, error) {
+	if a.runtime == nil {
+		return ScenarioDraftDTO{}, fmt.Errorf("agent runtime not available")
+	}
+	msgs, err := a.convs.Messages(conversationID)
+	if err != nil {
+		return ScenarioDraftDTO{}, err
+	}
+	if len(msgs) == 0 {
+		return ScenarioDraftDTO{}, fmt.Errorf("conversation has no messages")
+	}
+	var b strings.Builder
+	for _, m := range msgs {
+		role := "助手"
+		if m.Role == "user" {
+			role = "用户"
+		}
+		fmt.Fprintf(&b, "[%s]\n%s\n\n", role, m.Content)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), draftTimeout)
+	defer cancel()
+	content, err := a.runtime.DistillScenario(ctx, providerID, model, b.String())
+	if err != nil {
+		return ScenarioDraftDTO{}, err
+	}
+	name, desc := appsvc.ExtractSkillFrontmatter(content)
+	return ScenarioDraftDTO{Name: name, Description: desc, Content: content}, nil
+}
+
+// draftTimeout bounds the one-shot distillation call — long enough for slow
+// models to write a full playbook, short enough to surface hangs.
+const draftTimeout = 120 * time.Second
 
 // ApproveToolCall resolves a pending approval request.
 func (a *AgentService) ApproveToolCall(reqID string, approved bool) error {

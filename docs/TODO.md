@@ -81,11 +81,11 @@
 - [x] 友好降级（CLI 未安装 / 守护进程未运行分类提示，不报错）
 - [x] Agent 容器运维：直接经 ssh_exec / local_exec 使用 docker / kubectl CLI（提示词引导 + 危险动词 WRITE 分级 + 64KB 输出截断）
 - [ ] Kubernetes 面板（pod / deploy / logs UI）— 延后，待 Docker 面板使用反馈
-- [ ] Diagnosis Agent — 方案已定，见 [DIAGNOSIS_AGENT.md](./DIAGNOSIS_AGENT.md)
-  - [ ] Phase A：内置场景包（SKILL.md）+ 诊断模式提示词 + 体检快照注入 + Agent 面板入口
-  - [ ] Phase B：沉淀闭环（「保存为场景」生成 SKILL.md）
+- [~] Diagnosis Agent — 方案见 [DIAGNOSIS_AGENT.md](./DIAGNOSIS_AGENT.md)
+  - [x] Phase A：内置场景包（9 个 SKILL.md）+ 诊断模式提示词 + 体检快照注入 + Agent 面板入口
+  - [x] Phase B：沉淀闭环（「保存为场景」LLM 提炼 SKILL.md）+ 场景库管理轻 UI
   - [ ] Phase C（远期可选）：历史诊断检索 / 结构化结论面板
-- [ ] 诊断场景沉淀（CPU 高、磁盘满、服务异常等）
+- [x] 诊断场景沉淀（CPU 高、磁盘满、内存/OOM、服务异常、端口不通、容器重启循环、网络延迟、磁盘 IO、SSH 登录慢）
 
 ---
 

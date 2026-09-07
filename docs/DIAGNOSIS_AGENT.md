@@ -46,19 +46,21 @@ Runtime 已按会话组装系统提示词并支持自定义指令。新增「诊
 
 ## 分期计划
 
-### Phase A — 场景包 + 诊断模式（核心）
+### Phase A — 场景包 + 诊断模式（核心）✅
 
-- [ ] 内置 6–8 个高价值场景 SKILL.md：CPU 高、磁盘满、内存 / OOM、服务异常（systemd）、端口不通、容器反复重启
-- [ ] `skill_service` 支持内置种子落盘（已有技能不覆盖）
-- [ ] Runtime 增加诊断提示词模板 + 快照注入；`monitor_service` 补 `Snapshot(ctx, sessionID) string` 聚合输出
-- [ ] 前端：Agent 面板诊断入口（按钮 / 快捷命令），症状输入 → 自动带快照发起会话
-- 触点：`skill_service.go` · `agent/runtime.go` · `monitor_service.go` · `AgentView.tsx` · locales
+- [x] 内置高价值场景 SKILL.md ×9：CPU 高（cpu-high）、磁盘满（disk-full）、内存 / OOM（memory-oom）、服务异常（service-down）、端口不通（port-unreachable）、容器反复重启（container-restart-loop）、网络延迟（network-latency）、磁盘 IO 高（disk-io-high）、SSH 登录慢（login-slow）
+- [x] `skill_service` 支持内置种子落盘（`go:embed all:skills`；已有技能不覆盖，删除的内置包记入 dismissed 列表不复活）
+- [x] Runtime 诊断提示词模板 + 快照注入（`StartDiagnosis`）；`monitor_service` 补 `Snapshot(ctx, sessionID)` 聚合输出（概览 + Top 进程 + 端口 + journalctl / dmesg 精简摘要）
+- [x] 前端：Agent 面板诊断入口（输入区听诊器按钮），症状输入 → 自动带快照发起会话；场景包以 chip 形式一键填充 `/场景名`
+- 触点：`skill_service.go` · `agent/runtime.go` · `monitor_snapshot.go` · `AgentView.tsx` · locales
 
-### Phase B — 沉淀闭环
+### Phase B — 沉淀闭环 ✅
 
-- [ ] 「保存为场景」：会话 → LLM 提炼 → SKILL.md 草稿预览 → 写入技能目录
-- [ ] 场景管理轻 UI（列表 / 编辑 / 删除，复用技能目录读写）
-- 触点：`skill_service.go`（加写入路径）· Agent 面板菜单
+- [x] 「保存为场景」：会话右键 → LLM 一次性提炼（`DistillScenario`）→ SKILL.md 草稿预览（名称 / 内容可改）→ 写入技能目录
+- [x] 场景管理轻 UI（列表 / 新建 / 编辑 / 删除，复用技能目录读写；内置包带徽标，删除可重建恢复）
+- 触点：`skill_service.go`（SaveSkill / DeleteSkill）· `agent_service.go`（GetSkill / SaveSkill / DeleteSkill / DraftScenario）· `Scenarios.tsx` · Agent 面板菜单
+
+> 实现落点与开放决策的取舍：命令全英文、叙述中文（沿袭 daily-check 先例）；入口放 Agent 面板输入区（贴近助手、改动最小）；快照默认精简（journalctl 仅 err 级 25 行 + dmesg 过滤 15 行 + failed 单元 10 行），深挖交给场景包。
 
 ### Phase C — 远期可选
 

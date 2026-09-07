@@ -312,6 +312,31 @@ export const zh = {
     msgCount: "{{count}} 条",
     deleteConvTitle: "删除会话",
     deleteConvConfirm: "删除会话「{{title}}」？删除后不可恢复。",
+    menuSaveScenario: "保存为场景",
+    diagnoseTitle: "开始诊断",
+    diagnoseHint: "描述故障症状，助手将以诊断模式按场景流程排查。",
+    diagnosePlaceholder:
+      "描述症状，例如：\n- CPU 长期在 90% 以上\n- nginx 起不来，一直重启\n- 外部访问 8080 端口不通",
+    diagnoseStart: "开始诊断",
+    diagnoseSnapshotNote:
+      "提交后会自动采集一次只读体检快照（CPU / 内存 / 磁盘 / 端口 / 近期错误日志）作为排查上下文；命令执行仍遵循当前会话的审批策略。",
+    saveScenarioTitle: "沉淀为诊断场景",
+    saveScenarioHint: "AI 已将本次会话提炼为场景草稿，确认后保存，之后可用 /名称 直接调用。",
+    saveScenarioGenerating: "正在用 AI 提炼本次会话…",
+    saveScenarioConfirm: "保存场景",
+    scenarioManagerTitle: "诊断场景库",
+    scenarioManagerHint:
+      "诊断场景即技能（SKILL.md）：以 /名称 调用，或由助手按症状自动加载。内置场景包随应用分发，可编辑、可自建。",
+    scenarioName: "场景名称",
+    scenarioContent: "场景内容",
+    scenarioNew: "新建场景",
+    scenarioBuiltin: "内置",
+    scenarioEmpty: "还没有场景——点击下方新建。",
+    scenarioSaved: "场景已保存",
+    scenarioDeleted: "场景已删除",
+    scenarioDeleteTitle: "删除场景",
+    scenarioDeleteConfirm: "删除场景「{{name}}」？内置场景删除后可重新创建恢复。",
+    scenarioNameInvalid: "名称只能包含字母、数字、- 和 _（最长 64 字符）。",
   },
 
   // ── 设置 ────────────────────────────────────────────────────
