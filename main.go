@@ -14,6 +14,7 @@ import (
 	"github.com/ai-remote/workspace/internal/domain"
 	"github.com/ai-remote/workspace/internal/infrastructure/agent"
 	"github.com/ai-remote/workspace/internal/infrastructure/localpty"
+	"github.com/ai-remote/workspace/internal/infrastructure/mcpserver"
 	"github.com/ai-remote/workspace/internal/infrastructure/secret"
 	"github.com/ai-remote/workspace/internal/infrastructure/sftp"
 	"github.com/ai-remote/workspace/internal/infrastructure/sqlite"
@@ -25,7 +26,7 @@ import (
 // the UI and, later, the MCP system_info tool.
 const (
 	appName    = "AI Remote Workspace"
-	appVersion = "0.1.0"
+	appVersion = "0.4.0"
 	// appDirName is the single directory name used under xdg.DataHome /
 	// xdg.ConfigHome (database + skills + the data-dir pointer file).
 	appDirName = "ai-remote-workspace"
@@ -134,9 +135,38 @@ func main() {
 		return cfg.Agent
 	}, skillSvc)
 
+	// MCP server (Phase 6): exposes host/SSH/SFTP capabilities to external
+	// agents over streamable HTTP on 127.0.0.1. Lifecycle follows the
+	// config's mcp block — applied now (app start) and on every config save
+	// (via the ConfigService onChange hook below).
+	mcpServer := mcpserver.New(mcpserver.Deps{
+		AppName:    appName,
+		AppVersion: appVersion,
+		Hosts:      hostSvc,
+		SSH:        connManager,
+		SFTP:       sftpMgr,
+		Gate:       permGate,
+		Persist: func(m domain.MCPConfig) error {
+			cfg, err := configSvc.GetAppConfig()
+			if err != nil {
+				return err
+			}
+			cfg.MCP = m
+			return configSvc.SetAppConfig(cfg)
+		},
+	})
+	defer mcpServer.Stop()
+
 	// Wails-facing services (interface adapter layer).
 	systemService := interfaces.NewSystemService(appName, appVersion, dataDirSvc)
 	configService := interfaces.NewConfigService(configSvc)
+	// MCP server follows config saves made anywhere in the UI.
+	configService.SetOnChange(func(cfg domain.AppConfig) { mcpServer.ApplyConfig(cfg.MCP) })
+	if cfg, err := configSvc.GetAppConfig(); err == nil {
+		mcpServer.ApplyConfig(cfg.MCP)
+	} else {
+		log.Printf("config load for mcp startup: %v", err)
+	}
 	hostService := interfaces.NewHostService(hostSvc, tunnelMgr)
 	localPtyMgr := localpty.NewManager()
 	terminalService := interfaces.NewTerminalService(hostSvc, connManager, localPtyMgr, tunnelMgr)
@@ -147,6 +177,7 @@ func main() {
 	windowService := interfaces.NewWindowService(hostSvc)
 	providerService := interfaces.NewModelProviderService(providerSvc)
 	agentService := interfaces.NewAgentService(agentRuntime, permGate, convSvc, skillSvc)
+	mcpService := interfaces.NewMCPService(mcpServer)
 
 	// Wire the approval emitter now that AgentService exists.
 	permGate.SetEmitter(agentService)
@@ -166,6 +197,7 @@ func main() {
 			wailsapp.NewService(windowService),
 			wailsapp.NewService(providerService),
 			wailsapp.NewService(agentService),
+			wailsapp.NewService(mcpService),
 		},
 		Assets: wailsapp.AssetOptions{
 			Handler: wailsapp.AssetFileServerFS(assets),

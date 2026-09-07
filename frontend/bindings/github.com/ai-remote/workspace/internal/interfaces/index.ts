@@ -5,6 +5,7 @@ import * as AgentService from "./agentservice.js";
 import * as ConfigService from "./configservice.js";
 import * as DockerService from "./dockerservice.js";
 import * as HostService from "./hostservice.js";
+import * as MCPService from "./mcpservice.js";
 import * as ModelProviderService from "./modelproviderservice.js";
 import * as MonitorService from "./monitorservice.js";
 import * as SftpService from "./sftpservice.js";
@@ -17,6 +18,7 @@ export {
     ConfigService,
     DockerService,
     HostService,
+    MCPService,
     ModelProviderService,
     MonitorService,
     SftpService,

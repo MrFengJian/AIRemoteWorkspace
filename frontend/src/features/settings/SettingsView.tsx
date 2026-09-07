@@ -19,6 +19,8 @@ import {
   FolderInput,
   FolderOpen,
   Loader2,
+  PlugZap,
+  RefreshCw,
 } from "lucide-react";
 
 import { Label } from "@/components/ui/label";
@@ -36,6 +38,7 @@ import {
 } from "@/components/ui/card";
 import {
   ConfigService,
+  MCPService,
   SystemService,
   type DataDirInfoDTO,
 } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
@@ -43,6 +46,8 @@ import {
   SecurityMode,
   HighlightRule,
   type AppConfig,
+  type MCPConfig,
+  type MCPStatus,
 } from "@/../bindings/github.com/ai-remote/workspace/internal/domain/models";
 import { HL_COLOR_IDS } from "@/features/terminal/terminalHighlight";
 import { applyTheme, applyFonts } from "@/app/providers/ThemeProvider";
@@ -79,6 +84,7 @@ const DEFAULT_CONFIG: AppConfig = {
     maxUploadMb: 4096,
     maxDownloadMb: 4096,
   },
+  mcp: { enabled: false, port: 8765, token: "" },
   llm: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o" },
 };
 
@@ -564,6 +570,7 @@ function AdvancedSection({
           </Badge>
         </CardContent>
       </Card>
+      <MCPCard config={config} update={update} />
       <Card>
         <CardHeader>
           <CardTitle className="text-sm">{t("settings.runtime")}</CardTitle>
@@ -578,6 +585,201 @@ function AdvancedSection({
       </Card>
       <DataDirCard />
     </div>
+  );
+}
+
+/**
+ * MCPCard drives the local MCP server (Phase 6): enable/port live in the
+ * normal config flow (the backend restarts the listener on save), while the
+ * status readout and token rotation come from MCPService. The client snippet
+ * is what users paste into Claude Desktop / Cursor MCP configs.
+ */
+function MCPCard({
+  config,
+  update,
+}: {
+  config: AppConfig;
+  update: (patch: Partial<AppConfig>) => Promise<boolean>;
+}) {
+  const { t } = useTranslation();
+  const { askConfirm } = useConfirm();
+  const [status, setStatus] = useState<MCPStatus | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  // Port edits stay local until blur — restarting the listener per keystroke
+  // would be worse than the extra state.
+  const [portDraft, setPortDraft] = useState<string | null>(null);
+
+  const refresh = () => {
+    MCPService.Status()
+      .then(setStatus)
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const mcp: MCPConfig = config.mcp ?? { enabled: false, port: 8765, token: "" };
+  const port = mcp.port || 8765;
+
+  const setMcp = (patch: Partial<MCPConfig>) => {
+    void update({ mcp: { ...mcp, ...patch } }).then((ok) => {
+      if (ok) refresh();
+    });
+  };
+
+  const copy = async (kind: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(kind);
+      setTimeout(() => setCopied(null), 2000);
+    } catch {
+      toast.error(t("common.clipboardFailed"));
+    }
+  };
+
+  const regenerate = async () => {
+    const ok = await askConfirm({
+      title: t("settings.mcp.regenerateTitle"),
+      message: t("settings.mcp.regenerateMsg"),
+      confirmLabel: t("settings.mcp.regenerate"),
+    });
+    if (!ok) return;
+    setStatus(await MCPService.RegenerateToken());
+  };
+
+  const endpoint = status?.url || `http://127.0.0.1:${port}/mcp`;
+  const token = status?.token || mcp.token || "";
+  const clientConfig = JSON.stringify(
+    {
+      mcpServers: {
+        "ai-remote-workspace": {
+          url: endpoint,
+          headers: { Authorization: `Bearer ${token || "<token>"}` },
+        },
+      },
+    },
+    null,
+    2,
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <PlugZap className="h-4 w-4" />
+          {t("settings.mcp.title")}
+          {mcp.enabled && (
+            <Badge variant={status?.running ? "default" : "destructive"} className="text-[10px]">
+              {status?.running ? t("settings.mcp.running") : status?.error ? t("settings.mcp.startFailed") : t("settings.mcp.stopped")}
+            </Badge>
+          )}
+        </CardTitle>
+        <CardDescription>{t("settings.mcp.desc")}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <Checkbox
+            checked={mcp.enabled}
+            onCheckedChange={(v) => setMcp({ enabled: v === true })}
+          />
+          <span>{t("settings.mcp.enable")}</span>
+        </label>
+        <p className="text-xs text-muted-foreground">{t("settings.mcp.enableHint")}</p>
+
+        {mcp.enabled && (
+          <>
+            <div className="grid grid-cols-[10rem_9rem_1fr] items-center gap-3">
+              <Label htmlFor="mcpPort">{t("settings.mcp.port")}</Label>
+              <Input
+                id="mcpPort"
+                type="number"
+                min={1024}
+                max={65535}
+                value={portDraft ?? String(port)}
+                onChange={(e) => setPortDraft(e.target.value)}
+                onBlur={() => {
+                  const n = Math.round(Number(portDraft));
+                  if (
+                    portDraft !== null &&
+                    Number.isFinite(n) &&
+                    n >= 1024 &&
+                    n <= 65535 &&
+                    n !== port
+                  ) {
+                    setMcp({ port: n });
+                  }
+                  setPortDraft(null);
+                }}
+              />
+              {status?.error && (
+                <p className="text-xs text-destructive">
+                  {t("settings.mcp.startFailed")}: {status.error}
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 rounded-[var(--radius)] bg-muted/30 px-2.5 py-2">
+              <span className="shrink-0 text-xs text-muted-foreground">{t("settings.mcp.url")}</span>
+              <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">{endpoint}</span>
+              <button
+                type="button"
+                onClick={() => void copy("url", endpoint)}
+                className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                aria-label={t("common.copy")}
+                title={t("common.copy")}
+              >
+                {copied === "url" ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-[var(--radius)] bg-muted/30 px-2.5 py-2">
+              <span className="shrink-0 text-xs text-muted-foreground">{t("settings.mcp.token")}</span>
+              <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
+                {token || "…"}
+              </span>
+              <button
+                type="button"
+                onClick={() => void regenerate()}
+                className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                aria-label={t("settings.mcp.regenerate")}
+                title={t("settings.mcp.regenerate")}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => void copy("token", token)}
+                className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                aria-label={t("common.copy")}
+                title={t("common.copy")}
+              >
+                {copied === "token" ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {t("settings.mcp.clientConfig")}
+              </span>
+              <button
+                type="button"
+                onClick={() => void copy("config", clientConfig)}
+                className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                aria-label={t("common.copy")}
+                title={t("common.copy")}
+              >
+                {copied === "config" ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-[var(--radius)] border bg-background/60 p-2 font-mono text-xs text-foreground">
+              {clientConfig}
+            </pre>
+            <p className="text-xs text-muted-foreground">{t("settings.mcp.clientConfigHint")}</p>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

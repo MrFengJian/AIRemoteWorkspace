@@ -172,11 +172,21 @@ func (s *SystemService) MigrateDataDir(target string) (DataDirInfoDTO, error) {
 type ConfigService struct {
 	svc appsvc.ConfigService
 	app *application.App
+	// onChange (optional) fires after every persisted save so backend
+	// consumers can react to config changes — currently the MCP server,
+	// which starts/stops on the mcp block.
+	onChange func(domain.AppConfig)
 }
 
 // NewConfigService wires the Wails ConfigService to its application port.
 func NewConfigService(svc appsvc.ConfigService) *ConfigService {
 	return &ConfigService{svc: svc}
+}
+
+// SetOnChange registers a post-save hook. Must be called before the app
+// starts serving requests (main wires it during startup).
+func (c *ConfigService) SetOnChange(fn func(domain.AppConfig)) {
+	c.onChange = fn
 }
 
 // ServiceName lets Wails register the service under a stable name.
@@ -201,6 +211,9 @@ func (c *ConfigService) GetAppConfig() (domain.AppConfig, error) {
 func (c *ConfigService) SetAppConfig(cfg domain.AppConfig) error {
 	if err := c.svc.SetAppConfig(cfg); err != nil {
 		return err
+	}
+	if c.onChange != nil {
+		c.onChange(cfg)
 	}
 	if c.app != nil {
 		c.app.Event.Emit("config:changed")

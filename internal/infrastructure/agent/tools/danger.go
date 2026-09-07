@@ -36,6 +36,11 @@ func classifyCommand(cmd string) domain.Permission {
 	return classifyAt(cmd, 0)
 }
 
+// ClassifyCommand is the exported form of classifyCommand, shared with the
+// MCP server's exec_command tool so permission tiers stay identical between
+// the built-in agent and external agents.
+func ClassifyCommand(cmd string) domain.Permission { return classifyCommand(cmd) }
+
 // maxClassifyDepth bounds recursion through shell-interpreter payloads
 // (bash -c → eval → …); real commands never nest this deep.
 const maxClassifyDepth = 3

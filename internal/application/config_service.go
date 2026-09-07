@@ -62,6 +62,10 @@ func (s *configService) GetAppConfig() (domain.AppConfig, error) {
 	if cfg.Transfer.MaxDownloadMB == 0 {
 		cfg.Transfer.MaxDownloadMB = 4096
 	}
+	// MCP server: fall back to the default port for older stored rows.
+	if cfg.MCP.Port == 0 {
+		cfg.MCP.Port = domain.DefaultMCPPort
+	}
 	return cfg, nil
 }
 

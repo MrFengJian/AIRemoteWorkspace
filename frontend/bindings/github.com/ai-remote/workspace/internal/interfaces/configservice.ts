@@ -33,3 +33,11 @@ export function GetAppConfig(): $CancellablePromise<domain$0.AppConfig> {
 export function SetAppConfig(cfg: domain$0.AppConfig): $CancellablePromise<void> {
     return $Call.ByID(2422394692, cfg);
 }
+
+/**
+ * SetOnChange registers a post-save hook. Must be called before the app
+ * starts serving requests (main wires it during startup).
+ */
+export function SetOnChange(fn: any): $CancellablePromise<void> {
+    return $Call.ByID(3994277326, fn);
+}

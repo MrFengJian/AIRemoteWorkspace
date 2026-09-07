@@ -1119,11 +1119,11 @@ TODO:
 TODO:
 
 ```
-[ ] MCP Server
+[x] MCP Server
 
-[ ] Tool Exposure
+[x] Tool Exposure
 
-[ ] Permission Mapping
+[x] Permission Mapping
 ```
 
 ---
@@ -1190,9 +1190,9 @@ TODO:
 
 [ ] Terminal 稳定
 
-[ ] AI Tool Calling
+[x] AI Tool Calling
 
-[ ] MCP 基础支持
+[x] MCP 基础支持
 ```
 
 ---

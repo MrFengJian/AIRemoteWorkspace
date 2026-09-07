@@ -59,7 +59,11 @@ export function ApprovalHost() {
   if (!current) return null;
 
   // Resolve the target host from the terminal session (multi-host safety).
-  const hostName = sessions.find((s) => s.id === current.sessionId)?.hostName;
+  // MCP-triggered approvals have no terminal session; their sessionId is the
+  // backend's "mcp:<hostName>" key, which we surface as the host badge.
+  const hostName =
+    sessions.find((s) => s.id === current.sessionId)?.hostName ??
+    (current.sessionId.startsWith("mcp:") ? current.sessionId.slice(4) : undefined);
 
   const resolve = (approved: boolean) => {
     agentApi.approveToolCall(current.reqId, approved).catch(() => {});

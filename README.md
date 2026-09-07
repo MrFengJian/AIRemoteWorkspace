@@ -19,7 +19,7 @@ Go 原生（Wails v3 + React）的跨平台桌面应用，把 **SSH / Terminal /
 - 🤖 **AI Agent** — LLM + Tool Calling，本地与远程统一执行，危险操作审批
 - 🎨 **外观与快捷键** — Xshell 风格的终端外观设置（13 套配色 / 字体 / 字号实时预览）与可自定义快捷键（含鼠标中键行为）
 - 🔐 **分层安全** — 系统密码库托管敏感数据，危险操作需用户授权
-- (TBD) 🔗 **MCP Server** — 让 Claude / Codex / Cursor 等外部 Agent 复用本地能力
+- 🔗 **MCP Server** — 在本机把主机 / 远程终端 / 文件能力以 MCP 工具开放给 Claude / Codex / Cursor 等外部 Agent，写操作仍需应用内审批
 - 📦 **单 Binary** — 下载即用，无需复杂部署
 
 ## 技术栈
@@ -173,6 +173,52 @@ Linux 支持一次性生成主流的二进制安装包。
   wails3 task linux:package
   ```
 
+## MCP Server
+
+应用内置本地 MCP（Model Context Protocol）服务器，让 Claude Desktop、Cursor、Codex 等外部 AI Agent 直接复用工作区里已配置的主机与文件能力——凭据仍由系统密码库托管，不会泄露给外部客户端。
+
+### 启用方式
+
+**设置 → 高级 → MCP 服务器**：
+
+1. 勾选「启用 MCP 服务器」——首次启用会自动生成访问令牌（Bearer Token）并持久化；
+2. 端口默认 `8765`（仅绑定 `127.0.0.1`，可修改）；
+3. 复制卡片上的客户端配置片段到对应 Agent 的 MCP 配置中；需要作废旧令牌时点「重新生成」。
+
+### 工具列表
+
+| 工具 | 说明 | 权限 |
+| ----------------- | ---------------------------------------- | ----------------------- |
+| `list_hosts` | 列出已配置的 SSH 主机（id / 地址 / 认证方式 / 分组） | 自动 |
+| `connect_host` | 连接主机并验证可达性，连接供后续调用复用 | 自动 |
+| `exec_command` | 在远程主机执行命令（自动连接） | 按命令分级（危险命令需审批） |
+| `read_file` / `download` | SFTP 读取远程文件 / 下载到本机 | 自动 |
+| `write_file` / `upload` | SFTP 写入远程文件 / 从本机上传 | 需应用内审批 |
+| `system_info` | 应用版本 / 平台 / 主机数 / MCP 状态 | 自动 |
+
+### 客户端配置
+
+Claude Desktop / Cursor（Streamable HTTP）：
+
+```json
+{
+  "mcpServers": {
+    "ai-remote-workspace": {
+      "url": "http://127.0.0.1:8765/mcp",
+      "headers": { "Authorization": "Bearer <你的访问令牌>" }
+    }
+  }
+}
+```
+
+Codex CLI 等仅支持 stdio 的客户端，用 `mcp-remote` 桥接：
+
+```bash
+npx mcp-remote http://127.0.0.1:8765/mcp --header "Authorization: Bearer <你的访问令牌>"
+```
+
+> **安全边界**：服务只监听回环地址 + Bearer Token 双重防护；所有 WRITE/DANGEROUS 操作会在应用内弹出审批框（标注目标主机），拒绝或超时（5 分钟）即中止，与内置 AI Agent 的审批流程完全一致。
+
 ## 项目结构
 
 ```
@@ -184,11 +230,12 @@ Linux 支持一次性生成主流的二进制安装包。
 │   ├── infrastructure/
 │   │   ├── agent/          # Agent 会话管理（多轮对话 / 工具调用执行 / 会话持久化）
 │   │   ├── localpty/       # 本地终端 PTY（Windows ConPTY / Unix pty）
+│   │   ├── mcpserver/      # 本地 MCP Server（Streamable HTTP @ 127.0.0.1 + Bearer Token，8 个工具）
 │   │   ├── secret/         # OS 密码库（Windows Credential Manager / macOS Keychain / Linux Secret Service）
 │   │   ├── sftp/           # SFTP Manager（连接缓存）+ 文件操作（ls/upload/download/delete/rename/mkdir）
 │   │   ├── sqlite/         # SQLite 存储实现 + schema 迁移（hosts/host_keys/settings）
 │   │   └── ssh/            # SSH Client / PTY Session / ConnectionManager / 已知主机校验
-│   └── interfaces/         # Wails Services（Host/Terminal/SFTP/Agent/Monitor/ModelProvider/Config）
+│   └── interfaces/         # Wails Services（Host/Terminal/SFTP/Agent/Monitor/ModelProvider/Config/MCP）
 ├── frontend/
 │   ├── src/
 │   │   ├── app/            # providers, router
@@ -217,3 +264,5 @@ Linux 支持一次性生成主流的二进制安装包。
 | **主机监控** — 概览 / 进程 / 端口                     | **AI 助手** — 模型选择 + 会话对话                   |
 | ![AI 助手诊断报告](docs/screenshots/4-agent2.png) | ![AI 助手](docs/screenshots/4-agent3.png)   |
 | **AI 助手诊断报告** — 主机诊断报告（CPU / 负载 / 进程 / 内存）  | **AI 助手** — 高风险操作审批                       |
+| ![MCP Server](docs/screenshots/5-mcp-servers.png) |                                               |
+| **MCP Server** — 外部 Agent 经 MCP 调用 `list_hosts` 查询主机列表 |                                             |

@@ -21,6 +21,8 @@ export type {
     DockerNetworkSubnet,
     HighlightRule,
     LLMConfig,
+    MCPConfig,
+    MCPStatus,
     MonitorDiskUsage,
     MonitorOverview,
     MonitorPort,

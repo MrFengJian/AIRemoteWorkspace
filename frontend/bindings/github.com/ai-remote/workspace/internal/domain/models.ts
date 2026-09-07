@@ -120,6 +120,12 @@ export interface AppConfig {
      * SFTP file-transfer tunables (streaming chunk size + size ceilings).
      */
     "transfer": TransferConfig;
+
+    /**
+     * Local MCP server (Phase 6) exposing host/SSH/SFTP capabilities to
+     * external AI agents over streamable HTTP on 127.0.0.1.
+     */
+    "mcp": MCPConfig;
 }
 
 /**
@@ -303,6 +309,45 @@ export interface LLMConfig {
      * e.g. "gpt-4o", "deepseek-chat"
      */
     "model": string;
+}
+
+/**
+ * MCPConfig configures the local MCP server. External agents (Claude, Codex,
+ * Cursor) connect to http://127.0.0.1:<port>/mcp with the bearer Token; every
+ * mutating tool call still flows through the shared PermissionGate, so the
+ * user approves WRITE/DANGEROUS operations in the app just like the built-in
+ * agent's.
+ */
+export interface MCPConfig {
+    "enabled": boolean;
+
+    /**
+     * Port is bound on 127.0.0.1 only; 0 falls back to DefaultMCPPort.
+     */
+    "port": number;
+
+    /**
+     * Token is the bearer token clients must present. Empty on first run —
+     * the server generates one on first enable and persists it back.
+     */
+    "token": string;
+}
+
+/**
+ * MCPStatus is the runtime status of the local MCP server, shown in
+ * Settings → Advanced and needed to wire external agents to it.
+ */
+export interface MCPStatus {
+    "enabled": boolean;
+    "running": boolean;
+    "port": number;
+    "token": string;
+    "url": string;
+
+    /**
+     * Error carries the last start failure (e.g. port already in use).
+     */
+    "error"?: string;
 }
 
 /**

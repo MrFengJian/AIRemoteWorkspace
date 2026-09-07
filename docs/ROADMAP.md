@@ -17,7 +17,7 @@ Phase 4  AI Agent               ★ MVP 核心 ✅ 已完成
    ↓
 Phase 5  安全增强               ✅ 已完成（SecretStore）
    ↓
-Phase 6  MCP Server             ← 下一步
+Phase 6  MCP Server             ✅ 已完成
    ↓
 Phase 7  Docker / Kubernetes    Docker 面板 ✅ · K8s 面板延后
 ```
@@ -95,13 +95,15 @@ Phase 7  Docker / Kubernetes    Docker 面板 ✅ · K8s 面板延后
 
 **状态**：已完成。三平台均无 CGO，单 Binary 不变。Windows 实测通过（写入/读取/删除 Windows Credential Manager）。
 
-## Phase 6 — MCP Server
+## Phase 6 — MCP Server ✅
 
 让外部 AI Agent 使用本地能力。
 
-- MCP Server 实现
-- Tool 暴露
-- Permission 映射
+- MCP Server 实现（官方 modelcontextprotocol/go-sdk，Streamable HTTP 绑定 127.0.0.1，Bearer Token 鉴权）
+- 设置页管理：启用开关 / 端口 / 令牌重新生成 / 客户端配置片段复制
+- Tool 暴露（8 个，见下）
+- Permission 映射（复用 PermissionGate：READ 自动；exec 按命令分级；WRITE/DANGEROUS 在应用内弹审批框，标注 `mcp:<主机名>` 目标）
+- 首次启用自动生成令牌并持久化；MCP 会话生命周期随服务器启停（停用时关闭其打开的 SSH 连接）
 
 ### MCP Tools
 
@@ -119,6 +121,8 @@ Phase 7  Docker / Kubernetes    Docker 面板 ✅ · K8s 面板延后
 - Claude
 - Codex
 - Cursor
+
+**状态**：已完成。stdio-only 客户端（如 Codex CLI）经 `mcp-remote` 桥接；单测覆盖鉴权、协议回环与权限映射。
 
 ## Phase 7 — Docker / Kubernetes
 
@@ -153,8 +157,10 @@ Phase 7  Docker / Kubernetes    Docker 面板 ✅ · K8s 面板延后
 
 ### Diagnosis Agent
 
-- 故障定位知识库
-- 诊断场景沉淀（CPU 高、磁盘满、服务异常等）
+实现思路与分期计划见 [DIAGNOSIS_AGENT.md](./DIAGNOSIS_AGENT.md)（已评审保留，待排期）：
+
+- 故障定位知识库 —— 内置 SKILL.md 诊断场景包（Phase A）
+- 诊断场景沉淀（CPU 高、磁盘满、服务异常等）—— 会话转场景闭环（Phase B）
 
 ---
 
@@ -187,4 +193,5 @@ Phase 7  Docker / Kubernetes    Docker 面板 ✅ · K8s 面板延后
 对应阶段：**Phase 1 – Phase 6** 完成。
 
 > **现状**：v0.1.0 已发布（Phase 1–5 + 计划外功能全部达成，发布流水线已验证）。
-> MCP 调用（Phase 6）为 MVP 最后缺口，目标 v0.2。
+> Phase 6 MCP Server 已实现（目标 v0.2），MVP 功能清单全部达成；剩余为稳定性验收
+> （冷启动 / SSH / Terminal 长时间稳定）与 Phase 7 延后项（K8s 面板、Diagnosis Agent）。

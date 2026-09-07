@@ -41,3 +41,7 @@ func capOutputAt(s string, max int) string {
 		fmt.Sprintf("\n…[output truncated: %d bytes omitted]…\n", omitted) +
 		s[tailStart:]
 }
+
+// CapOutputAt is the exported form of capOutputAt, shared with the MCP
+// server's tools (which must bound their results the same way).
+func CapOutputAt(s string, max int) string { return capOutputAt(s, max) }

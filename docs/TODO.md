@@ -57,20 +57,20 @@
 - [x] Linux Secret Service 实现（zalando/go-keyring + godbus，无 CGO）
 - [x] 数据库 `secret_ref` 引用机制（HasRememberedSecret + 记住/清除流程）
 - [x] Security Mode 显示（Convenience / Balanced / Secure，当前只读展示）
-- [ ] Security Mode 强制策略切换（Convenience 自动保存 / Secure 每次输入）
+- [x] ~~Security Mode 强制策略切换~~ — **不做**：默认 Balanced 足够，逐主机"记住密码"勾选已提供更细粒度的控制
 - [x] Tool Permission 分类（READ / WRITE / DANGEROUS，classifyCommand 命令分级）
 - [x] 危险操作 Approval UI（approval.store + ApprovalHost，WRITE/DANGEROUS 同步审批）
 
 ## Phase 6 — MCP Server
 
-- [ ] MCP Server 协议实现
-- [ ] `list_hosts` / `connect_host`
-- [ ] `exec_command`
-- [ ] `read_file` / `write_file`
-- [ ] `upload` / `download`
-- [ ] `system_info`
-- [ ] Tool 到 Permission 的映射
-- [ ] 外部 Agent 联调（Claude / Codex / Cursor）
+- [x] MCP Server 协议实现（官方 go-sdk，Streamable HTTP @ 127.0.0.1，Bearer Token 鉴权，设置页可启停 / 改端口 / 换令牌）
+- [x] `list_hosts` / `connect_host`
+- [x] `exec_command`
+- [x] `read_file` / `write_file`
+- [x] `upload` / `download`
+- [x] `system_info`
+- [x] Tool 到 Permission 的映射（复用 PermissionGate：READ 自动；exec 按命令分级；WRITE 需应用内审批，弹窗标注目标主机 `mcp:<主机名>`）
+- [x] 外部 Agent 联调准备（设置页提供 Claude / Cursor 配置片段；stdio-only 客户端走 `mcp-remote`）
 
 ## Phase 7 — Docker / Kubernetes
 
@@ -81,7 +81,10 @@
 - [x] 友好降级（CLI 未安装 / 守护进程未运行分类提示，不报错）
 - [x] Agent 容器运维：直接经 ssh_exec / local_exec 使用 docker / kubectl CLI（提示词引导 + 危险动词 WRITE 分级 + 64KB 输出截断）
 - [ ] Kubernetes 面板（pod / deploy / logs UI）— 延后，待 Docker 面板使用反馈
-- [ ] Diagnosis Agent（故障定位知识库）
+- [ ] Diagnosis Agent — 方案已定，见 [DIAGNOSIS_AGENT.md](./DIAGNOSIS_AGENT.md)
+  - [ ] Phase A：内置场景包（SKILL.md）+ 诊断模式提示词 + 体检快照注入 + Agent 面板入口
+  - [ ] Phase B：沉淀闭环（「保存为场景」生成 SKILL.md）
+  - [ ] Phase C（远期可选）：历史诊断检索 / 结构化结论面板
 - [ ] 诊断场景沉淀（CPU 高、磁盘满、服务异常等）
 
 ---
@@ -106,4 +109,4 @@
 - [ ] Terminal 长时间稳定
 - [x] 多 Host 管理可用
 - [x] AI 基础诊断可用
-- [ ] MCP 调用可用
+- [x] MCP 调用可用
