@@ -224,6 +224,17 @@ func (a *AgentService) StartDiagnosis(sessionID, providerID, model, symptom stri
 	return nil
 }
 
+// SetDiagnosisMode toggles the diagnosis-mode system prompt for a session's
+// turns (the header pill's exit action). Off switches the session back to
+// the regular prompt while keeping the conversation and its history.
+func (a *AgentService) SetDiagnosisMode(sessionID string, on bool) error {
+	if a.runtime == nil {
+		return fmt.Errorf("agent runtime not available")
+	}
+	a.runtime.SetDiagnosisMode(sessionID, on)
+	return nil
+}
+
 // CancelChat aborts an ongoing agent chat.
 func (a *AgentService) CancelChat(sessionID string) error {
 	if a.runtime != nil {

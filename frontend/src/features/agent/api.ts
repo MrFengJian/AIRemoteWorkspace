@@ -24,6 +24,9 @@ export const agentApi = {
   /** Diagnosis-mode chat: triage prompt + auto-collected health snapshot. */
   startDiagnosis: (sessionID: string, providerID: string, model: string, symptom: string) =>
     AgentService.StartDiagnosis(sessionID, providerID, model, symptom),
+  /** Toggle the diagnosis-mode prompt for a session (exit keeps the chat). */
+  setDiagnosisMode: (sessionID: string, on: boolean) =>
+    AgentService.SetDiagnosisMode(sessionID, on),
   cancelChat: (sessionID: string) => AgentService.CancelChat(sessionID),
   /** Forget the backend's conversation memory for a session (multi-turn replay). */
   clearHistory: (sessionID: string) => AgentService.ClearHistory(sessionID),

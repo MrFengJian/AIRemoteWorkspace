@@ -321,6 +321,9 @@ export const en = {
     diagnosePlaceholder:
       "Describe the symptom, e.g.\n- CPU pinned above 90%\n- nginx keeps crash-looping\n- port 8080 unreachable from outside",
     diagnoseStart: "Start",
+    diagnosisMode: "Diagnosis mode",
+    exitDiagnosis: "Exit diagnosis mode",
+    diagnosisExited: "Diagnosis mode off — back to the regular prompt.",
     diagnoseSnapshotNote:
       "On submit, a read-only health snapshot (CPU / memory / disk / ports / recent errors) is auto-collected as triage context; command execution still follows the session's approval policy.",
     saveScenarioTitle: "Save as Diagnosis Scenario",

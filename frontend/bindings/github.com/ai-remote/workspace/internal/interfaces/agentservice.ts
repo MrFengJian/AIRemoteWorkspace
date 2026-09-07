@@ -135,6 +135,15 @@ export function SaveSkill(name: string, content: string): $CancellablePromise<vo
 }
 
 /**
+ * SetDiagnosisMode toggles the diagnosis-mode system prompt for a session's
+ * turns (the header pill's exit action). Off switches the session back to
+ * the regular prompt while keeping the conversation and its history.
+ */
+export function SetDiagnosisMode(sessionID: string, on: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2423925400, sessionID, on);
+}
+
+/**
  * SetSessionPolicy sets the approval policy a session's agent runs (the
  * dropdown in the agent input bar). "strict" asks for every WRITE/DANGEROUS
  * call; "auto_write" silently approves WRITE and keeps asking for DANGEROUS.

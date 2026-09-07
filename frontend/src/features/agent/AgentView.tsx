@@ -26,6 +26,7 @@ import {
   BookMarked,
   Sparkles,
   RefreshCw,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -84,9 +85,11 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
     streaming,
     activeConvBySession,
     policies,
+    diagnosis,
     addMessage,
     setActiveConv,
     setPolicy,
+    setDiagnosis,
     appendToLast,
     setStreaming,
     setToolResult,
@@ -542,6 +545,7 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
   const sendDiagnosis = (symptom: string) => {
     if (!activeSessionId || !symptom.trim() || streaming[activeSessionId] || !modelChosen) return;
     setInputHistory((h) => [...h.slice(-MAX_INPUT_HISTORY + 1), symptom.trim()]);
+    setDiagnosis(activeSessionId, true);
     addMessage(activeSessionId, { role: "user", content: symptom.trim() });
     setStreaming(activeSessionId, true);
     addMessage(activeSessionId, { role: "assistant", content: "" });
@@ -590,6 +594,19 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
     agentApi.clearHistory(activeSessionId).catch(() => {});
     queryClient.invalidateQueries({ queryKey: CONVERSATIONS_KEY }).catch(() => {});
     setHistoryOpen(false);
+  };
+
+  // Diagnosis mode is per session (mirrors the backend runtime flag); the
+  // header pill shows it and offers the way out.
+  const inDiagnosis = activeSessionId ? !!diagnosis[activeSessionId] : false;
+
+  /** Exit diagnosis mode: subsequent turns use the regular prompt; the
+   *  conversation and its history are kept. */
+  const handleExitDiagnosis = () => {
+    if (!activeSessionId) return;
+    agentApi.setDiagnosisMode(activeSessionId, false).catch(() => {});
+    setDiagnosis(activeSessionId, false);
+    toast.info(t("agent.diagnosisExited"));
   };
 
   /** Write text to the clipboard with a quiet confirmation. */
@@ -687,9 +704,15 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
     }
   };
 
-  /** Resume a persisted conversation into this session (display + memory). */
+  /** Resume a persisted conversation into this session (display + memory).
+   *  Resuming also leaves diagnosis mode — the resumed conversation replays
+   *  under the regular prompt unless a new diagnosis is started. */
   const handleResume = async (conv: ConversationDTO) => {
     if (!activeSessionId || streaming[activeSessionId]) return;
+    if (diagnosis[activeSessionId]) {
+      agentApi.setDiagnosisMode(activeSessionId, false).catch(() => {});
+      setDiagnosis(activeSessionId, false);
+    }
     try {
       const [msgs] = await Promise.all([
         agentApi.getConversationMessages(conv.id),
@@ -773,6 +796,23 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
           <span className="truncate text-sm font-medium">{t("agent.title")}</span>
           {isStreaming && (
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
+          )}
+          {inDiagnosis && (
+            <span
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
+            >
+              <Stethoscope className="h-3 w-3" />
+              {t("agent.diagnosisMode")}
+              <button
+                type="button"
+                onClick={handleExitDiagnosis}
+                aria-label={t("agent.exitDiagnosis")}
+                title={t("agent.exitDiagnosis")}
+                className="rounded-full p-0.5 transition-colors hover:bg-primary/20"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
           )}
         </div>
         <div className="relative flex shrink-0 items-center gap-0.5" ref={historyPanelRef}>
@@ -1260,6 +1300,16 @@ const MessageBubble = memo(function MessageBubble({
 
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
+      {!isUser && (
+        // Agent avatar: a small gradient identity badge on the left of every
+        // assistant message (tool steps and notices keep their own visuals).
+        <div
+          aria-hidden
+          className="mr-2 mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/55 shadow-sm ring-1 ring-primary/30"
+        >
+          <Bot className="h-3.5 w-3.5 text-primary-foreground" />
+        </div>
+      )}
       <div
         className={cn(
           "max-w-[90%] rounded-[var(--radius)] px-3 py-2 text-sm",

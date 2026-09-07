@@ -50,8 +50,8 @@ Runtime 已按会话组装系统提示词并支持自定义指令。新增「诊
 
 - [x] 内置高价值场景 SKILL.md ×9：CPU 高（cpu-high）、磁盘满（disk-full）、内存 / OOM（memory-oom）、服务异常（service-down）、端口不通（port-unreachable）、容器反复重启（container-restart-loop）、网络延迟（network-latency）、磁盘 IO 高（disk-io-high）、SSH 登录慢（login-slow）
 - [x] `skill_service` 支持内置种子落盘（`go:embed all:skills`；已有技能不覆盖，删除的内置包记入 dismissed 列表不复活）
-- [x] Runtime 诊断提示词模板 + 快照注入（`StartDiagnosis`）；`monitor_service` 补 `Snapshot(ctx, sessionID)` 聚合输出（概览 + Top 进程 + 端口 + journalctl / dmesg 精简摘要）
-- [x] 前端：Agent 面板诊断入口（输入区听诊器按钮），症状输入 → 自动带快照发起会话；场景包以 chip 形式一键填充 `/场景名`
+- [x] Runtime 诊断提示词模板 + 快照注入（`StartDiagnosis`）；`monitor_service` 补 `Snapshot(ctx, sessionID)` 聚合输出（概览 + Top 进程 + 端口 + journalctl / dmesg 精简摘要）；诊断模式可随时退出（`SetDiagnosisMode`，保持会话切回常规提示词，新对话同样自动退出）
+- [x] 前端：Agent 面板诊断入口（输入区听诊器按钮），症状输入 → 自动带快照发起会话；场景包以 chip 形式一键填充 `/场景名`；面板头部显示诊断模式胶囊（含 × 退出按钮），助手消息带 Agent 头像
 - 触点：`skill_service.go` · `agent/runtime.go` · `monitor_snapshot.go` · `AgentView.tsx` · locales
 
 ### Phase B — 沉淀闭环 ✅

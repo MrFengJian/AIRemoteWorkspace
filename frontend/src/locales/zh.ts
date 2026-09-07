@@ -320,6 +320,9 @@ export const zh = {
     diagnosePlaceholder:
       "描述症状，例如：\n- CPU 长期在 90% 以上\n- nginx 起不来，一直重启\n- 外部访问 8080 端口不通",
     diagnoseStart: "开始诊断",
+    diagnosisMode: "诊断模式",
+    exitDiagnosis: "退出诊断模式",
+    diagnosisExited: "已退出诊断模式，后续对话使用正常模式",
     diagnoseSnapshotNote:
       "提交后会自动采集一次只读体检快照（CPU / 内存 / 磁盘 / 端口 / 近期错误日志）作为排查上下文；命令执行仍遵循当前会话的审批策略。",
     saveScenarioTitle: "沉淀为诊断场景",

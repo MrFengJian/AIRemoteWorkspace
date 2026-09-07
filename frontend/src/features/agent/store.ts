@@ -35,10 +35,14 @@ interface AgentState {
   activeConvBySession: Record<string, string>;
   /** Approval policy per session (the input-bar dropdown). */
   policies: Record<string, SessionPolicy>;
+  /** Sessions currently in diagnosis mode (triage prompt + header pill).
+   *  Mirrors the backend runtime flag; also reset by clearHistory (new chat). */
+  diagnosis: Record<string, boolean>;
 
   addMessage: (sessionID: string, msg: Omit<ChatMessage, "id">) => void;
   setActiveConv: (sessionID: string, conversationID: string | null) => void;
   setPolicy: (sessionID: string, policy: SessionPolicy) => void;
+  setDiagnosis: (sessionID: string, on: boolean) => void;
   appendToLast: (sessionID: string, text: string) => void;
   setStreaming: (sessionID: string, v: boolean) => void;
   /** Attach a tool execution result to its step (matched by call id; an empty
@@ -62,6 +66,7 @@ export const useAgentStore = create<AgentState>((set) => ({
   streaming: {},
   activeConvBySession: {},
   policies: {},
+  diagnosis: {},
 
   setActiveConv: (sessionID, conversationID) =>
     set((s) => {
@@ -73,6 +78,14 @@ export const useAgentStore = create<AgentState>((set) => ({
 
   setPolicy: (sessionID, policy) =>
     set((s) => ({ policies: { ...s.policies, [sessionID]: policy } })),
+
+  setDiagnosis: (sessionID, on) =>
+    set((s) => {
+      const next = { ...s.diagnosis };
+      if (on) next[sessionID] = true;
+      else delete next[sessionID];
+      return { diagnosis: next };
+    }),
 
   addMessage: (sessionID, msg) =>
     set((s) => ({
@@ -159,6 +172,10 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((s) => {
       const h = { ...s.histories };
       delete h[sessionID];
-      return { histories: h };
+      // A new conversation also leaves diagnosis mode (mirrors the backend's
+      // ClearHistory resetting the triage prompt).
+      const d = { ...s.diagnosis };
+      delete d[sessionID];
+      return { histories: h, diagnosis: d };
     }),
 }));
