@@ -84,7 +84,7 @@
 - [~] Diagnosis Agent — 方案见 [DIAGNOSIS_AGENT.md](./DIAGNOSIS_AGENT.md)
   - [x] Phase A：内置场景包（9 个 SKILL.md）+ 诊断模式提示词 + 体检快照注入 + Agent 面板入口
   - [x] Phase B：沉淀闭环（「保存为场景」LLM 提炼 SKILL.md）+ 场景库管理轻 UI
-  - [ ] Phase C（远期可选）：历史诊断检索 / 结构化结论面板
+  - [ ] Phase C（远期可选）：历史诊断检索 / 结构化结论面板（结论面板设计已定，见 [DIAGNOSIS_AGENT.md](./DIAGNOSIS_AGENT.md)，待排期）
 - [x] 诊断场景沉淀（CPU 高、磁盘满、内存/OOM、服务异常、端口不通、容器重启循环、网络延迟、磁盘 IO、SSH 登录慢）
 
 ---
