@@ -135,11 +135,13 @@ func (h *HostService) DeleteHost(id string) error {
 
 // syncTunnel reconciles the host's running tunnels with its just-saved rule
 // list:
-//   - no valid rules → stop everything;
+//   - no valid rules → stop everything and drop manual-stop memory (a rule
+//     re-added later is fresh intent and may auto-start again);
 //   - rules changed while at least one tunnel is running → reconcile (changed
 //     rules restart, removed ones stop, new ones start);
 //   - manually stopped tunnels stay stopped — saving a host edit must not
-//     silently bring them back (the next session open or panel start does).
+//     silently bring them back (panel start or a rule-config change does;
+//     session opens respect the stop too).
 func (h *HostService) syncTunnel(host domain.Host) {
 	if h.tunnels == nil {
 		return
@@ -152,7 +154,7 @@ func (h *HostService) syncTunnel(host domain.Host) {
 		}
 	}
 	if !hasValid {
-		h.tunnels.Stop(host.ID)
+		h.tunnels.Remove(host.ID)
 		return
 	}
 	for _, st := range h.tunnels.Statuses() {

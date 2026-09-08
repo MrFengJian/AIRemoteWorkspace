@@ -49,14 +49,18 @@ export function ListTunnels(): $CancellablePromise<$models.TunnelStatusDTO[] | n
 /**
  * StartTunnel ensures the host's tunnels are running per its saved rules,
  * resolving remembered credentials from the OS vault for the connections.
+ * A manual start is user intent: it lifts the manual-stop suppression so
+ * stopped rules come back (unlike session opens, which respect it).
  */
 export function StartTunnel(hostID: string): $CancellablePromise<void> {
     return $Call.ByID(555606337, hostID);
 }
 
 /**
- * StopTunnel stops the host's tunnels (the rules stay; the next session on
- * the host or a manual start brings them back).
+ * StopTunnel stops the host's tunnels (the rules stay in the host record).
+ * The stop is remembered as user intent: session opens — including splits
+ * and duplicates — will not bring the tunnels back; only a manual start
+ * from the panel or a rule-config change does.
  */
 export function StopTunnel(hostID: string): $CancellablePromise<void> {
     return $Call.ByID(3368897255, hostID);

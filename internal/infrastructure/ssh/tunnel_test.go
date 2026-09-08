@@ -547,6 +547,91 @@ func TestTunnelDialsWithHostUsername(t *testing.T) {
 	m.StopAll()
 }
 
+func TestTunnelManualStopSurvivesSessionOpens(t *testing.T) {
+	// The panel's manual stop must hold: session opens (every split /
+	// duplicate / new tab re-runs Ensure) may not resurrect the tunnel.
+	// Only an explicit manual start brings it back.
+	remote := echoServer(t)
+	m, _ := newTestManager(t, remote)
+
+	host := domain.Host{
+		ID: "h1", Name: "db-1", Host: "203.0.113.10", Port: 22,
+		Tunnels: []domain.TunnelConfig{{
+			Enabled: true, Type: domain.TunnelLocal,
+			ListenPort: 23468, TargetHost: "127.0.0.1", TargetPort: 5432,
+		}},
+	}
+	m.Ensure(host, domain.Credentials{})
+	waitState(t, m, "h1", domain.TunnelConnected)
+
+	m.Stop("h1") // panel stop
+	if n := len(m.Statuses()); n != 0 {
+		t.Fatalf("expected no tunnel entries after stop, got %d", n)
+	}
+
+	// Simulate splits / duplicates / new sessions on the host.
+	m.Ensure(host, domain.Credentials{})
+	m.Ensure(host, domain.Credentials{})
+	if n := len(m.Statuses()); n != 0 {
+		t.Fatalf("session open resurrected a manually stopped tunnel: %+v", m.Statuses())
+	}
+
+	// Manual start is explicit intent: the tunnel returns.
+	m.ClearManualStop("h1")
+	m.Ensure(host, domain.Credentials{})
+	waitState(t, m, "h1", domain.TunnelConnected)
+	m.StopAll()
+}
+
+func TestTunnelRemoveForgetsManualStop(t *testing.T) {
+	// Removing a host's tunnels (delete, or a save that disabled every rule)
+	// drops the stop memory: re-adding the same rule later is fresh intent.
+	remote := echoServer(t)
+	m, _ := newTestManager(t, remote)
+
+	host := domain.Host{
+		ID: "h1", Name: "db-1", Host: "203.0.113.10", Port: 22,
+		Tunnels: []domain.TunnelConfig{{
+			Enabled: true, Type: domain.TunnelLocal,
+			ListenPort: 23469, TargetHost: "127.0.0.1", TargetPort: 5432,
+		}},
+	}
+	m.Ensure(host, domain.Credentials{})
+	waitState(t, m, "h1", domain.TunnelConnected)
+	m.Stop("h1")
+
+	m.Remove("h1")
+	m.Ensure(host, domain.Credentials{})
+	waitState(t, m, "h1", domain.TunnelConnected)
+	m.StopAll()
+}
+
+func TestTunnelConfigChangeEscapesManualStop(t *testing.T) {
+	// Editing a manually-stopped rule gives it a new identity (rule key);
+	// the replacement starts like any other changed rule.
+	remote := echoServer(t)
+	m, _ := newTestManager(t, remote)
+
+	host := domain.Host{
+		ID: "h1", Name: "db-1", Host: "203.0.113.10", Port: 22,
+		Tunnels: []domain.TunnelConfig{{
+			Enabled: true, Type: domain.TunnelLocal,
+			ListenPort: 23470, TargetHost: "127.0.0.1", TargetPort: 5432,
+		}},
+	}
+	m.Ensure(host, domain.Credentials{})
+	waitState(t, m, "h1", domain.TunnelConnected)
+	m.Stop("h1")
+
+	host.Tunnels[0].TargetPort = 6379
+	m.Ensure(host, domain.Credentials{})
+	st := waitState(t, m, "h1", domain.TunnelConnected)
+	if st.Config.TargetPort != 6379 {
+		t.Fatalf("edited rule did not restart with new config: %+v", st.Config)
+	}
+	m.StopAll()
+}
+
 func TestTunnelPortTakenFatals(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		// Windows listener sockets default to SO_REUSEADDR, so a second bind

@@ -20,6 +20,21 @@ function sftpWindowHostFromHash(): string | null {
 
 const sftpHostID = sftpWindowHostFromHash();
 
+// Suppress the WebView's default context menu app-wide (it offers browser
+// navigation entries that make no sense in a desktop shell). Surfaces with a
+// custom menu — terminal panes, host rows, agent messages, tunnel rows, … —
+// open their own via React/context handlers; everywhere else right-click is
+// a no-op. The capture-phase window listener runs before React's root
+// handler and preventDefault does not stop propagation, so custom menus are
+// unaffected.
+window.addEventListener(
+  "contextmenu",
+  (e) => {
+    e.preventDefault();
+  },
+  true,
+);
+
 ReactDOM.createRoot(
   document.getElementById("root") as HTMLElement,
 ).render(

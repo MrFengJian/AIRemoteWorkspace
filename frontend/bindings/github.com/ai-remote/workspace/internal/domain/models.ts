@@ -88,6 +88,12 @@ export interface AppConfig {
     "highlightRules"?: HighlightRule[] | null;
 
     /**
+     * Quick command bar entries (Xshell 风格的快速命令): user-defined
+     * scripts that one click types into the bar's target terminal sessions.
+     */
+    "quickCommands"?: QuickCommand[] | null;
+
+    /**
      * AI agent provider config (API key in SecretStore)
      */
     "llm": LLMConfig;
@@ -444,6 +450,25 @@ export enum Permission {
     PermissionWrite = "write",
     PermissionDangerous = "dangerous",
 };
+
+/**
+ * QuickCommand is one entry in the terminal quick command bar: a named
+ * script the user can send to one or many open sessions with a single
+ * click. Line breaks inside Command are delivered as carriage returns, so
+ * multi-line payloads run line by line; SendEnter appends a final carriage
+ * return to execute the last line immediately.
+ */
+export interface QuickCommand {
+    "id": string;
+    "name": string;
+    "command": string;
+
+    /**
+     * SendEnter appends \r after the payload (execute on send). Unchecked
+     * entries only type the text, leaving the last line unexecuted for review.
+     */
+    "sendEnter": boolean;
+}
 
 /**
  * SecurityMode governs how credentials are handled (AGENT.md §10).

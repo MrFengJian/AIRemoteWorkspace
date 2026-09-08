@@ -76,6 +76,8 @@ func (t *TunnelService) ListTunnels() ([]TunnelStatusDTO, error) {
 
 // StartTunnel ensures the host's tunnels are running per its saved rules,
 // resolving remembered credentials from the OS vault for the connections.
+// A manual start is user intent: it lifts the manual-stop suppression so
+// stopped rules come back (unlike session opens, which respect it).
 func (t *TunnelService) StartTunnel(hostID string) error {
 	host, err := t.hostSvc.Get(hostID)
 	if err != nil {
@@ -95,12 +97,15 @@ func (t *TunnelService) StartTunnel(hostID string) error {
 	if err != nil {
 		return fmt.Errorf("resolve credentials: %w", err)
 	}
+	t.mgr.ClearManualStop(hostID)
 	t.mgr.Ensure(host, creds)
 	return nil
 }
 
-// StopTunnel stops the host's tunnels (the rules stay; the next session on
-// the host or a manual start brings them back).
+// StopTunnel stops the host's tunnels (the rules stay in the host record).
+// The stop is remembered as user intent: session opens — including splits
+// and duplicates — will not bring the tunnels back; only a manual start
+// from the panel or a rule-config change does.
 func (t *TunnelService) StopTunnel(hostID string) error {
 	t.mgr.Stop(hostID)
 	return nil

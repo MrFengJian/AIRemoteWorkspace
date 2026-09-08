@@ -32,7 +32,7 @@ import {
   useUpdateHost,
   useOpenTerminal,
 } from "@/features/hosts/hooks";
-import { useHostsUIStore } from "@/features/hosts/store";
+import { useHostsUIStore, type HostFormTab } from "@/features/hosts/store";
 import { TERMINAL_THEMES, getTerminalTheme } from "@/features/terminal/themes";
 import { TERMINAL_FONTS, terminalFontFamily } from "@/features/terminal/fonts";
 import { osInfo } from "@/features/hosts/osIcons";
@@ -63,7 +63,7 @@ const EMPTY_INPUT: HostInputDTO = {
 const EMPTY_CREDS: CredentialsDTO = { password: "", keyPath: "", keyPassphrase: "", useAgent: false };
 
 /** Dialog tab groups, Xshell-style: connection / appearance / organisation / tunnel. */
-type FormTab = "connection" | "appearance" | "organisation" | "tunnel";
+type FormTab = HostFormTab;
 
 /**
  * HostFormDialog — create/edit/delete + test-connect + open-terminal, with
@@ -79,6 +79,7 @@ type FormTab = "connection" | "appearance" | "organisation" | "tunnel";
 export function HostFormDialog() {
   const { t } = useTranslation();
   const editing = useHostsUIStore((s) => s.editing);
+  const editingTab = useHostsUIStore((s) => s.editingTab);
   const closeEditor = useHostsUIStore((s) => s.closeEditor);
   const openEditor = useHostsUIStore((s) => s.openEditor);
   const { askConfirm } = useConfirm();
@@ -104,10 +105,11 @@ export function HostFormDialog() {
   // or a fast double-click, can both fire mutateAsync before isPending flips.
   const submitting = useRef(false);
 
-  // Sync local form state when the dialog target changes.
+  // Sync local form state when the dialog target changes. Deep-links honour
+  // editingTab (e.g. the tunnel panel opens straight onto the tunnel tab).
   useEffect(() => {
     if (!isOpen) return;
-    setTab("connection");
+    setTab(editingTab ?? "connection");
     if (existing) {
       setInput({
         name: existing.name,
@@ -143,7 +145,7 @@ export function HostFormDialog() {
     setTestResult(null);
     setErrors({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, existing]);
+  }, [isOpen, existing, editingTab]);
 
   const update = (patch: Partial<HostInputDTO>) => {
     setInput((v) => ({ ...v, ...patch }));

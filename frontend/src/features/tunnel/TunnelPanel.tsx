@@ -6,7 +6,9 @@ import {
   Network,
   Pencil,
   Play,
+  Plus,
   RefreshCw,
+  Server,
   Square,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -163,8 +165,17 @@ export function TunnelPanel({ embeddedHostID }: { embeddedHostID?: string }) {
     items.push(
       { type: "separator" },
       {
-        label: t("tunnel.editHost"),
+        label: t("tunnel.editTunnel"),
         icon: Pencil,
+        disabled: !host,
+        onClick: () => {
+          // Reuses the host form's tunnel tab (deep-linked via the store).
+          if (host) openEditor(host, "tunnel");
+        },
+      },
+      {
+        label: t("tunnel.editHost"),
+        icon: Server,
         disabled: !host,
         onClick: () => {
           if (host) openEditor(host);
@@ -174,13 +185,25 @@ export function TunnelPanel({ embeddedHostID }: { embeddedHostID?: string }) {
     return items;
   };
 
-  const bgMenuItems = (): MenuItem[] => [
-    {
+  // Panel background: refresh, plus a shortcut that adds a tunnel rule to
+  // the session's own host (reusing the host form's tunnel editor).
+  const embeddedHost = (hosts ?? []).find((h) => h.id === embeddedHostID);
+  const bgMenuItems = (): MenuItem[] => {
+    const items: MenuItem[] = [];
+    if (embeddedHost) {
+      items.push({
+        label: t("tunnel.addTunnel"),
+        icon: Plus,
+        onClick: () => openEditor(embeddedHost, "tunnel"),
+      });
+    }
+    items.push({
       label: t("tunnel.refresh"),
       icon: RefreshCw,
       onClick: refresh,
-    },
-  ];
+    });
+    return items;
+  };
 
   return (
     <div
@@ -206,20 +229,26 @@ export function TunnelPanel({ embeddedHostID }: { embeddedHostID?: string }) {
         </p>
       ) : (
         <div className="flex flex-col gap-2">
-          {rows.map((row) => (
-            <TunnelRow
-              key={`${row.hostId}|${row.key}`}
-              status={row}
-              active={row.hostId === embeddedHostID}
-              onStart={() => void act(row.hostId, "start")}
-              onStop={() => void act(row.hostId, "stop")}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setMenu({ kind: "row", status: row, x: e.clientX, y: e.clientY });
-              }}
-            />
-          ))}
+          {rows.map((row) => {
+            const rowHost = (hosts ?? []).find((h) => h.id === row.hostId);
+            return (
+              <TunnelRow
+                key={`${row.hostId}|${row.key}`}
+                status={row}
+                active={row.hostId === embeddedHostID}
+                onStart={() => void act(row.hostId, "start")}
+                onStop={() => void act(row.hostId, "stop")}
+                onEditTunnel={
+                  rowHost ? () => openEditor(rowHost, "tunnel") : undefined
+                }
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setMenu({ kind: "row", status: row, x: e.clientX, y: e.clientY });
+                }}
+              />
+            );
+          })}
         </div>
       )}
       {/* Context menu (rule row / panel background) */}
@@ -240,12 +269,16 @@ function TunnelRow({
   active,
   onStart,
   onStop,
+  onEditTunnel,
   onContextMenu,
 }: {
   status: TunnelStatusDTO;
   active: boolean;
   onStart: () => void;
   onStop: () => void;
+  /** Open the host form's tunnel tab for this rule; hidden when the host
+   *  record is gone (deleted mid-session). */
+  onEditTunnel?: () => void;
   onContextMenu: (e: MouseEvent) => void;
 }) {
   const { t } = useTranslation();
@@ -267,6 +300,18 @@ function TunnelRow({
           {status.hostName}
         </span>
         <StateBadge state={status.state as TunnelState} />
+        {onEditTunnel && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={onEditTunnel}
+            aria-label={t("tunnel.editTunnel")}
+            title={t("tunnel.editTunnel")}
+          >
+            <Pencil className="h-3 w-3" />
+          </Button>
+        )}
         {connecting ? (
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
         ) : running ? (

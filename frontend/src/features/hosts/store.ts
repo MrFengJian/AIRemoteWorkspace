@@ -3,6 +3,13 @@ import { create } from "zustand";
 import type { HostDTO } from "@/features/hosts/api";
 
 /**
+ * Host form dialog tab groups, Xshell-style. Lives here (not in
+ * HostFormDialog) so callers can deep-link the editor to a specific tab —
+ * e.g. the tunnel panel opens a host straight on its tunnel rules.
+ */
+export type HostFormTab = "connection" | "appearance" | "organisation" | "tunnel";
+
+/**
  * Hosts feature UI state (local-only concerns).
  *
  * The host *list* is server state owned by TanStack Query (useHosts hook);
@@ -16,7 +23,9 @@ interface HostsUIState {
 
   /** Host being edited in the form dialog, null when closed, undefined = new. */
   editing: HostDTO | "new" | null;
-  openEditor: (host: HostDTO | "new") => void;
+  /** Tab the form dialog should open on; null = its default ("connection"). */
+  editingTab: HostFormTab | null;
+  openEditor: (host: HostDTO | "new", tab?: HostFormTab) => void;
   closeEditor: () => void;
 }
 
@@ -25,6 +34,7 @@ export const useHostsUIStore = create<HostsUIState>((set) => ({
   select: (id) => set({ selectedId: id }),
 
   editing: null,
-  openEditor: (host) => set({ editing: host }),
-  closeEditor: () => set({ editing: null }),
+  editingTab: null,
+  openEditor: (host, tab) => set({ editing: host, editingTab: tab ?? null }),
+  closeEditor: () => set({ editing: null, editingTab: null }),
 }));

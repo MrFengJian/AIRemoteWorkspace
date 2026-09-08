@@ -25,6 +25,9 @@ type AppConfig struct {
 	// User-defined highlight rules: a regex and the color scheme used to
 	// paint its matches. Invalid patterns are skipped by the renderer.
 	HighlightRules []HighlightRule `json:"highlightRules,omitempty"`
+	// Quick command bar entries (Xshell 风格的快速命令): user-defined
+	// scripts that one click types into the bar's target terminal sessions.
+	QuickCommands []QuickCommand `json:"quickCommands,omitempty"`
 	LLM               LLMConfig    `json:"llm"` // AI agent provider config (API key in SecretStore)
 	// Keyboard shortcut overrides (Xshell-style). Key = command id
 	// ("terminal.copy"), value = binding string ("Ctrl+Shift+C"). Only entries
@@ -83,6 +86,20 @@ type HighlightRule struct {
 	// Color scheme id from the highlight palette (red/orange/yellow/green/
 	// cyan/blue/purple/pink).
 	Color string `json:"color"`
+}
+
+// QuickCommand is one entry in the terminal quick command bar: a named
+// script the user can send to one or many open sessions with a single
+// click. Line breaks inside Command are delivered as carriage returns, so
+// multi-line payloads run line by line; SendEnter appends a final carriage
+// return to execute the last line immediately.
+type QuickCommand struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Command string `json:"command"`
+	// SendEnter appends \r after the payload (execute on send). Unchecked
+	// entries only type the text, leaving the last line unexecuted for review.
+	SendEnter bool `json:"sendEnter"`
 }
 
 // TransferConfig holds the SFTP streaming-transfer tunables exposed in

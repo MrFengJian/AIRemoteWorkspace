@@ -1,14 +1,18 @@
 package ssh
 
-// SSH tunnels (AGENT.md §16): one tunnel per host, managed by TunnelManager.
+// SSH tunnels (AGENT.md §16): tunnels are per host RULE, managed by
+// TunnelManager.
 //
 //   - A tunnel owns a DEDICATED SSH connection — closing terminal tabs never
 //     breaks it, and multiple sessions on one host share the single tunnel
-//     (Ensure is a no-op when the config already runs).
+//     per rule (Ensure is a no-op when the config already runs).
+//   - The user's manual stop is remembered: opening/splitting/duplicating
+//     sessions re-runs Ensure, but a stopped tunnel only comes back when the
+//     user starts it from the panel or changes the rule's config.
 //   - A supervisor goroutine per tunnel owns the local listener and redials
 //     the SSH connection with exponential backoff when it drops (auto-reconnect).
-//   - Supported forms (domain.TunnelType): local port forward (`ssh -L`) and
-//     dynamic SOCKS5 (`ssh -D`, CONNECT-only).
+//   - Supported forms (domain.TunnelType): local port forward (`ssh -L`),
+//     remote forward (`ssh -R`) and dynamic SOCKS5 (`ssh -D`, CONNECT-only).
 
 import (
 	"encoding/binary"
@@ -84,6 +88,12 @@ type TunnelManager struct {
 	mu      sync.Mutex
 	emit    func(domain.TunnelStatus)
 	tunnels map[string]*tunnelSupervisor // supKey(hostID, ruleKey) → supervisor
+	// manualStop records rules the user stopped from the panel
+	// (supKey → true). Ensure never auto-starts a marked rule, so session
+	// opens / splits / duplicates cannot silently resurrect a tunnel the
+	// user turned off; manual start clears the mark, as does host deletion
+	// (Remove) — and a changed rule config naturally escapes it (new key).
+	manualStop map[string]bool
 }
 
 // supKey builds the map key for one host rule.
@@ -92,7 +102,11 @@ func supKey(hostID, ruleKey string) string { return hostID + "\x00" + ruleKey }
 // NewTunnelManager builds a manager using real SSH dials with keyStore-backed
 // host-key verification.
 func NewTunnelManager(keyStore HostKeyStore) *TunnelManager {
-	return &TunnelManager{keyStore: keyStore, tunnels: make(map[string]*tunnelSupervisor)}
+	return &TunnelManager{
+		keyStore:   keyStore,
+		tunnels:    make(map[string]*tunnelSupervisor),
+		manualStop: make(map[string]bool),
+	}
 }
 
 func (m *TunnelManager) dialHost(host domain.Host, creds domain.Credentials) (channelDialer, error) {
@@ -125,10 +139,12 @@ func (m *TunnelManager) dialHost(host domain.Host, creds domain.Credentials) (ch
 //   - rule changed → the old supervisor is stopped (waiting for it to release
 //     its port) and a replacement starts;
 //   - rule removed / invalid → its tunnel stops;
-//   - new rule → tunnel starts.
+//   - new rule → tunnel starts, UNLESS the user stopped that exact rule from
+//     the panel — session opens must not resurrect manually stopped tunnels.
 //
-// A tunnel the user manually stopped is indistinguishable from a never-started
-// one here: if the rule is still in the saved list, Ensure brings it back.
+// A tunnel the user manually stopped carries a manualStop mark: Ensure skips
+// it until the panel's manual start (ClearManualStop) or a rule-config
+// change (a new key) lifts the suppression.
 func (m *TunnelManager) Ensure(host domain.Host, creds domain.Credentials) {
 	type rule struct {
 		key string
@@ -171,6 +187,9 @@ func (m *TunnelManager) Ensure(host domain.Host, creds domain.Credentials) {
 	}
 	for _, w := range wanted {
 		if _, ok := m.tunnels[supKey(host.ID, w.key)]; !ok {
+			if m.manualStop[supKey(host.ID, w.key)] {
+				continue // user stopped this rule; session opens must not restart it
+			}
 			starts = append(starts, w)
 		}
 	}
@@ -205,14 +224,37 @@ func (m *TunnelManager) Ensure(host domain.Host, creds domain.Credentials) {
 	}
 }
 
-// Stop halts every tunnel of the host and forgets the entries (the panel
-// renders configured-but-stopped rules from the host record itself).
+// Stop halts every tunnel of the host and records the stop as USER intent:
+// later session opens (Ensure) will not silently restart these rules — the
+// panel's manual start or a rule-config change does. The rules stay in the
+// host record; the panel renders configured-but-stopped rules from it.
 func (m *TunnelManager) Stop(hostID string) {
+	m.stopHost(hostID, true)
+}
+
+// Remove stops the host's tunnels and DROPS any manual-stop memory — used
+// when the host is deleted, and on config saves that removed/disabled every
+// rule (a re-added rule later is fresh intent and may auto-start again).
+func (m *TunnelManager) Remove(hostID string) {
+	m.forgetManualStop(hostID)
+	m.stopHost(hostID, false)
+}
+
+// ClearManualStop lifts the user-stop suppression for every rule of the
+// host (the panel's manual start): the next Ensure starts them again.
+func (m *TunnelManager) ClearManualStop(hostID string) {
+	m.forgetManualStop(hostID)
+}
+
+func (m *TunnelManager) stopHost(hostID string, mark bool) {
 	m.mu.Lock()
 	var sups []*tunnelSupervisor
 	for k, sup := range m.tunnels {
 		if strings.HasPrefix(k, hostID+"\x00") {
 			sups = append(sups, sup)
+			if mark {
+				m.manualStop[k] = true
+			}
 			delete(m.tunnels, k)
 		}
 	}
@@ -220,11 +262,31 @@ func (m *TunnelManager) Stop(hostID string) {
 	for _, sup := range sups {
 		sup.stop()
 	}
+	// Wait for the supervisors to fully exit so the next Ensure (any session
+	// open on the host) can't race a still-registered listener — a fresh
+	// supervisor failing to bind its own port would surface as a spurious
+	// error tunnel. Bounded by the same grace as rule replacements.
+	for _, sup := range sups {
+		select {
+		case <-sup.done:
+		case <-time.After(tunnelStopGrace):
+		}
+		// A tunnel that sat in the fatal error state reads as stopped once
+		// the user explicitly stops it — the error is not current anymore.
+		if st := sup.snapshot(); st.State == domain.TunnelError {
+			sup.setStatus(domain.TunnelStopped, "", 0)
+		}
+	}
 }
 
-// Remove stops the host's tunnels and forgets the entries (host deleted).
-func (m *TunnelManager) Remove(hostID string) {
-	m.Stop(hostID)
+func (m *TunnelManager) forgetManualStop(hostID string) {
+	m.mu.Lock()
+	for k := range m.manualStop {
+		if strings.HasPrefix(k, hostID+"\x00") {
+			delete(m.manualStop, k)
+		}
+	}
+	m.mu.Unlock()
 }
 
 // ListenPortsOf returns the listen ports of every supervisor known for the
@@ -396,7 +458,14 @@ func (s *tunnelSupervisor) snapshot() domain.TunnelStatus {
 // error (port taken) ends the supervisor in the error state.
 func (s *tunnelSupervisor) run() {
 	defer close(s.done)
-	defer s.setStatus(domain.TunnelStopped, "", 0)
+	// Normal exits report stopped; a fatal setup error must stay visible
+	// (it IS the terminal state — the user needs the "port taken" text).
+	fatal := false
+	defer func() {
+		if !fatal {
+			s.setStatus(domain.TunnelStopped, "", 0)
+		}
+	}()
 
 	// Local and dynamic listeners live on this machine and survive
 	// reconnects; the remote form's listener lives on the SERVER and must be
@@ -406,6 +475,7 @@ func (s *tunnelSupervisor) run() {
 		var err error
 		ln, err = net.Listen("tcp", net.JoinHostPort(s.config.ListenHost(), strconv.Itoa(s.config.ListenPort)))
 		if err != nil {
+			fatal = true
 			s.setStatus(domain.TunnelError, fmt.Sprintf("listen %s:%d: %v", s.config.ListenHost(), s.config.ListenPort, err), 0)
 			return
 		}

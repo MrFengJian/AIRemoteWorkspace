@@ -28,6 +28,7 @@ export type {
     MonitorPort,
     MonitorProcess,
     MonitorTCPState,
+    QuickCommand,
     TransferConfig,
     TunnelConfig,
     TunnelStatus

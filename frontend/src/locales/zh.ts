@@ -149,7 +149,7 @@ export const zh = {
   // ── SSH 隧道 ────────────────────────────────────────────────
   tunnel: {
     title: "隧道",
-    hint: "每台主机最多一条隧道，多个会话共用；断线自动重连。",
+    hint: "每台主机可配置多条隧道，会话共用；隧道开关独立于会话连接，断线自动重连。",
     empty: "还没有配置隧道——在主机设置的「隧道」标签页中启用。",
     start: "启动",
     stop: "停止",
@@ -158,6 +158,8 @@ export const zh = {
     copySsh: "复制为 SSH 命令",
     copyError: "复制错误信息",
     editHost: "编辑主机",
+    editTunnel: "编辑隧道",
+    addTunnel: "新建隧道",
     refresh: "刷新状态",
     reconnectCount: "第 {{count}} 次重连中…",
     typeLocal: "转发",
@@ -196,6 +198,41 @@ export const zh = {
     closeLeft: "关闭左侧会话",
     closeRight: "关闭右侧会话",
     closeAll: "关闭所有会话",
+    toggleQuickBar: "快速命令栏",
+  },
+
+  // ── 快速命令栏（仿 XShell 快速命令）──────────────────────────
+  quickCmd: {
+    noTarget: "未选择会话",
+    targetCount: "{{n}} 个会话",
+    targetTitle: "发送目标",
+    selectAll: "全选",
+    selectNone: "清空",
+    noSessions: "没有已连接的会话。",
+    paneCount: "{{n}} 个窗格",
+    sendTo: "发送到：{{target}}",
+    sent: "「{{name}}」已发送到 {{n}} 个会话",
+    emptyHint: "还没有快速命令，点右侧按钮新建",
+    manage: "管理快速命令",
+    manageDesc: "快速命令是一段可复用的脚本，点击命令栏按钮即可发送到选中的会话（支持多行，逐行执行）。",
+    add: "新建命令",
+    name: "名称",
+    namePlaceholder: "例如：查看磁盘与内存",
+    command: "命令脚本",
+    commandPlaceholder: "支持多行，逐行执行。例如：\ndf -h\nfree -m",
+    sendEnter: "回车执行",
+    sendEnterLabel: "发送后自动回车（立即执行）",
+    sendEnterHint: "多行脚本逐行执行；不勾选则仅输入文本，最后一行留待你确认后手动回车。",
+    deleteTitle: "删除快速命令",
+    deleteMsg: "确定删除「{{name}}」吗？",
+    moveUp: "上移",
+    moveDown: "下移",
+    saveFailed: "保存失败",
+    batchConfirmTitle: "批量发送命令",
+    batchConfirmDesc:
+      "即将把以下命令同时发送到 {{n}} 个会话，多行命令会逐行执行。请确认目标与内容：",
+    batchConfirmSend: "发送",
+    dontAskAgain: "以后批量发送不再提示",
   },
 
   // ── 文件 ────────────────────────────────────────────────────
@@ -553,6 +590,7 @@ export const zh = {
         toggleMonitor: "切换监控面板",
         toggleDocker: "切换 Docker 面板",
         toggleSidebar: "切换主机侧栏",
+        toggleQuickBar: "切换快速命令栏",
       },
       app: {
         settings: "打开设置",

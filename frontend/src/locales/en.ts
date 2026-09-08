@@ -149,7 +149,7 @@ export const en = {
   // ── SSH tunnels ─────────────────────────────────────────────
   tunnel: {
     title: "Tunnels",
-    hint: "One tunnel per host, shared by all its sessions; dropped links reconnect automatically.",
+    hint: "A host may have several tunnels, shared by all its sessions; tunnel on/off is independent of session connections, and dropped links reconnect automatically.",
     empty: "No tunnels configured — enable one in the host settings' Tunnel tab.",
     start: "Start",
     stop: "Stop",
@@ -158,6 +158,8 @@ export const en = {
     copySsh: "Copy as SSH command",
     copyError: "Copy error details",
     editHost: "Edit host",
+    editTunnel: "Edit tunnel",
+    addTunnel: "New tunnel",
     refresh: "Refresh statuses",
     reconnectCount: "reconnect attempt #{{count}}…",
     typeLocal: "fwd",
@@ -196,6 +198,43 @@ export const en = {
     closeLeft: "Close left sessions",
     closeRight: "Close right sessions",
     closeAll: "Close all sessions",
+    toggleQuickBar: "Quick Command Bar",
+  },
+
+  // ── Quick command bar (Xshell-style) ────────────────────────
+  quickCmd: {
+    noTarget: "No session selected",
+    targetCount: "{{n}} sessions",
+    targetTitle: "Send targets",
+    selectAll: "Select all",
+    selectNone: "Clear",
+    noSessions: "No connected sessions.",
+    paneCount: "{{n}} panes",
+    sendTo: "Send to: {{target}}",
+    sent: "\"{{name}}\" sent to {{n}} sessions",
+    emptyHint: "No quick commands yet — click the button on the right to add one",
+    manage: "Manage Quick Commands",
+    manageDesc:
+      "A quick command is a reusable script; click its button in the bar to send it to the selected sessions (multi-line scripts run line by line).",
+    add: "New Command",
+    name: "Name",
+    namePlaceholder: "e.g. Check disk and memory",
+    command: "Script",
+    commandPlaceholder: "Multi-line scripts run line by line, e.g.:\ndf -h\nfree -m",
+    sendEnter: "Auto-enter",
+    sendEnterLabel: "Press Enter after sending (run immediately)",
+    sendEnterHint:
+      "Multi-line scripts run line by line; unchecked, the text is only typed and the last line waits for you to press Enter.",
+    deleteTitle: "Delete Quick Command",
+    deleteMsg: "Delete \"{{name}}\"?",
+    moveUp: "Move up",
+    moveDown: "Move down",
+    saveFailed: "Save failed",
+    batchConfirmTitle: "Batch Send Command",
+    batchConfirmDesc:
+      "This will send the command below to {{n}} sessions at once; multi-line commands run line by line. Please review the targets and content:",
+    batchConfirmSend: "Send",
+    dontAskAgain: "Don't ask again for batch sends",
   },
 
   // ── SFTP ────────────────────────────────────────────────────
@@ -559,6 +598,7 @@ export const en = {
         toggleMonitor: "Toggle Monitor Panel",
         toggleDocker: "Toggle Docker Panel",
         toggleSidebar: "Toggle Hosts Sidebar",
+        toggleQuickBar: "Toggle Quick Command Bar",
       },
       app: {
         settings: "Open Settings",
