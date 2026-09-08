@@ -3,6 +3,7 @@
 
 export {
     Permission,
+    ProxyKind,
     SecurityMode,
     TunnelState,
     TunnelType
@@ -28,6 +29,7 @@ export type {
     MonitorPort,
     MonitorProcess,
     MonitorTCPState,
+    ProxyConfig,
     QuickCommand,
     TransferConfig,
     TunnelConfig,

@@ -19,8 +19,9 @@ type SecretStore interface {
 type SecretKind string
 
 const (
-	SecretPassword   SecretKind = "password"
-	SecretPassphrase SecretKind = "passphrase"
+	SecretPassword      SecretKind = "password"
+	SecretPassphrase    SecretKind = "passphrase"
+	SecretProxyPassword SecretKind = "proxypassword"
 )
 
 // llmAPIKeyRef is the stable key under which the LLM provider API key is
@@ -76,10 +77,11 @@ func (s *SecretService) DeleteHostSecret(hostID string, kind SecretKind) error {
 	return s.store.Delete(secretKey(hostID, kind))
 }
 
-// DeleteHostSecrets removes all known host secrets (password + passphrase).
-// Called when a host is deleted to avoid orphaned vault entries.
+// DeleteHostSecrets removes all known host secrets (password + passphrase +
+// proxy password). Called when a host is deleted to avoid orphaned vault
+// entries.
 func (s *SecretService) DeleteHostSecrets(hostID string) error {
-	for _, kind := range []SecretKind{SecretPassword, SecretPassphrase} {
+	for _, kind := range []SecretKind{SecretPassword, SecretPassphrase, SecretProxyPassword} {
 		if err := s.DeleteHostSecret(hostID, kind); err != nil {
 			return err
 		}
@@ -87,9 +89,9 @@ func (s *SecretService) DeleteHostSecrets(hostID string) error {
 	return nil
 }
 
-// HasHostSecret reports whether any secret is stored for the host (either kind).
+// HasHostSecret reports whether any secret is stored for the host (any kind).
 func (s *SecretService) HasHostSecret(hostID string) bool {
-	for _, kind := range []SecretKind{SecretPassword, SecretPassphrase} {
+	for _, kind := range []SecretKind{SecretPassword, SecretPassphrase, SecretProxyPassword} {
 		if _, err := s.GetHostSecret(hostID, kind); err == nil {
 			return true
 		}

@@ -15,42 +15,52 @@ import (
 // but exposes authType as a plain string and omits internal timestamps that
 // the UI doesn't need.
 type HostDTO struct {
-	ID                 string   `json:"id"`
-	Name               string   `json:"name"`
-	Host               string   `json:"host"`
-	Port               int      `json:"port"`
-	Username           string   `json:"username"`
-	AuthType           string   `json:"authType"`
-	KeyPath            string   `json:"keyPath,omitempty"`
-	HasRememberedSecret bool    `json:"hasRememberedSecret"`
-	TerminalTheme      string   `json:"terminalTheme"` // per-host terminal colour scheme id
-	TerminalFont      string   `json:"terminalFont"`   // per-host override; "" = follow settings
-	TerminalFontSize  int      `json:"terminalFontSize"` // per-host override; 0 = follow settings
-	Group              string   `json:"group"`
-	Tags               []string `json:"tags"`
-	OS                 string   `json:"os"` // detected distro id; read-only, never editable
+	ID                  string   `json:"id"`
+	Name                string   `json:"name"`
+	Host                string   `json:"host"`
+	Port                int      `json:"port"`
+	Username            string   `json:"username"`
+	AuthType            string   `json:"authType"`
+	KeyPath             string   `json:"keyPath,omitempty"`
+	HasRememberedSecret bool     `json:"hasRememberedSecret"`
+	TerminalTheme       string   `json:"terminalTheme"`    // per-host terminal colour scheme id
+	TerminalFont        string   `json:"terminalFont"`     // per-host override; "" = follow settings
+	TerminalFontSize    int      `json:"terminalFontSize"` // per-host override; 0 = follow settings
+	Group               string   `json:"group"`
+	Tags                []string `json:"tags"`
+	OS                  string   `json:"os"` // detected distro id; read-only, never editable
 	// Last-used agent model preference; read-only for the host form, written
 	// via SetAgentModel by the agent panel.
 	AgentProviderID string `json:"agentProviderId"`
 	AgentModel      string `json:"agentModel"`
 	// SSH tunnel rules (host settings form; several allowed per host).
 	Tunnels []domain.TunnelConfig `json:"tunnels"`
+	// Pre-SSH reachability (jump host / HTTP / SOCKS5); nil = direct.
+	Proxy *domain.ProxyConfig `json:"proxy,omitempty"`
 }
 
 // HostInputDTO is what the frontend sends to create/update a host.
 type HostInputDTO struct {
-	Name             string   `json:"name"`
-	Host             string   `json:"host"`
-	Port             int      `json:"port"`
-	Username         string   `json:"username"`
-	AuthType         string   `json:"authType"`
-	KeyPath          string   `json:"keyPath,omitempty"`
-	TerminalTheme    string   `json:"terminalTheme"`
-	TerminalFont     string   `json:"terminalFont"`
-	TerminalFontSize int      `json:"terminalFontSize"`
-	Group            string   `json:"group"`
-	Tags             []string `json:"tags"`
+	Name             string                `json:"name"`
+	Host             string                `json:"host"`
+	Port             int                   `json:"port"`
+	Username         string                `json:"username"`
+	AuthType         string                `json:"authType"`
+	KeyPath          string                `json:"keyPath,omitempty"`
+	TerminalTheme    string                `json:"terminalTheme"`
+	TerminalFont     string                `json:"terminalFont"`
+	TerminalFontSize int                   `json:"terminalFontSize"`
+	Group            string                `json:"group"`
+	Tags             []string              `json:"tags"`
 	Tunnels          []domain.TunnelConfig `json:"tunnels"`
+	// Proxy: nil means "keep the stored proxy untouched" so callers that
+	// build partial inputs (appearance dialog) never wipe it; the host form
+	// always sends an explicit value — a zero-kind config clears it.
+	Proxy *domain.ProxyConfig `json:"proxy,omitempty"`
+	// ProxyPassword is write-only: non-empty stores it in the OS vault
+	// (proxy auth). ClearProxyPassword removes a stored one.
+	ProxyPassword      string `json:"proxyPassword,omitempty"`
+	ClearProxyPassword bool   `json:"clearProxyPassword,omitempty"`
 }
 
 // CredentialsDTO carries connect-time secret material supplied by the UI.
@@ -112,6 +122,10 @@ func (h *HostService) CreateHost(in HostInputDTO) (HostDTO, error) {
 	if err != nil {
 		return HostDTO{}, err
 	}
+	// Proxy auth password rides in the OS vault, never in the host record.
+	if err := h.svc.ApplyProxySecret(host.ID, in.ProxyPassword, in.ClearProxyPassword); err != nil {
+		return HostDTO{}, err
+	}
 	return toHostDTO(host), nil
 }
 
@@ -119,6 +133,9 @@ func (h *HostService) CreateHost(in HostInputDTO) (HostDTO, error) {
 func (h *HostService) UpdateHost(id string, in HostInputDTO) (HostDTO, error) {
 	host, err := h.svc.Update(id, toHostInput(in))
 	if err != nil {
+		return HostDTO{}, err
+	}
+	if err := h.svc.ApplyProxySecret(id, in.ProxyPassword, in.ClearProxyPassword); err != nil {
 		return HostDTO{}, err
 	}
 	h.syncTunnel(host)
@@ -177,7 +194,7 @@ func (h *HostService) SetAgentModel(hostID, providerID, model string) error {
 
 // TestConnectionResult reports a connection attempt outcome to the UI.
 type TestConnectionResult struct {
-	OK bool   `json:"ok"`
+	OK  bool   `json:"ok"`
 	Msg string `json:"msg"`
 }
 
@@ -222,27 +239,29 @@ func toHostInput(in HostInputDTO) appsvc.CreateHostInput {
 		Group:            in.Group,
 		Tags:             in.Tags,
 		Tunnels:          in.Tunnels,
+		Proxy:            in.Proxy,
 	}
 }
 
 func toHostDTO(h domain.Host) HostDTO {
 	return HostDTO{
-		ID:                 h.ID,
-		Name:               h.Name,
-		Host:               h.Host,
-		Port:               h.Port,
-		Username:           h.Username,
-		AuthType:           string(h.AuthType),
-		KeyPath:            h.KeyPath,
-		TerminalTheme:      h.TerminalTheme,
-		TerminalFont:       h.TerminalFont,
-		TerminalFontSize:   h.TerminalFontSize,
-		Group:              h.Group,
-		Tags:               h.Tags,
-		OS:                 h.OS,
-		AgentProviderID:    h.AgentProviderID,
-		AgentModel:         h.AgentModel,
-		Tunnels:            h.Tunnels,
+		ID:               h.ID,
+		Name:             h.Name,
+		Host:             h.Host,
+		Port:             h.Port,
+		Username:         h.Username,
+		AuthType:         string(h.AuthType),
+		KeyPath:          h.KeyPath,
+		TerminalTheme:    h.TerminalTheme,
+		TerminalFont:     h.TerminalFont,
+		TerminalFontSize: h.TerminalFontSize,
+		Group:            h.Group,
+		Tags:             h.Tags,
+		OS:               h.OS,
+		AgentProviderID:  h.AgentProviderID,
+		AgentModel:       h.AgentModel,
+		Tunnels:          h.Tunnels,
+		Proxy:            h.Proxy,
 	}
 }
 

@@ -16,6 +16,8 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+
+	"github.com/ai-remote/workspace/internal/domain"
 )
 
 // ConnectOptions describes a single dial attempt.
@@ -30,6 +32,9 @@ type ConnectOptions struct {
 	// exchange + host-key verification + authentication) as they start —
 	// fed to the UI's connection progress indicator. May be nil.
 	OnProgress func(stage string)
+	// Route (optional) is the pre-SSH path: jump chain and/or HTTP/SOCKS5
+	// proxy, resolved by application.ProxyService. Nil = direct TCP.
+	Route *domain.SshRoute
 }
 
 // Auth carries resolved credentials for a connection. Exactly one source is
@@ -51,63 +56,28 @@ type Client struct {
 }
 
 // Dial connects to the host, authenticates, and starts a keepalive loop.
-// The HostKeyStore governs known_hosts verification.
+// The HostKeyStore governs known_hosts verification. When ConnectOptions
+// carries a Route (jump chain / proxy), the connection is tunneled through
+// it; each hop is host-key verified under its own host id.
 func Dial(opts ConnectOptions, auth Auth, store HostKeyStore) (*Client, error) {
+	if opts.Route != nil && (len(opts.Route.Jumps) > 0 || opts.Route.Proxy != nil) {
+		return dialViaRoute(opts, auth, store)
+	}
 	if opts.Timeout == 0 {
 		opts.Timeout = 15 * time.Second
 	}
 
-	authMethods, err := buildAuth(auth)
-	if err != nil {
-		return nil, err
+	var onProgress func(stage string)
+	if opts.OnProgress != nil {
+		onProgress = opts.OnProgress
 	}
-
-	cfg := &ssh.ClientConfig{
-		User:            opts.Username,
-		Auth:            authMethods,
-		HostKeyCallback: hostKeyCallback(store, opts.HostID, opts.OnNewKey),
-		Timeout:         opts.Timeout,
-		// Reasonable defaults for an interactive client.
-		Config: ssh.Config{
-			Ciphers: []string{
-				"chacha20-poly1305@openssh.com",
-				"aes128-ctr", "aes192-ctr", "aes256-ctr",
-			},
-			KeyExchanges: []string{
-				"curve25519-sha256", "curve25519-sha256@libssh.org",
-				"ecdh-sha2-nistp256", "ecdh-sha2-nistp384", "ecdh-sha2-nistp521",
-			},
-		},
-	}
-
 	addr := formatAddr(opts.Host, opts.Port)
-	// Use a net.Dialer so we respect Timeout precisely; ssh.Dial also does,
-	// but keeping the conn lets us grab ssh.Conn for keepalive.
-	if opts.OnProgress != nil {
-		opts.OnProgress("connect")
-	}
-	netConn, err := net.DialTimeout("tcp", addr, opts.Timeout)
-	if err != nil {
-		return nil, fmt.Errorf("dial %s: %w", addr, err)
-	}
-
-	if opts.OnProgress != nil {
-		opts.OnProgress("handshake")
-	}
-	sshConn, chans, reqs, err := ssh.NewClientConn(netConn, addr, cfg)
-	if err != nil {
-		_ = netConn.Close()
-		return nil, fmt.Errorf("ssh handshake with %s: %w", addr, err)
-	}
-	client := ssh.NewClient(sshConn, chans, reqs)
-
-	c := &Client{
-		ssh:           client,
-		conn:          sshConn,
-		stopKeepalive: make(chan struct{}),
-	}
-	c.startKeepalive(30 * time.Second)
-	return c, nil
+	return handshakeSSH(func(a string) (net.Conn, error) {
+		if onProgress != nil {
+			onProgress("connect")
+		}
+		return net.DialTimeout("tcp", a, opts.Timeout)
+	}, addr, opts.HostID, opts.Username, auth, store, opts.Timeout, onProgress, opts.OnNewKey)
 }
 
 // NewSession opens a new SSH session on this client.

@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ai-remote/workspace/internal/application"
 	"github.com/ai-remote/workspace/internal/domain"
 )
 
@@ -85,15 +86,24 @@ type TunnelManager struct {
 	// injectable for tests; nil = real SSH dial
 	dialFn func(host domain.Host, creds domain.Credentials) (channelDialer, error)
 
+	// routes (may be nil = direct) resolves jump/proxy paths for the dial.
+	routes application.SshRouteResolver
+
 	mu      sync.Mutex
 	emit    func(domain.TunnelStatus)
-	tunnels map[string]*tunnelSupervisor // supKey(hostID, ruleKey) → supervisor
+	tunnels map[string]*tunnelSupervisor
 	// manualStop records rules the user stopped from the panel
 	// (supKey → true). Ensure never auto-starts a marked rule, so session
 	// opens / splits / duplicates cannot silently resurrect a tunnel the
 	// user turned off; manual start clears the mark, as does host deletion
 	// (Remove) — and a changed rule config naturally escapes it (new key).
 	manualStop map[string]bool
+}
+
+// SetRouteResolver wires the jump/proxy resolver so tunnels ride the same
+// route (堡垒机/代理) as terminal sessions. Write-once at startup.
+func (m *TunnelManager) SetRouteResolver(r application.SshRouteResolver) {
+	m.routes = r
 }
 
 // supKey builds the map key for one host rule.
@@ -113,12 +123,20 @@ func (m *TunnelManager) dialHost(host domain.Host, creds domain.Credentials) (ch
 	if m.dialFn != nil {
 		return m.dialFn(host, creds)
 	}
-	client, err := Dial(ConnectOptions{
+	opts := ConnectOptions{
 		HostID:   host.ID,
 		Host:     host.Host,
 		Port:     host.Port,
 		Username: host.Username,
-	}, Auth{
+	}
+	if m.routes != nil {
+		route, err := m.routes.RouteFor(host)
+		if err != nil {
+			return nil, fmt.Errorf("resolve route: %w", err)
+		}
+		opts.Route = route
+	}
+	client, err := Dial(opts, Auth{
 		Password:      creds.Password,
 		KeyPath:       creds.KeyPath,
 		KeyPassphrase: creds.KeyPassphrase,

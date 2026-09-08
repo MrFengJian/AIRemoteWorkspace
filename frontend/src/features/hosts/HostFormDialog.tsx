@@ -25,9 +25,11 @@ import {
   type HostDTO,
   type HostInputDTO,
 } from "@/features/hosts/api";
+import { ProxyKind } from "@/../bindings/github.com/ai-remote/workspace/internal/domain";
 import {
   useCreateHost,
   useDeleteHost,
+  useHosts,
   useTestConnection,
   useUpdateHost,
   useOpenTerminal,
@@ -58,6 +60,7 @@ const EMPTY_INPUT: HostInputDTO = {
   group: "",
   tags: [],
   tunnels: [],
+  proxy: { kind: ProxyKind.ProxyNone },
 };
 
 const EMPTY_CREDS: CredentialsDTO = { password: "", keyPath: "", keyPassphrase: "", useAgent: false };
@@ -100,6 +103,10 @@ export function HostFormDialog() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [remember, setRemember] = useState(false);
   const [hasRemembered, setHasRemembered] = useState(false);
+  // Proxy auth password: write-only (vault); clearProxyPassword removes a
+  // stored one. Reset whenever the dialog target changes.
+  const [proxyPassword, setProxyPassword] = useState("");
+  const [clearProxyPassword, setClearProxyPassword] = useState(false);
 
   // Guards against duplicate submits: a form Enter-key submit + button click,
   // or a fast double-click, can both fire mutateAsync before isPending flips.
@@ -124,6 +131,7 @@ export function HostFormDialog() {
         group: existing.group || "",
         tags: existing.tags ?? [],
         tunnels: existing.tunnels ?? [],
+        proxy: existing.proxy ?? { kind: ProxyKind.ProxyNone },
       });
       // Check if a remembered secret already exists for this host.
       hostsApi
@@ -144,6 +152,8 @@ export function HostFormDialog() {
     setCreds(EMPTY_CREDS);
     setTestResult(null);
     setErrors({});
+    setProxyPassword("");
+    setClearProxyPassword(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, existing, editingTab]);
 
@@ -159,6 +169,15 @@ export function HostFormDialog() {
   };
   const updateCreds = (patch: Partial<CredentialsDTO>) =>
     setCreds((v) => ({ ...v, ...patch }));
+
+  // ── Proxy (跳板机 / HTTP / SOCKS5) helpers ──────────────────────────
+  const updateProxy = (patch: Partial<NonNullable<HostInputDTO["proxy"]>>) =>
+    update({ proxy: { ...(input.proxy ?? { kind: ProxyKind.ProxyNone }), ...patch } });
+
+  // Candidate jump hosts: every other managed host (a host cannot hop
+  // through itself).
+  const { data: jumpCandidates } = useHosts();
+  const jumpOptions = (jumpCandidates ?? []).filter((h) => h.id !== existing?.id);
 
   // ── Tunnel rule list helpers ────────────────────────────────────────
   const updateRule = (i: number, patch: Partial<TunnelConfig>) => {
@@ -188,6 +207,13 @@ export function HostFormDialog() {
     if (!input.username.trim()) errs.username = t("hostForm.errRequired");
     if (!Number.isInteger(input.port) || input.port < 1 || input.port > 65535) {
       errs.port = t("hostForm.errPort");
+    }
+    // Proxy: jump needs a host, http/socks5 need an address.
+    if (input.proxy?.kind === "jump" && !input.proxy.hostId) {
+      errs.proxyHost = t("hostForm.errRequired");
+    }
+    if ((input.proxy?.kind === "http" || input.proxy?.kind === "socks5") && !input.proxy.addr?.trim()) {
+      errs.proxyAddr = t("hostForm.errRequired");
     }
     // Tunnel rules only bind when the rule is enabled.
     const seenLocalPorts = new Set<number>();
@@ -265,8 +291,19 @@ export function HostFormDialog() {
         }
       }
       const saved = existing
-        ? await updateHost.mutateAsync({ id: existing.id, input })
-        : await createHost.mutateAsync(input);
+        ? await updateHost.mutateAsync({
+            id: existing.id,
+            input: {
+              ...input,
+              proxyPassword: proxyPassword || undefined,
+              clearProxyPassword,
+            },
+          })
+        : await createHost.mutateAsync({
+            ...input,
+            proxyPassword: proxyPassword || undefined,
+            clearProxyPassword,
+          });
       if (remember) {
         await persistRemembered(saved.id);
       } else if (existing) {
@@ -609,6 +646,109 @@ export function HostFormDialog() {
                   </div>
                 )}
               </div>
+
+              {/* Proxy sub-section: jump host (堡垒机) / HTTP / SOCKS5 */}
+              <div className="flex flex-col gap-3 rounded-[var(--radius)] border border-border bg-background/30 p-3">
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <Network className="h-3.5 w-3.5" /> {t("hostForm.proxy")}
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="proxyKind">{t("hostForm.proxyKind")}</Label>
+                  <Select
+                    id="proxyKind"
+                    value={input.proxy?.kind ?? ProxyKind.ProxyNone}
+                    onChange={(e) =>
+                      updateProxy({
+                        kind: e.target.value as ProxyKind,
+                      })
+                    }
+                  >
+                    <option value={ProxyKind.ProxyNone}>{t("hostForm.proxyNone")}</option>
+                    <option value="jump">{t("hostForm.proxyJump")}</option>
+                    <option value="http">{t("hostForm.proxyHttp")}</option>
+                    <option value="socks5">{t("hostForm.proxySocks5")}</option>
+                  </Select>
+                </div>
+
+                {input.proxy?.kind === "jump" && (
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="proxyHost">{t("hostForm.proxyJumpHost")}</Label>
+                    <Select
+                      id="proxyHost"
+                      value={input.proxy.hostId ?? ""}
+                      onChange={(e) => updateProxy({ hostId: e.target.value })}
+                      aria-invalid={!!errors.proxyHost}
+                    >
+                      <option value={ProxyKind.ProxyNone}>{t("hostForm.proxyJumpPlaceholder")}</option>
+                      {jumpOptions.map((h) => (
+                        <option key={h.id} value={h.id}>
+                          {h.name} ({h.host})
+                        </option>
+                      ))}
+                    </Select>
+                    {errors.proxyHost && <FieldError message={errors.proxyHost} />}
+                    <p className="text-[11px] text-muted-foreground">
+                      {t("hostForm.proxyJumpHint")}
+                    </p>
+                  </div>
+                )}
+
+                {(input.proxy?.kind === "http" || input.proxy?.kind === "socks5") && (
+                  <>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="proxyAddr">{t("hostForm.proxyAddr")}</Label>
+                      <Input
+                        id="proxyAddr"
+                        value={input.proxy.addr ?? ""}
+                        onChange={(e) => updateProxy({ addr: e.target.value })}
+                        placeholder="proxy.corp.local:8080"
+                        aria-invalid={!!errors.proxyAddr}
+                      />
+                      {errors.proxyAddr && <FieldError message={errors.proxyAddr} />}
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="proxyUser">{t("hostForm.proxyUser")}</Label>
+                        <Input
+                          id="proxyUser"
+                          value={input.proxy.username ?? ""}
+                          onChange={(e) => updateProxy({ username: e.target.value })}
+                          placeholder={t("hostForm.proxyAuthOptional")}
+                        />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="proxyPass">{t("hostForm.proxyPass")}</Label>
+                        <Input
+                          id="proxyPass"
+                          type="password"
+                          value={proxyPassword}
+                          onChange={(e) => setProxyPassword(e.target.value)}
+                          placeholder={t("hostForm.proxyPassPlaceholder")}
+                        />
+                      </div>
+                    </div>
+                    {existing && (
+                      <label className="flex cursor-pointer items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={clearProxyPassword}
+                          onCheckedChange={(v) => setClearProxyPassword(v === true)}
+                        />
+                        <span className="flex items-center gap-1.5">
+                          {t("hostForm.proxyClearPass")}
+                          <Badge variant="outline" className="text-[10px]">
+                            {t("hostForm.proxyVaultBadge")}
+                          </Badge>
+                        </span>
+                      </label>
+                    )}
+                  </>
+                )}
+                {input.proxy && input.proxy.kind !== ProxyKind.ProxyNone && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {t("hostForm.proxyHint")}
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -630,7 +770,7 @@ export function HostFormDialog() {
                     onChange={(e) => update({ terminalTheme: e.target.value })}
                     className="min-w-0 flex-1"
                   >
-                    <option value="">{t("hostForm.schemeDefault")}</option>
+                    <option value={ProxyKind.ProxyNone}>{t("hostForm.schemeDefault")}</option>
                     {TERMINAL_THEMES.map((th) => (
                       <option key={th.id} value={th.id}>
                         {th.label}

@@ -116,6 +116,11 @@ export interface HostDTO {
      * SSH tunnel rules (host settings form; several allowed per host).
      */
     "tunnels": domain$0.TunnelConfig[] | null;
+
+    /**
+     * Pre-SSH reachability (jump host / HTTP / SOCKS5); nil = direct.
+     */
+    "proxy"?: domain$0.ProxyConfig | null;
 }
 
 /**
@@ -134,6 +139,20 @@ export interface HostInputDTO {
     "group": string;
     "tags": string[] | null;
     "tunnels": domain$0.TunnelConfig[] | null;
+
+    /**
+     * Proxy: nil means "keep the stored proxy untouched" so callers that
+     * build partial inputs (appearance dialog) never wipe it; the host form
+     * always sends an explicit value — a zero-kind config clears it.
+     */
+    "proxy"?: domain$0.ProxyConfig | null;
+
+    /**
+     * ProxyPassword is write-only: non-empty stores it in the OS vault
+     * (proxy auth). ClearProxyPassword removes a stored one.
+     */
+    "proxyPassword"?: string;
+    "clearProxyPassword"?: boolean;
 }
 
 /**

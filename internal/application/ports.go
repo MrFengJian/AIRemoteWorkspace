@@ -67,6 +67,16 @@ type SessionEvents interface {
 	OnReconnecting(sessionID string, attempt int)
 }
 
+// SshRouteResolver resolves how to reach a host BEFORE its SSH handshake:
+// directly, through a jump-host chain (堡垒机), or through an HTTP/SOCKS5
+// proxy. Implemented by ProxyService; injected into the SSH connection
+// layer. A nil resolver (or nil route) means direct connections everywhere.
+type SshRouteResolver interface {
+	// RouteFor returns the resolved route plan for host, or nil when the
+	// host connects directly.
+	RouteFor(host domain.Host) (*domain.SshRoute, error)
+}
+
 // ConnectionManager owns live SSH connections and their PTY sessions.
 type ConnectionManager interface {
 	// OpenSession dials the host, authenticates, and starts an interactive

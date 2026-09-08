@@ -52,6 +52,10 @@ type CreateHostInput struct {
 	Group            string // host group (test/stage/production/custom)
 	Tags             []string
 	Tunnels          []domain.TunnelConfig // SSH tunnel rules (host settings)
+	// Proxy is the pre-SSH route (jump host / HTTP / SOCKS5). Nil means
+	// "keep the stored proxy" on Update (partial-input callers like the
+	// appearance dialog never wipe it); a zero-kind config clears it.
+	Proxy *domain.ProxyConfig
 }
 
 // Create validates and persists a new host, returning the stored Host with its
@@ -78,6 +82,7 @@ func (s *HostService) Create(in CreateHostInput) (domain.Host, error) {
 		Group:            in.Group,
 		Tags:             in.Tags,
 		Tunnels:          in.Tunnels,
+		Proxy:            normalizeProxy(in.Proxy, ""),
 	}
 	if err := s.repo.Save(h); err != nil {
 		return domain.Host{}, err
@@ -110,10 +115,52 @@ func (s *HostService) Update(id string, in CreateHostInput) (domain.Host, error)
 	existing.Group = in.Group
 	existing.Tags = in.Tags
 	existing.Tunnels = in.Tunnels
+	if in.Proxy != nil {
+		existing.Proxy = normalizeProxy(in.Proxy, id)
+	}
 	if err := s.repo.Save(existing); err != nil {
 		return domain.Host{}, err
 	}
 	return existing, nil
+}
+
+// normalizeProxy validates and canonicalizes a proxy config: a zero-kind
+// config means "no proxy" (nil); a jump config must name a hop other than
+// the host itself; http/socks5 must carry an address. selfID is "" on create.
+func normalizeProxy(p *domain.ProxyConfig, selfID string) *domain.ProxyConfig {
+	if p == nil || !p.HasTransport() {
+		return nil
+	}
+	switch p.Kind {
+	case domain.ProxyJump:
+		if p.HostID == "" {
+			return nil
+		}
+		if selfID != "" && p.HostID == selfID {
+			return nil // a host cannot jump through itself
+		}
+	case domain.ProxyHTTP, domain.ProxySocks5:
+		if p.Addr == "" {
+			return nil
+		}
+	}
+	return p
+}
+
+// ApplyProxySecret stores or clears the host's proxy password in the OS
+// vault (proxy auth for HTTP/SOCKS5). Empty password + no clear flag means
+// "unchanged" — the form only sends a value when the user typed one.
+func (s *HostService) ApplyProxySecret(hostID, password string, clear bool) error {
+	if s.secrets == nil {
+		return nil
+	}
+	if clear {
+		return s.secrets.DeleteHostSecret(hostID, SecretProxyPassword)
+	}
+	if password == "" {
+		return nil
+	}
+	return s.secrets.SaveHostSecret(hostID, SecretProxyPassword, []byte(password))
 }
 
 // Delete removes a host by id and clears any remembered secrets for it

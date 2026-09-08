@@ -452,6 +452,65 @@ export enum Permission {
 };
 
 /**
+ * ProxyConfig is the host's pre-SSH reachability setting (host edit form,
+ * 连接 tab). Exactly one branch is meaningful per Kind:
+ * 
+ * 	jump   → HostID (the managed host to hop through)
+ * 	http   → Addr (+ optional Username / vault password)
+ * 	socks5 → Addr (+ optional Username / vault password)
+ */
+export interface ProxyConfig {
+    "kind": ProxyKind;
+
+    /**
+     * HostID names the managed host used as the jump box (jump kind only).
+     * The jump box's own Proxy config, if any, is applied recursively.
+     */
+    "hostId"?: string;
+
+    /**
+     * Addr is the proxy address "host:port" (http / socks5 kinds).
+     */
+    "addr"?: string;
+
+    /**
+     * Username for authenticated proxies (http / socks5 kinds). The matching
+     * password lives in the OS vault under SecretProxyPassword, never here.
+     */
+    "username"?: string;
+}
+
+/**
+ * ProxyKind enumerates the ways a host can be reached before SSH.
+ */
+export enum ProxyKind {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * direct connection (default)
+     */
+    ProxyNone = "",
+
+    /**
+     * via another managed host (SSH 跳板)
+     */
+    ProxyJump = "jump",
+
+    /**
+     * via an HTTP CONNECT proxy
+     */
+    ProxyHTTP = "http",
+
+    /**
+     * via a SOCKS5 proxy
+     */
+    ProxySocks5 = "socks5",
+};
+
+/**
  * QuickCommand is one entry in the terminal quick command bar: a named
  * script the user can send to one or many open sessions with a single
  * click. Line breaks inside Command are delivered as carriage returns, so

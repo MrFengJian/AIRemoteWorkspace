@@ -23,6 +23,8 @@ import (
 // normally while the link is healthy is NOT reconnected.
 type Manager struct {
 	keyStore HostKeyStore // for host-key verification
+	// routes (may be nil = everything direct) resolves jump/proxy paths.
+	routes application.SshRouteResolver
 
 	mu       sync.Mutex
 	sessions map[string]*managedSession
@@ -71,6 +73,21 @@ func NewManager(keyStore HostKeyStore) *Manager {
 // Compile-time interface check.
 var _ application.ConnectionManager = (*Manager)(nil)
 
+// SetRouteResolver wires the jump/proxy resolver (ProxyService). Dials made
+// before it is set — and hosts without a proxy config — connect directly.
+// Write-once at startup, before any session opens; no locking needed.
+func (m *Manager) SetRouteResolver(r application.SshRouteResolver) {
+	m.routes = r
+}
+
+// routeFor resolves the route for host (nil resolver → direct).
+func (m *Manager) routeFor(host domain.Host) (*domain.SshRoute, error) {
+	if m.routes == nil {
+		return nil, nil
+	}
+	return m.routes.RouteFor(host)
+}
+
 // OpenSession dials, authenticates, and starts a PTY shell.
 func (m *Manager) OpenSession(
 	ctx context.Context,
@@ -92,6 +109,13 @@ func (m *Manager) OpenSession(
 		Port:     host.Port,
 		Username: host.Username,
 	}
+	// Resolve the jump/proxy route before dialing — a broken route (missing
+	// jump host, loop, …) fails the open with a clear error.
+	route, err := m.routeFor(host)
+	if err != nil {
+		return "", fmt.Errorf("open session: %w", err)
+	}
+	opts.Route = route
 
 	// The session id is assigned before dialing so progress events can be
 	// attributed to this session from the very first stage.
@@ -218,14 +242,20 @@ func (m *Manager) watchSession(ms *managedSession, pty *PtySession) {
 
 // redial opens a fresh connection for the session's host with its resolved
 // credentials. No progress callbacks — the UI sees reconnecting events
-// instead.
+// instead. The route is re-resolved so proxy/jump edits made mid-session
+// apply to the replacement connection.
 func (m *Manager) redial(ms *managedSession) (*Client, error) {
 	creds := ms.snapshotCreds()
+	route, err := m.routeFor(ms.host)
+	if err != nil {
+		return nil, err
+	}
 	return Dial(ConnectOptions{
 		HostID:   ms.host.ID,
 		Host:     ms.host.Host,
 		Port:     ms.host.Port,
 		Username: ms.host.Username,
+		Route:    route,
 	}, Auth{
 		Password:      creds.Password,
 		KeyPath:       creds.KeyPath,

@@ -610,6 +610,7 @@ export function TerminalPanel({
           group: host.group ?? "",
           tags: host.tags ?? [],
           tunnels: host.tunnels ?? [],
+          proxy: host.proxy ?? undefined,
         },
       },
       {
