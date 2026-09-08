@@ -65,7 +65,12 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
     };
   }, [onClose]);
 
-  const renderItems = (list: MenuItem[]) =>
+  // renderItems renders one menu level. inSubmenu marks items living inside
+  // a nested submenu: hovering those must NOT clear the submenu state — only
+  // hovering a PARENT-level plain item closes/replaces it (otherwise moving
+  // the mouse onto a plain submenu item instantly unmounts the submenu it
+  // belongs to).
+  const renderItems = (list: MenuItem[], inSubmenu = false) =>
     list.map((item, i) => {
       if (item.type === "separator") {
         return <div key={i} className="my-1 h-px bg-border" />;
@@ -79,8 +84,16 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
           onMouseEnter={(e) => {
             if (item.children?.length) {
               const rect = e.currentTarget.getBoundingClientRect();
-              setSub({ items: item.children, x: rect.right + 4, y: rect.top });
-            } else {
+              // Open to the right when there is room; flip to the left when
+              // the viewport edge would clamp the submenu back on top of the
+              // parent menu (overlapping it makes the submenu unclosable-by-
+              // navigation and instantly closed by parent-item hovers).
+              let sx = rect.right + 4;
+              if (sx + 180 > window.innerWidth) {
+                sx = Math.max(4, rect.left - 184);
+              }
+              setSub({ items: item.children, x: sx, y: rect.top });
+            } else if (!inSubmenu) {
               setSub(null);
             }
           }}
@@ -138,7 +151,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
           onMouseLeave={() => setSub(null)}
           onContextMenu={(e) => e.preventDefault()}
         >
-          {renderItems(sub.items)}
+          {renderItems(sub.items, true)}
         </div>
       )}
     </div>
