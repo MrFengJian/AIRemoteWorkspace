@@ -11,7 +11,7 @@ export interface TerminalSession {
    *  host) — backend session ids carry the "local-" prefix. */
   hostID: string;
   hostName: string;
-  status: "connecting" | "connected" | "closed" | "error";
+  status: "connecting" | "connected" | "reconnecting" | "closed" | "error";
   /** Per-host terminal colour scheme id (from the host config). "" = default. */
   terminalTheme: string;
   /** Per-host terminal font overrides. "" / 0 = follow the global settings. */

@@ -24,9 +24,14 @@ import {
   Rows2,
   Palette,
   ImageUp,
+  ScrollText,
+  Circle,
+  Square,
+  FolderOpen,
 } from "lucide-react";
 
 import { TerminalService, SystemService, SftpService, ConfigService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
+import type { SessionLogInfoDTO } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces/models";
 import {
   useTerminalStore,
   isLocalSession,
@@ -100,6 +105,9 @@ export function TerminalPanel({
   // Staged multi-line paste: shown for review in PasteConfirmDialog before
   // anything is written to the session.
   const [pasteDraft, setPasteDraft] = useState<string | null>(null);
+  // Session recording state, refreshed whenever the context menu opens so
+  // the log submenu shows the live checkmark and file path.
+  const [logInfo, setLogInfo] = useState<SessionLogInfoDTO | null>(null);
   // Live font zoom for this pane (Ctrl+= / Ctrl+- shortcuts). Applied on top
   // of the session's base size; the appearance dialog writes absolute sizes
   // into the session snapshot and resets this to 0, so the two stay in sync.
@@ -227,6 +235,9 @@ export function TerminalPanel({
       e.preventDefault();
       e.stopPropagation();
       setHasSelection(term.hasSelection());
+      TerminalService.GetSessionLog(session.id)
+        .then(setLogInfo)
+        .catch(() => setLogInfo(null));
       setMenu({ x: e.clientX, y: e.clientY });
     };
     container.addEventListener("contextmenu", onContext);
@@ -252,6 +263,9 @@ export function TerminalPanel({
           return;
         case "contextMenu":
           setHasSelection(term.hasSelection());
+          TerminalService.GetSessionLog(session.id)
+            .then(setLogInfo)
+            .catch(() => setLogInfo(null));
           setMenu({ x: e.clientX, y: e.clientY });
           return;
       }
@@ -319,6 +333,20 @@ export function TerminalPanel({
       }
     });
 
+    // Session auto-reconnect (backend-driven, same session id): each attempt
+    // prints a notice line locally (never sent to the PTY / session log) and
+    // flips the tab status dot; attempt 0 means the link is back.
+    const reconnectCancel = Events.On(`term:${session.id}:reconnecting`, (event: unknown) => {
+      const attempt = (event as { attempt?: number }).attempt ?? 0;
+      if (attempt > 0) {
+        setSessionStatus(tabId, "reconnecting");
+        term.write(`\r\n\x1b[2;33m[${t("terminal.reconnectingLine", { n: attempt })}]\x1b[0m\r\n`);
+      } else {
+        setSessionStatus(tabId, "connected");
+        term.write(`\x1b[2;32m[${t("terminal.reconnectedLine")}]\x1b[0m\r\n`);
+      }
+    });
+
     const exitCancel = Events.On(`term:${session.id}:exit`, (event: unknown) => {
       const data = (event as { data?: unknown }).data;
       const reason = typeof data === "string" ? data : "";
@@ -347,6 +375,7 @@ export function TerminalPanel({
       container.removeEventListener("mousedown", onMiddleDown);
       container.removeEventListener("paste", onPasteCapture, true);
       if (typeof outCancel === "function") outCancel();
+      if (typeof reconnectCancel === "function") reconnectCancel();
       if (typeof exitCancel === "function") exitCancel();
       ro.disconnect();
       search.dispose();
@@ -517,6 +546,28 @@ export function TerminalPanel({
   };
 
   const handleClear = () => termRef.current?.clear();
+
+  /**
+   * Toggle session recording (Phase 8 会话日志): the backend tees every PTY
+   * chunk into <数据目录>/logs/<host>/<timestamp>-<session>.log until the
+   * session closes or recording is stopped. The path is toasted so the user
+   * knows exactly where the log landed.
+   */
+  const toggleSessionLog = async () => {
+    try {
+      if (logInfo?.enabled) {
+        const info = await TerminalService.StopSessionLog(session.id);
+        setLogInfo(info);
+        toast.info(t("termMenu.logStopped", { path: info.path }));
+      } else {
+        const info = await TerminalService.StartSessionLog(session.id, session.hostName);
+        setLogInfo(info);
+        toast.success(t("termMenu.logStarted", { path: info.path }));
+      }
+    } catch (e) {
+      toast.error(`${t("termMenu.logFailed")}: ${errorMessage(e)}`);
+    }
+  };
 
   /**
    * Persist an appearance change made in this pane so the NEXT session on the
@@ -718,6 +769,27 @@ export function TerminalPanel({
         onClick: handleClear,
       },
       { type: "separator" },
+      {
+        label: t("termMenu.log"),
+        icon: ScrollText,
+        children: [
+          {
+            label: logInfo?.enabled ? t("termMenu.logStop") : t("termMenu.logStart"),
+            icon: logInfo?.enabled ? Square : Circle,
+            checked: logInfo?.enabled,
+            onClick: () => void toggleSessionLog(),
+          },
+          {
+            label: t("termMenu.logOpenDir"),
+            icon: FolderOpen,
+            onClick: () => {
+              TerminalService.OpenSessionLogDir().catch((e) => {
+                toast.error(`${t("termMenu.logFailed")}: ${errorMessage(e)}`);
+              });
+            },
+          },
+        ],
+      },
       {
         label: t("termMenu.terminalAppearance"),
         icon: Palette,

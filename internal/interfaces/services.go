@@ -96,6 +96,12 @@ func (s *SystemService) OpenDataDir() error {
 	if _, err := os.Stat(dir); err != nil {
 		return fmt.Errorf("data directory %q: %w", dir, err)
 	}
+	return openInFileBrowser(dir)
+}
+
+// openInFileBrowser reveals a directory in the OS file browser. Shared by the
+// data-dir and session-log entries.
+func openInFileBrowser(dir string) error {
 	switch runtime.GOOS {
 	case "windows":
 		// explorer returns a non-zero exit code even on success — ignore it.

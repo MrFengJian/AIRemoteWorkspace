@@ -179,6 +179,8 @@ export const en = {
     emptyHint: "Pick a host on the left, or start a local terminal.",
     sessionClosed: "Session closed — dismiss",
     sessionExited: "[session exited]",
+    reconnectingLine: "Connection lost — auto-reconnecting (attempt {{n}})…",
+    reconnectedLine: "Reconnected.",
     pasteMultiTitle: "Confirm multi-line paste",
     pasteMultiDesc: "The content below is {{n}} lines; pasting sends {{n}} line breaks to the terminal and multiple commands may run immediately. Please review it:",
     pasteMultiConfirm: "Paste",
@@ -642,6 +644,13 @@ export const en = {
     uploadImage: "Upload clipboard image",
     imageUploaded: "Image saved to {{path}}",
     noClipboardImage: "No image in the clipboard.",
+    log: "Session Log",
+    logStart: "Start Recording",
+    logStop: "Stop Recording",
+    logOpenDir: "Open Log Directory",
+    logStarted: "Recording session log: {{path}}",
+    logStopped: "Session log stopped: {{path}}",
+    logFailed: "Session log operation failed",
   },
 
   // ── Host monitor panel ───────────────────────────────────────

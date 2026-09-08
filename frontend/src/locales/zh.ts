@@ -179,6 +179,8 @@ export const zh = {
     emptyHint: "从左侧选择主机，或打开一个本地终端。",
     sessionClosed: "会话已关闭 — 关闭",
     sessionExited: "[会话已退出]",
+    reconnectingLine: "连接已断开，正在自动重连（第 {{n}} 次）…",
+    reconnectedLine: "已重新连接。",
     pasteMultiTitle: "多行粘贴确认",
     pasteMultiDesc: "以下内容共 {{n}} 行，粘贴后将以 {{n}} 个换行符发送到终端，多条命令可能立即执行。请确认内容：",
     pasteMultiConfirm: "粘贴",
@@ -634,6 +636,13 @@ export const zh = {
     uploadImage: "上传剪贴板图片",
     imageUploaded: "图片已保存到 {{path}}",
     noClipboardImage: "剪贴板中没有图片。",
+    log: "日志",
+    logStart: "开始记录",
+    logStop: "停止记录",
+    logOpenDir: "打开日志目录",
+    logStarted: "会话日志开始记录：{{path}}",
+    logStopped: "会话日志已停止：{{path}}",
+    logFailed: "会话日志操作失败",
   },
 
   // ── 主机监控面板 ──────────────────────────────────────────────

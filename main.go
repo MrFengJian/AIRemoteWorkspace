@@ -171,7 +171,8 @@ func main() {
 	}
 	hostService := interfaces.NewHostService(hostSvc, tunnelMgr)
 	localPtyMgr := localpty.NewManager()
-	terminalService := interfaces.NewTerminalService(hostSvc, connManager, localPtyMgr, tunnelMgr)
+	sessionLogSvc := application.NewSessionLogService(dataDirSvc)
+	terminalService := interfaces.NewTerminalService(hostSvc, connManager, localPtyMgr, tunnelMgr, sessionLogSvc)
 	tunnelService := interfaces.NewTunnelService(tunnelMgr, hostSvc)
 	monitorService := interfaces.NewMonitorService(monitorSvc)
 	dockerService := interfaces.NewDockerService(dockerSvc)

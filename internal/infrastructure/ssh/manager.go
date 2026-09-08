@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -16,6 +17,10 @@ import (
 //
 // Each OpenSession dials a fresh *Client (one connection per session for now —
 // simple and matches how users expect independent terminal tabs to behave).
+// When a session's connection dies, the manager auto-reconnects it IN PLACE —
+// same session id, fresh client + PTY — with exponential backoff, so the
+// frontend tab (and its scrollback) survives the drop. A shell that exits
+// normally while the link is healthy is NOT reconnected.
 type Manager struct {
 	keyStore HostKeyStore // for host-key verification
 
@@ -23,11 +28,33 @@ type Manager struct {
 	sessions map[string]*managedSession
 }
 
+// Session auto-reconnect tuning (Phase 8): exponential backoff between
+// redials, capped, with a hard attempt limit after which the session is
+// reported dead to the frontend.
+const (
+	reconnectBase     = 2 * time.Second
+	reconnectMax      = 30 * time.Second
+	reconnectAttempts = 10
+)
+
 type managedSession struct {
+	mu     sync.Mutex
 	id     string
 	client *Client
 	pty    *PtySession
 	host   domain.Host
+	// Everything the auto-reconnect needs: resolved credentials (session
+	// lifetime, same scope as the connection itself), the event sink, the
+	// output handler, and the latest PTY size to apply on redial.
+	creds    domain.Credentials
+	events   application.SessionEvents
+	onOutput OutputHandler
+	cols     int
+	rows     int
+	// closing marks a user-initiated close: the watcher must not reconnect.
+	// stopCh aborts an in-flight backoff sleep immediately.
+	closing bool
+	stopCh  chan struct{}
 }
 
 // ErrSessionNotFound is returned when a session id is unknown to the manager.
@@ -97,29 +124,196 @@ func (m *Manager) OpenSession(
 	}
 
 	ms := &managedSession{
-		id:     sessionID,
-		client: client,
-		pty:    pty,
-		host:   host,
+		id:       sessionID,
+		client:   client,
+		pty:      pty,
+		host:     host,
+		creds:    creds,
+		events:   events,
+		onOutput: onOutput,
+		cols:     cols,
+		rows:     rows,
+		stopCh:   make(chan struct{}),
 	}
 
 	m.mu.Lock()
 	m.sessions[sessionID] = ms
 	m.mu.Unlock()
 
-	// Watch the session lifecycle: when Wait returns, emit OnExit and clean up.
-	go func() {
-		waitErr := pty.Wait()
-		if events != nil {
-			events.OnExit(sessionID, waitErr)
-		}
-		m.removeSession(sessionID)
-	}()
+	// Watch the session lifecycle: on connection death, auto-reconnect in
+	// place; on normal shell exit or give-up, emit OnExit and clean up.
+	go m.watchSession(ms, pty)
 
 	return sessionID, nil
 }
 
-// WriteStdin forwards input bytes to a session's PTY.
+// watchSession owns one PTY's lifecycle. When Wait returns it decides between
+// three endings: user-closed (no reconnect), normal shell exit while the link
+// is healthy (no reconnect), or a dead link (auto-reconnect with backoff —
+// same session id, fresh client + PTY; the frontend tab never notices beyond
+// the reconnecting events).
+func (m *Manager) watchSession(ms *managedSession, pty *PtySession) {
+	waitErr := pty.Wait()
+
+	if ms.isClosing() {
+		m.finishSession(ms, waitErr)
+		return
+	}
+	// Healthy link + exited shell = the user (or remote admin) ended the
+	// session on purpose; reconnecting would fight them.
+	if ms.currentClient().Alive() {
+		m.finishSession(ms, waitErr)
+		return
+	}
+
+	lastErr := waitErr
+	backoff := reconnectBase
+	for attempt := 1; attempt <= reconnectAttempts; attempt++ {
+		if ms.isClosing() {
+			m.finishSession(ms, waitErr)
+			return
+		}
+		if ms.events != nil {
+			ms.events.OnReconnecting(ms.id, attempt)
+		}
+		select {
+		case <-ms.stopCh:
+			m.finishSession(ms, waitErr)
+			return
+		case <-time.After(backoff):
+		}
+		if ms.isClosing() {
+			m.finishSession(ms, waitErr)
+			return
+		}
+
+		client, err := m.redial(ms)
+		if err != nil {
+			lastErr = err
+			backoff = min(backoff*2, reconnectMax)
+			continue
+		}
+		cols, rows := ms.snapshotSize()
+		newPty, err := NewPtySession(client, cols, rows, ms.snapshotOutput())
+		if err != nil {
+			_ = client.Close()
+			lastErr = err
+			backoff = min(backoff*2, reconnectMax)
+			continue
+		}
+		// Success: swap client + PTY in place and watch the new pair. The
+		// stream resumes on the same session id; attempt 0 signals success.
+		m.swapSession(ms, client, newPty)
+		if ms.events != nil {
+			ms.events.OnReconnecting(ms.id, 0)
+		}
+		go m.watchSession(ms, newPty)
+		return
+	}
+
+	// Attempts exhausted — surface the last error through the normal exit
+	// path (the frontend marks the tab as failed, manual reconnect remains).
+	m.finishSession(ms, lastErr)
+}
+
+// redial opens a fresh connection for the session's host with its resolved
+// credentials. No progress callbacks — the UI sees reconnecting events
+// instead.
+func (m *Manager) redial(ms *managedSession) (*Client, error) {
+	creds := ms.snapshotCreds()
+	return Dial(ConnectOptions{
+		HostID:   ms.host.ID,
+		Host:     ms.host.Host,
+		Port:     ms.host.Port,
+		Username: ms.host.Username,
+	}, Auth{
+		Password:      creds.Password,
+		KeyPath:       creds.KeyPath,
+		KeyPassphrase: creds.KeyPassphrase,
+		UseAgent:      creds.UseAgent,
+	}, m.keyStore)
+}
+
+// ── managedSession accessors (all state guarded by ms.mu) ───────────────
+
+func (ms *managedSession) isClosing() bool {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	return ms.closing
+}
+
+func (ms *managedSession) markClosing() {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if !ms.closing {
+		ms.closing = true
+		close(ms.stopCh)
+	}
+}
+
+func (ms *managedSession) currentClient() *Client {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	return ms.client
+}
+
+func (ms *managedSession) snapshotCreds() domain.Credentials {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	return ms.creds
+}
+
+func (ms *managedSession) snapshotOutput() OutputHandler {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	return ms.onOutput
+}
+
+// snapshotSize returns the latest requested PTY size — kept across a
+// reconnect gap so the replacement PTY opens with the right dimensions.
+func (ms *managedSession) snapshotSize() (cols, rows int) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	return ms.cols, ms.rows
+}
+
+func (ms *managedSession) setSize(cols, rows int) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	ms.cols, ms.rows = cols, rows
+}
+
+// swapSession replaces a session's client + PTY after a successful redial.
+func (m *Manager) swapSession(ms *managedSession, client *Client, pty *PtySession) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	_ = ms.client.Close() // the old link is dead regardless
+	ms.client = client
+	ms.pty = pty
+}
+
+// finishSession is the single exit path: report to the frontend, drop the
+// session from the manager.
+func (m *Manager) finishSession(ms *managedSession, waitErr error) {
+	if ms.events != nil {
+		ms.events.OnExit(ms.id, waitErr)
+	}
+	m.removeSession(ms.id)
+}
+
+// reconnectBackoff returns the sleep before the given attempt (1-based).
+// Pure helper so the escalation stays unit-testable.
+func reconnectBackoff(attempt int) time.Duration {
+	d := reconnectBase
+	for i := 1; i < attempt; i++ {
+		d = min(d*2, reconnectMax)
+	}
+	return d
+}
+
+// WriteStdin forwards input bytes to a session's PTY. Keystrokes typed
+// during a reconnect gap are dropped (the shell they belonged to is gone) —
+// the error surfaces as ErrPtyClosed, which callers treat as transient.
 func (m *Manager) WriteStdin(sessionID string, data []byte) error {
 	ms, ok := m.session(sessionID)
 	if !ok {
@@ -128,23 +322,34 @@ func (m *Manager) WriteStdin(sessionID string, data []byte) error {
 	return ms.pty.WriteStdin(data)
 }
 
-// Resize updates a session's PTY dimensions.
+// Resize updates a session's PTY dimensions. The size is ALWAYS remembered —
+// a resize landing in a reconnect gap is applied to the replacement PTY.
 func (m *Manager) Resize(sessionID string, cols, rows int) error {
 	ms, ok := m.session(sessionID)
 	if !ok {
 		return errSessionNotFound(sessionID)
 	}
-	return ms.pty.Resize(cols, rows)
+	ms.setSize(cols, rows)
+	if err := ms.pty.Resize(cols, rows); err != nil {
+		if errors.Is(err, ErrPtyClosed) {
+			return nil // mid-reconnect; applied on the fresh PTY
+		}
+		return err
+	}
+	return nil
 }
 
-// Close ends a session, its PTY, and the underlying SSH client.
+// Close ends a session, its PTY, and the underlying SSH client. Marks the
+// session as user-closed FIRST so the lifecycle watcher does not treat the
+// teardown as a dropped link and try to reconnect.
 func (m *Manager) Close(sessionID string) error {
 	ms, ok := m.session(sessionID)
 	if !ok {
 		return errSessionNotFound(sessionID)
 	}
+	ms.markClosing()
 	_ = ms.pty.Close()
-	err := ms.client.Close()
+	err := ms.currentClient().Close()
 	m.removeSession(sessionID)
 	return err
 }
@@ -165,7 +370,7 @@ func (m *Manager) ExecInSessionCtx(ctx context.Context, sessionID, cmd string) (
 	if !ok {
 		return "", errSessionNotFound(sessionID)
 	}
-	sess, err := ms.client.NewSession()
+	sess, err := ms.currentClient().NewSession()
 	if err != nil {
 		return "", fmt.Errorf("new exec session: %w", err)
 	}

@@ -662,6 +662,7 @@ export function TerminalView() {
                 "h-1.5 w-1.5 shrink-0 rounded-full",
                 sess.status === "connected" && "bg-success",
                 sess.status === "connecting" && "bg-warning",
+                sess.status === "reconnecting" && "bg-warning animate-pulse",
                 sess.status === "closed" && "bg-muted-foreground",
                 sess.status === "error" && "bg-destructive",
               )}

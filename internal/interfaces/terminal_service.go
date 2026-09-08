@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 
 	wailsapp "github.com/wailsapp/wails/v3/pkg/application"
@@ -56,6 +57,7 @@ type TerminalService struct {
 	connManager appsvc.ConnectionManager
 	localMgr    *localpty.Manager
 	tunnels     *ssh.TunnelManager
+	logs        *appsvc.SessionLogService
 
 	mu sync.Mutex
 }
@@ -63,8 +65,9 @@ type TerminalService struct {
 // NewTerminalService wires the TerminalService. The *Application is injected
 // via ServiceStartup (Wails constructs the app after services are registered).
 // tunnels (may be nil) hosts the per-host SSH tunnels a session auto-starts.
-func NewTerminalService(hostSvc *appsvc.HostService, connManager appsvc.ConnectionManager, localMgr *localpty.Manager, tunnels *ssh.TunnelManager) *TerminalService {
-	return &TerminalService{hostSvc: hostSvc, connManager: connManager, localMgr: localMgr, tunnels: tunnels}
+// logs (may be nil) records session output to disk when the user enables it.
+func NewTerminalService(hostSvc *appsvc.HostService, connManager appsvc.ConnectionManager, localMgr *localpty.Manager, tunnels *ssh.TunnelManager, logs *appsvc.SessionLogService) *TerminalService {
+	return &TerminalService{hostSvc: hostSvc, connManager: connManager, localMgr: localMgr, tunnels: tunnels, logs: logs}
 }
 
 // ServiceName lets Wails register the service under a stable name.
@@ -92,7 +95,7 @@ func (t *TerminalService) ServiceShutdown() error {
 // streamed over the per-session "term:<id>:out" event; termination over
 // "term:<id>:exit".
 func (t *TerminalService) OpenSession(req OpenSessionRequest) (OpenSessionResult, error) {
-	events := &terminalEvents{app: t.app, connectID: req.ConnectID}
+	events := &terminalEvents{app: t.app, connectID: req.ConnectID, logs: t.logs}
 
 	host, err := t.hostSvc.Get(req.HostID)
 	if err != nil {
@@ -138,7 +141,7 @@ func (t *TerminalService) OpenSession(req OpenSessionRequest) (OpenSessionResult
 // local PTY (Windows: PowerShell/cmd via ConPTY; Unix: the login shell via
 // openpty). Same event contract as OpenSession.
 func (t *TerminalService) OpenLocalSession(size PtySizeDTO) (OpenSessionResult, error) {
-	events := &terminalEvents{app: t.app}
+	events := &terminalEvents{app: t.app, logs: t.logs}
 	sessionID, err := t.localMgr.Open(size.Cols, size.Rows, events)
 	if err != nil {
 		return OpenSessionResult{}, err
@@ -184,6 +187,11 @@ func (t *TerminalService) ResizeSession(sessionID string, size PtySizeDTO) error
 
 // CloseSession ends a session and frees its resources (local or SSH).
 func (t *TerminalService) CloseSession(sessionID string) error {
+	// Close an active session log up front — the session's exit event also
+	// stops it, but the tab-close path is the deterministic one for UI calls.
+	if t.logs != nil {
+		t.logs.Stop(sessionID)
+	}
 	var err error
 	if localpty.IsLocal(sessionID) {
 		err = t.localMgr.Close(sessionID)
@@ -206,9 +214,12 @@ func (t *TerminalService) CloseSession(sessionID string) error {
 // before the pumps start), so no per-session state is held here. Connection
 // progress stages additionally go out under "terminal:connect" tagged with
 // the request's ConnectID so the UI can correlate them with the opening call.
+// logs (may be nil) receives every output chunk for sessions the user is
+// recording, and is closed out on exit.
 type terminalEvents struct {
 	app       *wailsapp.App
 	connectID string
+	logs      *appsvc.SessionLogService
 }
 
 // terminalConnectEvent is the payload of the "terminal:connect" progress
@@ -229,6 +240,9 @@ func (te *terminalEvents) OnProgress(_, stage string) {
 }
 
 func (te *terminalEvents) OnData(sessionID string, data []byte) {
+	if te.logs != nil {
+		te.logs.Write(sessionID, data) // best-effort session logging; never fails the pump
+	}
 	if te.app == nil {
 		return
 	}
@@ -236,7 +250,19 @@ func (te *terminalEvents) OnData(sessionID string, data []byte) {
 	te.app.Event.Emit(fmt.Sprintf("term:%s:out", sessionID), encoded)
 }
 
+// OnReconnecting forwards session auto-reconnect progress onto
+// "term:<id>:reconnecting": attempt >= 1 before each redial, 0 on success.
+func (te *terminalEvents) OnReconnecting(sessionID string, attempt int) {
+	if te.app == nil {
+		return
+	}
+	te.app.Event.Emit(fmt.Sprintf("term:%s:reconnecting", sessionID), map[string]int{"attempt": attempt})
+}
+
 func (te *terminalEvents) OnExit(sessionID string, exitErr error) {
+	if te.logs != nil {
+		te.logs.Stop(sessionID) // close the log file — the session is over
+	}
 	if te.app == nil {
 		return
 	}
@@ -245,4 +271,56 @@ func (te *terminalEvents) OnExit(sessionID string, exitErr error) {
 		msg = exitErr.Error()
 	}
 	te.app.Event.Emit(fmt.Sprintf("term:%s:exit", sessionID), msg)
+}
+
+// ── Session logging (Phase 8 会话日志) ------------------------------------
+
+// SessionLogInfoDTO reports whether a session is being recorded and where.
+type SessionLogInfoDTO struct {
+	Enabled bool   `json:"enabled"`
+	Path    string `json:"path"`
+}
+
+// StartSessionLog begins recording the session's output to
+// <数据目录>/logs/<主机>/<时间>-<会话>.log and returns the file info.
+func (t *TerminalService) StartSessionLog(sessionID, hostName string) (SessionLogInfoDTO, error) {
+	if t.logs == nil {
+		return SessionLogInfoDTO{}, fmt.Errorf("session log service not available")
+	}
+	info, err := t.logs.Start(sessionID, hostName)
+	if err != nil {
+		return SessionLogInfoDTO{}, err
+	}
+	return SessionLogInfoDTO{Enabled: info.Enabled, Path: info.Path}, nil
+}
+
+// StopSessionLog closes the session's log file.
+func (t *TerminalService) StopSessionLog(sessionID string) (SessionLogInfoDTO, error) {
+	if t.logs == nil {
+		return SessionLogInfoDTO{}, fmt.Errorf("session log service not available")
+	}
+	info := t.logs.Stop(sessionID)
+	return SessionLogInfoDTO{Enabled: info.Enabled, Path: info.Path}, nil
+}
+
+// GetSessionLog reports the session's current recording status.
+func (t *TerminalService) GetSessionLog(sessionID string) (SessionLogInfoDTO, error) {
+	if t.logs == nil {
+		return SessionLogInfoDTO{}, nil
+	}
+	info := t.logs.Status(sessionID)
+	return SessionLogInfoDTO{Enabled: info.Enabled, Path: info.Path}, nil
+}
+
+// OpenSessionLogDir opens the session-log base directory in the OS file
+// browser (created on demand so the entry works before the first recording).
+func (t *TerminalService) OpenSessionLogDir() error {
+	if t.logs == nil {
+		return fmt.Errorf("session log service not available")
+	}
+	dir := t.logs.Dir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create log dir: %w", err)
+	}
+	return openInFileBrowser(dir)
 }

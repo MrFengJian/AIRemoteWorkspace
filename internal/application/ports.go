@@ -61,6 +61,10 @@ type SessionEvents interface {
 	// "handshake", "session") so the UI can show what the dial is doing.
 	// Called before the session exists; implementations may no-op.
 	OnProgress(sessionID, stage string)
+	// OnReconnecting reports session auto-reconnect progress: attempt >= 1
+	// before each redial, attempt == 0 once reconnected. Only SSH sessions
+	// reconnect; calls happen between OnData streams on the SAME session id.
+	OnReconnecting(sessionID string, attempt int)
 }
 
 // ConnectionManager owns live SSH connections and their PTY sessions.

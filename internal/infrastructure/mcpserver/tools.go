@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"strings"
 
-	cryptossh "golang.org/x/crypto/ssh"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	cryptossh "golang.org/x/crypto/ssh"
 
 	"github.com/ai-remote/workspace/internal/domain"
 	"github.com/ai-remote/workspace/internal/infrastructure/agent/tools"
@@ -335,8 +335,9 @@ func (s *Server) ensureSession(ctx context.Context, host domain.Host, creds doma
 // forgets the session on exit so a dead connection is re-dialed, not reused.
 type mcpSessionEvents struct{ s *Server }
 
-func (e mcpSessionEvents) OnData(string, []byte)    {}
-func (e mcpSessionEvents) OnProgress(string, string) {}
+func (e mcpSessionEvents) OnData(string, []byte)      {}
+func (e mcpSessionEvents) OnProgress(string, string)  {}
+func (e mcpSessionEvents) OnReconnecting(string, int) {}
 
 func (e mcpSessionEvents) OnExit(sessionID string, _ error) {
 	e.s.mu.Lock()

@@ -13,6 +13,11 @@ import (
 // to a Wails event emitter scoped per session.
 type OutputHandler func(data []byte)
 
+// ErrPtyClosed is returned by WriteStdin/Resize after the PTY was closed —
+// either by the user or because the session is mid-reconnect (the manager
+// remembers the requested size and applies it to the reconnected PTY).
+var ErrPtyClosed = errors.New("session closed")
+
 // PtySession wraps an interactive SSH shell session with a remote PTY.
 //
 // Output is streamed asynchronously to an OutputHandler; input is written
@@ -114,7 +119,7 @@ func (ps *PtySession) WriteStdin(data []byte) error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	if ps.closed {
-		return errors.New("session closed")
+		return ErrPtyClosed
 	}
 	_, err := ps.stdin.Write(data)
 	return err
@@ -125,7 +130,7 @@ func (ps *PtySession) Resize(cols, rows int) error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	if ps.closed {
-		return errors.New("session closed")
+		return ErrPtyClosed
 	}
 	return ps.session.WindowChange(rows, cols)
 }

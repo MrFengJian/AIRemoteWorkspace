@@ -34,6 +34,13 @@ export function CloseSession(sessionID: string): $CancellablePromise<void> {
 }
 
 /**
+ * GetSessionLog reports the session's current recording status.
+ */
+export function GetSessionLog(sessionID: string): $CancellablePromise<$models.SessionLogInfoDTO> {
+    return $Call.ByID(4129471043, sessionID);
+}
+
+/**
  * OpenLocalSession starts an interactive shell on the user's machine over a
  * local PTY (Windows: PowerShell/cmd via ConPTY; Unix: the login shell via
  * openpty). Same event contract as OpenSession.
@@ -52,10 +59,33 @@ export function OpenSession(req: $models.OpenSessionRequest): $CancellablePromis
 }
 
 /**
+ * OpenSessionLogDir opens the session-log base directory in the OS file
+ * browser (created on demand so the entry works before the first recording).
+ */
+export function OpenSessionLogDir(): $CancellablePromise<void> {
+    return $Call.ByID(4007580672);
+}
+
+/**
  * ResizeSession updates the PTY dimensions (local or SSH).
  */
 export function ResizeSession(sessionID: string, size: $models.PtySizeDTO): $CancellablePromise<void> {
     return $Call.ByID(483318041, sessionID, size);
+}
+
+/**
+ * StartSessionLog begins recording the session's output to
+ * <数据目录>/logs/<主机>/<时间>-<会话>.log and returns the file info.
+ */
+export function StartSessionLog(sessionID: string, hostName: string): $CancellablePromise<$models.SessionLogInfoDTO> {
+    return $Call.ByID(1451611327, sessionID, hostName);
+}
+
+/**
+ * StopSessionLog closes the session's log file.
+ */
+export function StopSessionLog(sessionID: string): $CancellablePromise<$models.SessionLogInfoDTO> {
+    return $Call.ByID(3577009637, sessionID);
 }
 
 /**

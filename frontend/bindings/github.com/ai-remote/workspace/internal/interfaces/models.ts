@@ -227,6 +227,14 @@ export interface ScenarioDraftDTO {
 }
 
 /**
+ * SessionLogInfoDTO reports whether a session is being recorded and where.
+ */
+export interface SessionLogInfoDTO {
+    "enabled": boolean;
+    "path": string;
+}
+
+/**
  * SkillDTO is one agent skill's metadata for the input-box `/` picker and
  * the scenario manager. Content is only filled by GetSkill (editor use).
  */

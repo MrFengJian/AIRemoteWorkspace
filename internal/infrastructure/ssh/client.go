@@ -131,6 +131,29 @@ func (c *Client) Close() error {
 	return err
 }
 
+// aliveProbeTimeout bounds the connection-liveness probe used to tell a
+// dropped link apart from a normally exited shell.
+const aliveProbeTimeout = 3 * time.Second
+
+// Alive reports whether the SSH connection is still usable: a keepalive
+// global request must complete within the probe timeout. After a network
+// drop (or Close) the request fails or hangs, so the session manager can
+// distinguish "shell exited, link fine" (no auto-reconnect) from "link
+// dead" (auto-reconnect).
+func (c *Client) Alive() bool {
+	errCh := make(chan error, 1)
+	go func() {
+		_, _, err := c.conn.SendRequest("keepalive@openssh.com", true, nil)
+		errCh <- err
+	}()
+	select {
+	case err := <-errCh:
+		return err == nil
+	case <-time.After(aliveProbeTimeout):
+		return false // link is wedged — treat as dead
+	}
+}
+
 // startKeepalive sends keepalive@openssh.com every interval; on failure it
 // closes the client (the next op will surface a closed-connection error,
 // which the connection manager treats as "needs reconnect").

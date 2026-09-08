@@ -45,6 +45,7 @@ export type {
     RememberedCredentialsDTO,
     SaveProviderInput,
     ScenarioDraftDTO,
+    SessionLogInfoDTO,
     SkillDTO,
     SystemInfoResult,
     TestConnectionResult,
