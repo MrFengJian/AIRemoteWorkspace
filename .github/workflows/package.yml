@@ -111,6 +111,11 @@ jobs:
       contents: write # 创建 Release 并上传 assets
 
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 完整历史 + 全部 tag：生成上一版本至今的提交说明
+
       - name: Download All Installers
         uses: actions/download-artifact@v4
         with:
@@ -124,9 +129,15 @@ jobs:
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
+      # 依据提交说明生成语义化 Release 说明（按 feat/fix/… 分组小节）。
+      # 仓库没有 PR 流程，GitHub 自动的 generate_release_notes 只会给出
+      # 一个 compare 链接，这里改用自带脚本生成正文。
+      - name: Generate Release Notes
+        run: bash .github/scripts/gen-release-notes.sh > RELEASE_NOTES.md
+
       - name: Upload to Release Assets
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           fail_on_unmatched_files: true
-          generate_release_notes: true
+          body_path: RELEASE_NOTES.md
