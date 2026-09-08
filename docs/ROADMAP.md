@@ -175,8 +175,8 @@ Phase 8  Xshell 能力对齐        连接链路 / 审计 / 传输 / 运维效�
 
 ### P0 — 进入生产运维场景的前置能力
 
-**跳板机 / 堡垒机 + 连接代理**
-`Host` 增加代理配置：经其他主机跳转（支持多级，形成链）或经 HTTP CONNECT / SOCKS5 代理连接。SSH 层把上游连接的底层 conn 作为 net.Dialer 复用，两级 known_hosts 校验；HostFormDialog 提供配置 UI 与「测试连接」透传。隧道、SFTP、监控、Agent 复用同一连接层，自动受益。
+**跳板机 / 堡垒机 + 连接代理** ✅
+`Host` 增加代理配置：经其他主机跳转（支持多级，形成链）或经 HTTP CONNECT / SOCKS5 代理连接。ProxyService 把配置递归解析成 SshRoute（含环路检测、逐跳凭据经 OS 密码库解析），SSH 层把跳板连接作为隧道逐级转发，两级 known_hosts 校验；HostFormDialog 提供配置 UI。终端会话、断线重连、隧道、SFTP 复用同一路由解析，自动受益。
 
 **会话日志（Session Logging）**
 PTY 输出 tee 到 `<数据目录>/logs/<主机>/<日期>.log`，全局开关 + 按主机覆盖，可选时间戳前缀；设置页管理并提供打开日志目录入口。审计合规与事后排障的硬需求。

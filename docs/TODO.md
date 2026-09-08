@@ -93,11 +93,11 @@
 
 ### P0 — 生产运维前置能力（目标 v0.6.x）
 
-- [ ] 跳板机 / 堡垒机（多级 SSH 跳转）
-  - [ ] domain.Host 增加代理配置（无 / 经主机跳转 / HTTP CONNECT / SOCKS5；跳板引用其他 Host，支持链式）
-  - [ ] ssh.Dial 支持上游底层 conn 复用拨号 + 两级已知主机校验
-  - [ ] HostFormDialog 配置 UI + 测试连接透传
-  - [ ] 隧道 / SFTP / 监控 / Agent 连接层自动受益（回归验证）
+- [x] 跳板机 / 堡垒机（多级 SSH 跳转）+ HTTP / SOCKS5 代理 — 全拨号路径统一走路由解析
+  - [x] domain.Host 增加代理配置（直连 / 经主机跳转 / HTTP CONNECT / SOCKS5；跳板引用其他 Host 递归成链，环路检测）
+  - [x] ssh.Dial 支持 Route：SOCKS5（RFC1928/1929，含用户名密码）与 HTTP CONNECT 拨号器；逐跳 SSH 连接 + direct-tcpip 隧道；每跳按自身 HostID 校验已知主机
+  - [x] HostFormDialog 代理小节（连接标签页）：连接方式 / 跳板主机选择（排除自身）/ 代理地址与认证；代理密码存 OS 密码库（写only + 清除勾选）
+  - [x] 终端会话（含断线自动重连）、隧道、SFTP 全部复用同一路由；跳板/代理配置变更后重连即时生效
 - [~] 会话日志（Session Logging）— 会话右键菜单版已上线：菜单「日志」启停（勾选态）+ tee 落盘 + 打开日志目录
   - [x] TerminalService PTY 输出 tee 落盘 `<数据目录>/logs/<主机>/<时间>-<会话>.log`（会话级文件，分屏互不混写；开始/结束标记；关闭标签与 PTY 退出双路径收尾）
   - [x] 会话右键菜单「日志」子菜单：开始记录 / 停止记录（toast 回显文件路径）、打开日志目录
