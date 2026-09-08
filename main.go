@@ -26,7 +26,7 @@ import (
 // the UI and, later, the MCP system_info tool.
 const (
 	appName    = "AI Remote Workspace"
-	appVersion = "0.5.1"
+	appVersion = "0.6.0"
 	// appDirName is the single directory name used under xdg.DataHome /
 	// xdg.ConfigHome (database + skills + the data-dir pointer file).
 	appDirName = "ai-remote-workspace"
@@ -77,15 +77,29 @@ func main() {
 	// to the TunnelService once that exists.
 	tunnelMgr := ssh.NewTunnelManager(ssh.FromHostKeyRepo(hostKeyRepo))
 
+	// Jump/proxy route resolver (堡垒机 / HTTP / SOCKS5). Declared before the
+	// SFTP dialer closure and assigned once the services exist — the closure
+	// reads it lazily at dial time, so wiring order stays simple.
+	var sshRoutes application.SshRouteResolver
+
 	// SFTP manager dials its own (cached) connections per host, reusing the
 	// same dial logic + host-key verification as the terminal connection.
 	keyStore := ssh.FromHostKeyRepo(hostKeyRepo)
 	sftpMgr := sftp.NewManager(func(host domain.Host, creds domain.Credentials) (*ssh.Client, error) {
+		var route *domain.SshRoute
+		if sshRoutes != nil {
+			r, err := sshRoutes.RouteFor(host)
+			if err != nil {
+				return nil, err
+			}
+			route = r
+		}
 		return ssh.Dial(ssh.ConnectOptions{
 			HostID:   host.ID,
 			Host:     host.Host,
 			Port:     host.Port,
 			Username: host.Username,
+			Route:    route,
 		}, ssh.Auth{
 			Password:      creds.Password,
 			KeyPath:       creds.KeyPath,
@@ -173,6 +187,13 @@ func main() {
 	localPtyMgr := localpty.NewManager()
 	sessionLogSvc := application.NewSessionLogService(dataDirSvc)
 	terminalService := interfaces.NewTerminalService(hostSvc, connManager, localPtyMgr, tunnelMgr, sessionLogSvc)
+
+	// Jump/proxy routes: terminal sessions, tunnels, and the SFTP dialer all
+	// resolve through the same ProxyService (堡垒机链 / HTTP / SOCKS5).
+	proxySvc := application.NewProxyService(hostSvc, secretSvc)
+	sshRoutes = proxySvc
+	connManager.SetRouteResolver(proxySvc)
+	tunnelMgr.SetRouteResolver(proxySvc)
 	tunnelService := interfaces.NewTunnelService(tunnelMgr, hostSvc)
 	monitorService := interfaces.NewMonitorService(monitorSvc)
 	dockerService := interfaces.NewDockerService(dockerSvc)
