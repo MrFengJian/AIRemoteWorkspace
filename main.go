@@ -26,7 +26,7 @@ import (
 // the UI and, later, the MCP system_info tool.
 const (
 	appName    = "AI Remote Workspace"
-	appVersion = "0.6.0"
+	appVersion = "0.6.1"
 	// appDirName is the single directory name used under xdg.DataHome /
 	// xdg.ConfigHome (database + skills + the data-dir pointer file).
 	appDirName = "ai-remote-workspace"
