@@ -217,10 +217,11 @@ export const en = {
     closeRight: "Close right sessions",
     closeAll: "Close all sessions",
     toggleQuickBar: "Quick Command Bar",
+    toggleComposeBar: "Compose Bar",
   },
 
-  // ── Quick command bar (Xshell-style) ────────────────────────
-  quickCmd: {
+  // ── Batch send (shared by quick command bar & compose bar) ──
+  batchSend: {
     noTarget: "No session selected",
     targetCount: "{{n}} sessions",
     targetTitle: "Send targets",
@@ -230,6 +231,22 @@ export const en = {
     paneCount: "{{n}} panes",
     sendTo: "Send to: {{target}}",
     sent: "\"{{name}}\" sent to {{n}} sessions",
+    batchConfirmTitle: "Batch Send",
+    batchConfirmDesc:
+      "This will send the content below to {{n}} sessions at once; multi-line commands run line by line. Please review the targets and content:",
+    batchConfirmSend: "Send",
+    dontAskAgain: "Don't ask again for batch sends",
+  },
+
+  // ── Compose bar (Xshell compose bar, separate from quick commands) ──
+  compose: {
+    placeholder: "Compose text to send — Enter runs, Shift+Enter types only",
+    inputTitle: "Batch-send input (Enter runs / Shift+Enter types only)",
+    sendTitle: "Send (Enter)",
+  },
+
+  // ── Quick command management (saved entries of the quick command bar) ──
+  quickCmd: {
     emptyHint: "No quick commands yet — click the button on the right to add one",
     manage: "Manage Quick Commands",
     manageDesc:
@@ -248,11 +265,6 @@ export const en = {
     moveUp: "Move up",
     moveDown: "Move down",
     saveFailed: "Save failed",
-    batchConfirmTitle: "Batch Send Command",
-    batchConfirmDesc:
-      "This will send the command below to {{n}} sessions at once; multi-line commands run line by line. Please review the targets and content:",
-    batchConfirmSend: "Send",
-    dontAskAgain: "Don't ask again for batch sends",
   },
 
   // ── SFTP ────────────────────────────────────────────────────
@@ -617,6 +629,7 @@ export const en = {
         toggleDocker: "Toggle Docker Panel",
         toggleSidebar: "Toggle Hosts Sidebar",
         toggleQuickBar: "Toggle Quick Command Bar",
+        toggleComposeBar: "Toggle Compose Bar",
       },
       app: {
         settings: "Open Settings",

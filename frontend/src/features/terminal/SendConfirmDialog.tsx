@@ -15,11 +15,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import type { TerminalSession } from "@/features/terminal/terminal.store";
 
 /**
- * Review gate before a quick command is batch-sent to more than one open
+ * Review gate before content is batch-sent to more than one open
  * session: shows the exact payload and every target tab. "Don't ask again"
  * persists the opt-out so routine batch sends stay one click.
  */
-export function QuickSendConfirmDialog({
+export function SendConfirmDialog({
   command,
   sendEnter,
   targetTabs,
@@ -41,10 +41,10 @@ export function QuickSendConfirmDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <TriangleAlert className="h-4 w-4 shrink-0 text-warning" />
-            {t("quickCmd.batchConfirmTitle")}
+            {t("batchSend.batchConfirmTitle")}
           </DialogTitle>
           <DialogDescription>
-            {t("quickCmd.batchConfirmDesc", { n: targetTabs.length })}
+            {t("batchSend.batchConfirmDesc", { n: targetTabs.length })}
           </DialogDescription>
         </DialogHeader>
 
@@ -60,7 +60,7 @@ export function QuickSendConfirmDialog({
               {s.hostName}
               {s.paneIds.length > 1 && (
                 <span className="ml-1 opacity-70">
-                  ({t("quickCmd.paneCount", { n: s.paneIds.length })})
+                  ({t("batchSend.paneCount", { n: s.paneIds.length })})
                 </span>
               )}
             </div>
@@ -69,7 +69,7 @@ export function QuickSendConfirmDialog({
 
         <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
           <Checkbox checked={dontAsk} onCheckedChange={(v) => setDontAsk(v === true)} />
-          {t("quickCmd.dontAskAgain")}
+          {t("batchSend.dontAskAgain")}
         </label>
 
         <DialogFooter>
@@ -81,7 +81,7 @@ export function QuickSendConfirmDialog({
             onClick={() => onConfirm(dontAsk)}
           >
             <Send className="h-3.5 w-3.5" />
-            {t("quickCmd.batchConfirmSend")}
+            {t("batchSend.batchConfirmSend")}
           </Button>
         </DialogFooter>
       </DialogContent>

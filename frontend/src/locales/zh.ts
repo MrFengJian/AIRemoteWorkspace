@@ -217,10 +217,11 @@ export const zh = {
     closeRight: "关闭右侧会话",
     closeAll: "关闭所有会话",
     toggleQuickBar: "快速命令栏",
+    toggleComposeBar: "撰写栏",
   },
 
-  // ── 快速命令栏（仿 XShell 快速命令）──────────────────────────
-  quickCmd: {
+  // ── 批量发送（快速命令栏与撰写栏共享）──────────────────────
+  batchSend: {
     noTarget: "未选择会话",
     targetCount: "{{n}} 个会话",
     targetTitle: "发送目标",
@@ -230,6 +231,22 @@ export const zh = {
     paneCount: "{{n}} 个窗格",
     sendTo: "发送到：{{target}}",
     sent: "「{{name}}」已发送到 {{n}} 个会话",
+    batchConfirmTitle: "批量发送命令",
+    batchConfirmDesc:
+      "即将把以下内容同时发送到 {{n}} 个会话，多行命令会逐行执行。请确认目标与内容：",
+    batchConfirmSend: "发送",
+    dontAskAgain: "以后批量发送不再提示",
+  },
+
+  // ── 撰写栏（仿 XShell 撰写栏，独立于快速命令栏）──────────────
+  compose: {
+    placeholder: "撰写要发送的内容——Enter 执行，Shift+Enter 仅输入",
+    inputTitle: "批量发送输入（Enter 执行 / Shift+Enter 仅输入）",
+    sendTitle: "发送（Enter）",
+  },
+
+  // ── 快速命令管理（快速命令栏的已存条目）─────────────────────
+  quickCmd: {
     emptyHint: "还没有快速命令，点右侧按钮新建",
     manage: "管理快速命令",
     manageDesc: "快速命令是一段可复用的脚本，点击命令栏按钮即可发送到选中的会话（支持多行，逐行执行）。",
@@ -246,11 +263,6 @@ export const zh = {
     moveUp: "上移",
     moveDown: "下移",
     saveFailed: "保存失败",
-    batchConfirmTitle: "批量发送命令",
-    batchConfirmDesc:
-      "即将把以下命令同时发送到 {{n}} 个会话，多行命令会逐行执行。请确认目标与内容：",
-    batchConfirmSend: "发送",
-    dontAskAgain: "以后批量发送不再提示",
   },
 
   // ── 文件 ────────────────────────────────────────────────────
@@ -609,6 +621,7 @@ export const zh = {
         toggleDocker: "切换 Docker 面板",
         toggleSidebar: "切换主机侧栏",
         toggleQuickBar: "切换快速命令栏",
+        toggleComposeBar: "切换撰写栏",
       },
       app: {
         settings: "打开设置",

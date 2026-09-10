@@ -1,54 +1,41 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ChevronDown,
-  Play,
-  Settings2,
-  ListChecks,
-} from "lucide-react";
+import { ChevronDown, ListChecks, Send } from "lucide-react";
 
 import {
-  useQuickCommands,
-  quickCommandPayload,
-  QUICKCMD_SKIP_CONFIRM_KEY,
-  type QuickCommand,
-} from "@/features/terminal/quickCommands";
-import { useSendTargets, sendPayloadToTabs } from "@/features/terminal/sendTargets";
-import { QuickCommandManageDialog } from "@/features/terminal/QuickCommandManageDialog";
+  useSendTargets,
+  sendPayloadToTabs,
+} from "@/features/terminal/sendTargets";
 import { SendConfirmDialog } from "@/features/terminal/SendConfirmDialog";
+import { QUICKCMD_SKIP_CONFIRM_KEY } from "@/features/terminal/quickCommands";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { toast } from "@/lib/toast";
 
-/** First-line preview for tooltips / confirm dialogs. */
-const previewOf = (command: string): string => {
-  const first = command.replace(/\r?\n/g, " ⏎ ").trim();
-  return first.length > 120 ? `${first.slice(0, 120)}…` : first;
-};
-
 /**
- * Quick command bar (Xshell 快速命令), rendered as a strip BELOW the terminal
- * workspace. Shows the user's saved quick commands as buttons; clicking one
- * types the script into every target session chosen in the bar's target
- * picker (defaults to the active tab, multi-select for batch sends).
- * Commands are managed in QuickCommandManageDialog; batch sends to more than
- * one tab confirm first unless the user opted out.
+ * Compose bar (Xshell 撰写栏) — an INDEPENDENT feature from the quick
+ * command bar: a strip with a free-form input whose text is batch-sent to
+ * the target sessions picked in the bar's own target selector. Enter
+ * executes (trailing carriage return); Shift+Enter only types the text so
+ * the user can review before pressing Enter themselves. Multi-target sends
+ * go through the shared review dialog unless opted out.
  *
- * Independent feature from the compose bar (撰写栏, ComposeBar) — the two
- * only share the target-selection primitive (useSendTargets).
+ * The IME composition guard keeps Enter-to-confirm-candidate from firing a
+ * send mid-composition (Chinese input).
  */
-export function QuickCommandBar() {
+export function ComposeBar() {
   const { t } = useTranslation();
-  const commands = useQuickCommands();
   const { sessions, sendable, targets, targetTabs, toggleTarget, selectAllTargets, selectNoTargets } =
     useSendTargets();
 
+  const [draft, setDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [manageOpen, setManageOpen] = useState(false);
-  // Snapshot of the command + targets under review — immune to concurrent
-  // list edits while the confirm dialog is open.
+  // Snapshot under review — immune to concurrent edits while the dialog is up.
   const [confirm, setConfirm] = useState<{
-    cmd: QuickCommand;
+    name: string;
+    command: string; // display text, without the trailing enter
+    sendEnter: boolean;
+    payload: string; // exact PTY bytes
     tabIds: string[];
   } | null>(null);
 
@@ -79,30 +66,35 @@ export function QuickCommandBar() {
     return t("batchSend.targetCount", { n: targetTabs.length });
   })();
 
-  /** Saved quick commands execute on send when the entry says so. */
-  const sendCommand = (cmd: QuickCommand, tabIds: string[]) => {
-    const sent = sendPayloadToTabs(sessions, quickCommandPayload(cmd), tabIds);
+  const sendNow = (name: string, payload: string, tabIds: string[]) => {
+    const sent = sendPayloadToTabs(sessions, payload, tabIds);
     if (sent > 0) {
-      toast.success(t("batchSend.sent", { n: sent, name: cmd.name }));
+      toast.success(t("batchSend.sent", { n: sent, name }));
+      setDraft(""); // fresh input after a real send; cancel keeps the text
     }
   };
 
-  const handleSend = (cmd: QuickCommand) => {
+  const handleSend = (sendEnter: boolean) => {
+    const text = draft;
+    if (text.trim() === "") return;
     const tabIds = targetTabs.map((s) => s.id);
-    if (tabIds.length === 0 || cmd.command.trim() === "") return;
+    if (tabIds.length === 0) return;
+    const body = text.replace(/\r?\n/g, "\r");
+    const payload = sendEnter ? `${body}\r` : body;
+    const name = text.length > 16 ? `${text.slice(0, 16)}…` : text;
     // Batch sends (more than one tab) get one review dialog unless the user
     // checked "don't ask again" on an earlier send.
     if (tabIds.length <= 1 || localStorage.getItem(QUICKCMD_SKIP_CONFIRM_KEY) === "1") {
-      sendCommand(cmd, tabIds);
+      sendNow(name, payload, tabIds);
       return;
     }
-    setConfirm({ cmd, tabIds });
+    setConfirm({ name, command: text, sendEnter, payload, tabIds });
   };
 
   return (
     <div className="relative flex h-9 shrink-0 items-center gap-1 border-t border-border bg-card px-2">
-      {/* Target picker: multi-select over live tabs (Xshell compose-bar style
-          "current session / all sessions / pick"), defaults to the active tab. */}
+      {/* Target picker — this bar's OWN selection, independent of the quick
+          command bar's (both follow the active tab until customized). */}
       <div ref={pickerRef} className="relative shrink-0">
         <button
           type="button"
@@ -175,55 +167,43 @@ export function QuickCommandBar() {
 
       <div className="h-4 w-px shrink-0 bg-border" />
 
-      {/* Quick command buttons; the row scrolls horizontally like Xshell's. */}
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-        {commands.map((cmd) => (
-          <button
-            key={cmd.id}
-            type="button"
-            disabled={targetTabs.length === 0 || cmd.command.trim() === ""}
-            onClick={() => handleSend(cmd)}
-            title={`${previewOf(cmd.command)}${cmd.sendEnter ? " ↵" : ""}\n${t("batchSend.sendTo", { target: targetLabel })}`}
-            className="flex h-7 shrink-0 items-center gap-1 rounded-[var(--radius)] px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-          >
-            <Play className="h-3 w-3 text-primary/80" />
-            <span className="max-w-[14rem] truncate">{cmd.name}</span>
-            {cmd.sendEnter && <span className="text-[10px] opacity-60">↵</span>}
-          </button>
-        ))}
-        {commands.length === 0 && (
-          <span className="truncate px-1 text-xs text-muted-foreground">
-            {t("quickCmd.emptyHint")}
-          </span>
-        )}
-      </div>
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            handleSend(!e.shiftKey);
+          }
+        }}
+        disabled={targetTabs.length === 0}
+        title={t("compose.inputTitle")}
+        placeholder={t("compose.placeholder")}
+        className="h-7 min-w-0 flex-1 rounded-[var(--radius)] border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+      />
 
-      {/* Manage entries (add / edit / delete / reorder). */}
       <button
         type="button"
-        onClick={() => setManageOpen(true)}
-        title={t("quickCmd.manage")}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+        disabled={targetTabs.length === 0 || draft.trim() === ""}
+        onClick={() => handleSend(true)}
+        title={t("compose.sendTitle")}
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
       >
-        <Settings2 className="h-4 w-4" />
+        <Send className="h-3.5 w-3.5" />
       </button>
-
-      {manageOpen && (
-        <QuickCommandManageDialog onClose={() => setManageOpen(false)} />
-      )}
 
       {confirm && (
         <SendConfirmDialog
-          command={confirm.cmd.command}
-          sendEnter={confirm.cmd.sendEnter}
+          command={confirm.command}
+          sendEnter={confirm.sendEnter}
           targetTabs={targetTabs.filter((s) => confirm.tabIds.includes(s.id))}
           onConfirm={(dontAskAgain) => {
             if (dontAskAgain) {
               localStorage.setItem(QUICKCMD_SKIP_CONFIRM_KEY, "1");
             }
-            const { cmd, tabIds } = confirm;
+            const { name, payload, tabIds } = confirm;
             setConfirm(null);
-            sendCommand(cmd, tabIds);
+            sendNow(name, payload, tabIds);
           }}
           onClose={() => setConfirm(null)}
         />

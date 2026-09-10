@@ -19,6 +19,7 @@ import {
   PanelLeftOpen,
   Network,
   Zap,
+  SquarePen,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -28,6 +29,7 @@ import { useUIStore } from "@/stores/ui.store";
 import { TerminalPanel } from "@/features/terminal/TerminalPanel";
 import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabMenu";
 import { QuickCommandBar } from "@/features/terminal/QuickCommandBar";
+import { ComposeBar } from "@/features/terminal/ComposeBar";
 import { AgentView } from "@/features/agent/AgentView";
 import { useAgentStore } from "@/features/agent/store";
 import { agentApi } from "@/features/agent/api";
@@ -118,6 +120,17 @@ export function TerminalView() {
   const toggleQuickBar = () =>
     setQuickBarOpen((v) => {
       localStorage.setItem("terminal-quickbar-open", String(!v));
+      return !v;
+    });
+
+  // Compose bar (Xshell 撰写栏) — a separate feature with its own strip,
+  // toggle and visibility preference.
+  const [composeBarOpen, setComposeBarOpen] = useState(
+    () => localStorage.getItem("terminal-composebar-open") === "true",
+  );
+  const toggleComposeBar = () =>
+    setComposeBarOpen((v) => {
+      localStorage.setItem("terminal-composebar-open", String(!v));
       return !v;
     });
 
@@ -546,6 +559,7 @@ export function TerminalView() {
     }),
     "view.toggleSidebar": inTerminal(() => toggleSidebar()),
     "view.toggleQuickBar": inTerminal(() => toggleQuickBar()),
+    "view.toggleComposeBar": inTerminal(() => toggleComposeBar()),
   });
 
   if (sessions.length === 0) {
@@ -862,6 +876,21 @@ export function TerminalView() {
             >
               <Zap className="h-4 w-4" />
             </button>
+            {/* Compose bar toggle (Xshell 撰写栏): a separate strip with a
+                free-form input batch-sent to selected sessions. */}
+            <button
+              type="button"
+              onClick={toggleComposeBar}
+              title={t("terminal.toggleComposeBar")}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
+                composeBarOpen
+                  ? "bg-accent text-primary"
+                  : "text-muted-foreground hover:bg-accent/50",
+              )}
+            >
+              <SquarePen className="h-4 w-4" />
+            </button>
           </div>
 
           {/* Terminal panels: only active tab is visible, all stay mounted. */}
@@ -939,6 +968,10 @@ export function TerminalView() {
           {/* Quick command bar: a strip under the sessions with user-defined
               scripts that can be batch-sent to selected open tabs. */}
           {quickBarOpen && <QuickCommandBar />}
+
+          {/* Compose bar: an independent strip with a free-form input whose
+              text is batch-sent to the selected open tabs (撰写栏). */}
+          {composeBarOpen && <ComposeBar />}
         </div>
 
         {/* Right panel: tabbed (SFTP / Agent) — hidden when closed. Its left

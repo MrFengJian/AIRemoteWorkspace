@@ -76,6 +76,7 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
   cmd("view", "view.toggleDocker", null),
   cmd("view", "view.toggleSidebar", null),
   cmd("view", "view.toggleQuickBar", null),
+  cmd("view", "view.toggleComposeBar", null),
 
   // ── Application.
   cmd("app", "app.settings", "Ctrl+,"),
