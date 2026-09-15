@@ -39,6 +39,18 @@ type AppConfig struct {
 	MiddleClickAction string `json:"middleClickAction"`
 	// Host monitor panel auto-refresh interval in seconds (0 = default 60).
 	MonitorIntervalSeconds int `json:"monitorIntervalSeconds"`
+	// Terminal scrollback lines for NEW panes (0 = built-in default 1000).
+	TerminalScrollback int `json:"terminalScrollback"`
+	// Default local terminal command line (LocalShell.ID from the detected
+	// catalogue; "" = system default / first detected).
+	LocalShell string `json:"localShell"`
+	// Session logging (terminal right-click → 日志): false = enabled.
+	DisableSessionLog bool `json:"disableSessionLog"`
+	// Prefix every session-log line with a HH:MM:SS timestamp.
+	SessionLogTimestamps bool `json:"sessionLogTimestamps"`
+	// System notifications (session disconnect while the window is
+	// unfocused) — false = enabled (the out-of-box default).
+	DisableSystemNotify bool `json:"disableSystemNotify"`
 	// AI agent runtime tunables (提示词 / 最大步数等, user-adjustable).
 	Agent AgentConfig `json:"agent"`
 	// SFTP file-transfer tunables (streaming chunk size + size ceilings).

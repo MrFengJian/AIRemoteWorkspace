@@ -16,3 +16,14 @@ export interface ApprovalRequest {
     "permission": domain$0.Permission;
     "args": string;
 }
+
+/**
+ * RemoteEditService powers the SFTP "edit in local editor" flow: a remote
+ * file is downloaded to a per-host temp folder and opened with the OS
+ * default application; a watcher polls the local file and uploads it back
+ * automatically when the user saves (mtime change). Last write wins —
+ * concurrent remote edits are not detected. Credentials resolve inside the
+ * SftpService on every transfer (OS vault included).
+ */
+export interface RemoteEditService {
+}

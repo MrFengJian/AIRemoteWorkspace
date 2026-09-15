@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   TerminalSquare,
   X,
@@ -9,6 +9,7 @@ import {
   XCircle,
   ChevronsLeft,
   ChevronsRight,
+  ChevronDown,
   CircleX,
   FolderTree,
   Bot,
@@ -21,6 +22,7 @@ import {
   Zap,
   SquarePen,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 import { useTerminalStore, isLocalSession } from "@/features/terminal/terminal.store";
@@ -41,19 +43,35 @@ import { useOpenTerminal, useOpenLocalTerminal, useHosts } from "@/features/host
 import { useHostsUIStore } from "@/features/hosts/store";
 import { HostsSidebar } from "@/features/hosts/HostsSidebar";
 import { osInfo } from "@/features/hosts/osIcons";
-import { TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
+import { ConfigService, SystemService, TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { useKeybindingStore } from "@/keybindings/store";
 import { getPaneActions } from "@/keybindings/registry";
 import { useShortcutHandlers } from "@/keybindings/useShortcutDispatcher";
 import { cn } from "@/lib/utils";
 import { toast, errorMessage } from "@/lib/toast";
 
-/** Module-level guard for the default local terminal (StrictMode-safe). */
+/** Module-level guard: session restore runs once per app launch (StrictMode
+ *  double-mounts reset refs but not module state). */
 let defaultSessionEnsured = false;
-function ensureDefaultLocalSession(open: () => void) {
-  if (defaultSessionEnsured) return;
-  defaultSessionEnsured = true;
-  open();
+
+/** localStorage key holding the tabs to restore on launch. */
+const OPEN_TABS_KEY = "terminal-open-tabs";
+
+interface SavedTab {
+  hostID: string; // "" = local terminal
+  name: string;
+  theme: string;
+  font: string;
+  size: number;
+}
+
+function loadSavedTabs(): SavedTab[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(OPEN_TABS_KEY) ?? "[]");
+    return Array.isArray(raw) ? (raw as SavedTab[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -138,11 +156,11 @@ export function TerminalView() {
   // object's state): a stale pending flag from a strict-mode remount would
   // otherwise spin forever with no meaningful work in flight.
   const [openingLocal, setOpeningLocal] = useState(false);
-  const handleOpenLocal = async () => {
+  const handleOpenLocal = async (shellID?: string) => {
     if (openingLocal) return;
     setOpeningLocal(true);
     try {
-      await openLocal.mutateAsync(t("terminal.localTab"));
+      await openLocal.mutateAsync({ name: t("terminal.localTab"), shellID });
     } catch {
       /* failure is toasted globally */
     } finally {
@@ -150,17 +168,41 @@ export function TerminalView() {
     }
   };
 
-  // On first launch with no sessions, open a local terminal by default so the
-  // workspace always starts in its full form (sidebar + tabs). The guard is a
-  // MODULE-level flag: React StrictMode's dev double-mount resets refs (and
-  // would open two terminals), but not module state. Closing all tabs
-  // afterwards intentionally leaves the empty state — no silent reopen.
+  // Detected local shells (Phase 8 本地终端增强): drive the + button's
+  // shell dropdown; hidden entirely when only one command line exists.
+  // Detection is stable per app run — cache for the session.
+  const { data: localShells } = useQuery({
+    queryKey: ["local-shells"],
+    queryFn: () => SystemService.ListLocalShells().then((r) => r ?? []),
+    staleTime: Infinity,
+    retry: 1,
+  });
+  // The configured preference (AppConfig.LocalShell) — marked in the shell
+  // dropdown and used by every default open via useOpenLocalTerminal.
+  const { data: preferredShell } = useQuery({
+    queryKey: ["local-shell-preference"],
+    queryFn: () => ConfigService.GetAppConfig().then((c) => c.localShell ?? ""),
+  });
+  const [shellMenuOpen, setShellMenuOpen] = useState(false);
+  const shellMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (sessions.length === 0) {
-      ensureDefaultLocalSession(() => openLocal.mutate(t("terminal.localTab")));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!shellMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (shellMenuRef.current && !shellMenuRef.current.contains(e.target as Node)) {
+        setShellMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShellMenuOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [shellMenuOpen]);
+
   // Per-tab split ratio (first pane's share, 0–1) and the right panel width,
   // both draggable. Kept locally: TerminalView stays mounted for the app run.
   const [splitRatios, setSplitRatios] = useState<Record<string, number>>({});
@@ -231,6 +273,64 @@ export function TerminalView() {
   // hostOs resolves a session's distro id from the hosts query (keyed by hostID).
   const hostOs = (hostID: string): string | undefined =>
     (hosts ?? []).find((h) => h.id === hostID)?.os;
+
+  // On first launch with no sessions: restore the tabs that were open last
+  // time (会话恢复, sequential to avoid a dial storm; hosts deleted since
+  // are skipped), otherwise open a local terminal so the workspace always
+  // starts in its full form. The guard is a MODULE-level flag: React
+  // StrictMode's dev double-mount resets refs but not module state. Waits
+  // for the hosts list — otherwise every SSH tab would look deleted.
+  useEffect(() => {
+    if (sessions.length > 0 || defaultSessionEnsured || hosts == null) return;
+    defaultSessionEnsured = true;
+    const saved = loadSavedTabs();
+    if (saved.length === 0) {
+      openLocal.mutate({ name: t("terminal.localTab") });
+      return;
+    }
+    void (async () => {
+      const known = new Set(hosts.map((h) => h.id));
+      for (const tab of saved) {
+        try {
+          if (tab.hostID) {
+            if (!known.has(tab.hostID)) continue; // host deleted since
+            await openTerminal.mutateAsync({
+              host: {
+                id: tab.hostID,
+                name: tab.name,
+                terminalTheme: tab.theme,
+                terminalFont: tab.font,
+                terminalFontSize: tab.size,
+              },
+              creds: {},
+            });
+          } else {
+            await openLocal.mutateAsync({ name: tab.name });
+          }
+        } catch {
+          /* skip unreachable hosts — failures are toasted globally */
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hosts]);
+
+  // Persist the open tabs (host/appearance only — splits are not restored)
+  // so the next launch can restore them.
+  useEffect(() => {
+    const saved: SavedTab[] = sessions.map((s) => ({
+      hostID: s.hostID,
+      name: s.hostName,
+      theme: s.terminalTheme,
+      font: s.terminalFont,
+      size: s.terminalFontSize,
+    }));
+    try {
+      localStorage.setItem(OPEN_TABS_KEY, JSON.stringify(saved));
+    } catch {
+      /* storage full/unavailable — restore is best-effort */
+    }
+  }, [sessions]);
 
   // Active session info for the toolbar.
   const activeSession = sessions.find((s) => s.id === activeId);
@@ -323,7 +423,7 @@ export function TerminalView() {
     terminalFontSize: number;
   }) => {
     if (sess.hostID === "") {
-      openLocal.mutate(sess.hostName);
+      openLocal.mutate({ name: sess.hostName });
       return;
     }
     openTerminal
@@ -576,7 +676,7 @@ export function TerminalView() {
             <button
               type="button"
               disabled={openingLocal}
-              onClick={handleOpenLocal}
+              onClick={() => void handleOpenLocal()}
               className="inline-flex items-center gap-1.5 rounded-[var(--radius)] bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               <Monitor className="h-4 w-4" /> {t("terminal.newLocalTab")}
@@ -695,21 +795,58 @@ export function TerminalView() {
           </div>
         ))}
 
-        {/* New local terminal tab (browser-style + button). */}
-        <button
-          type="button"
-          onClick={handleOpenLocal}
-          disabled={openingLocal}
-          aria-label={t("terminal.newLocalTab")}
-          title={t("terminal.newLocalTab")}
-          className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-        >
-          {openingLocal ? (
-            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Plus className="h-3.5 w-3.5" />
+        {/* New local terminal tab (browser-style + button). With more than
+            one detected shell, a chevron dropdown picks the command line;
+            with one, the dropdown is hidden entirely. */}
+        <div className="ml-auto flex shrink-0 items-center" ref={shellMenuRef}>
+          <button
+            type="button"
+            onClick={() => void handleOpenLocal()}
+            disabled={openingLocal}
+            aria-label={t("terminal.newLocalTab")}
+            title={t("terminal.newLocalTab")}
+            className="flex h-7 w-7 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          >
+            {openingLocal ? (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Plus className="h-3.5 w-3.5" />
+            )}
+          </button>
+          {(localShells?.length ?? 0) > 1 && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShellMenuOpen((v) => !v)}
+                aria-label={t("terminal.chooseShell")}
+                title={t("terminal.chooseShell")}
+                className="flex h-7 w-5 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+              >
+                <ChevronDown className="h-3 w-3" />
+              </button>
+              {shellMenuOpen && (
+                <div className="absolute right-0 top-8 z-50 w-48 rounded-[var(--radius)] border border-border bg-popover p-1 shadow-lg">
+                  {localShells!.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-[calc(var(--radius)-2px)] px-2.5 py-1.5 text-left text-xs text-popover-foreground hover:bg-accent"
+                      onClick={() => {
+                        setShellMenuOpen(false);
+                        void handleOpenLocal(s.id);
+                      }}
+                    >
+                      <span className="flex-1 truncate">{s.name}</span>
+                      {s.id === preferredShell && (
+                        <Check className="h-3.5 w-3.5 shrink-0 text-primary" aria-label={t("terminal.shellDefault")} />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
-        </button>
+        </div>
       </div>
       </div>
 

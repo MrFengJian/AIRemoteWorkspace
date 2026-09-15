@@ -1,6 +1,7 @@
 package application
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,14 +22,19 @@ import (
 // swallow and report file-system errors without panicking.
 type SessionLogService struct {
 	dataDirs *DataDirService
+	// config (may be nil) reads the settings toggles: (disabled, timestamps).
+	config func() (disabled bool, timestamps bool)
 
-	mu    sync.Mutex
-	files map[string]*sessionLogFile // sessionID → open log file
+	mu     sync.Mutex
+	files  map[string]*sessionLogFile // sessionID → open log file
 }
 
 type sessionLogFile struct {
 	f    *os.File
 	path string
+	// pending holds a trailing partial line when the timestamps setting is
+	// on (flushed with a prefix once its newline arrives, or raw on stop).
+	pending []byte
 }
 
 // SessionLogInfo reports whether a session is being logged and where.
@@ -42,6 +48,27 @@ func NewSessionLogService(dataDirs *DataDirService) *SessionLogService {
 	return &SessionLogService{dataDirs: dataDirs, files: make(map[string]*sessionLogFile)}
 }
 
+// SetConfigProvider wires the settings toggles (called once at startup):
+// disabled = the feature is switched off in settings (Start refuses),
+// timestamps = every log line is prefixed with HH:MM:SS.
+func (s *SessionLogService) SetConfigProvider(fn func() (disabled, timestamps bool)) {
+	s.config = fn
+}
+
+func (s *SessionLogService) settings() (disabled, timestamps bool) {
+	if s.config == nil {
+		return false, false
+	}
+	return s.config()
+}
+
+// Disabled reports whether session logging is switched off in settings —
+// the UI uses it to explain why Start was refused.
+func (s *SessionLogService) Disabled() bool {
+	disabled, _ := s.settings()
+	return disabled
+}
+
 // Dir returns the base directory holding all session logs (created lazily).
 func (s *SessionLogService) Dir() string {
 	return filepath.Join(s.dataDirs.Current(), "logs")
@@ -50,7 +77,11 @@ func (s *SessionLogService) Dir() string {
 // Start begins logging the session: opens the log file (per-host folder,
 // timestamped name) and writes a start marker. Returns the file path.
 // Starting twice on one session just re-points at the same open file.
+// Refused with an error when the feature is switched off in settings.
 func (s *SessionLogService) Start(sessionID, hostName string) (SessionLogInfo, error) {
+	if disabled, _ := s.settings(); disabled {
+		return SessionLogInfo{}, fmt.Errorf("会话日志已在设置中停用")
+	}
 	dir := filepath.Join(s.Dir(), sanitizeLogSegment(hostName))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return SessionLogInfo{}, fmt.Errorf("create log dir: %w", err)
@@ -72,17 +103,42 @@ func (s *SessionLogService) Start(sessionID, hostName string) (SessionLogInfo, e
 	return SessionLogInfo{Enabled: true, Path: path}, nil
 }
 
-// Write appends raw PTY output to the session's log file; a no-op for
-// sessions without logging. Write errors are swallowed (best-effort log).
+// Write appends PTY output to the session's log file; a no-op for sessions
+// without logging. Write errors are swallowed (best-effort log). With the
+// timestamps setting on, every COMPLETE line is prefixed with HH:MM:SS; a
+// trailing fragment is held back until its newline arrives (flushed raw on
+// stop).
 func (s *SessionLogService) Write(sessionID string, data []byte) {
 	if len(data) == 0 {
 		return
 	}
 	s.mu.Lock()
 	lf := s.files[sessionID]
+	_, timestamps := s.settings()
 	s.mu.Unlock()
-	if lf != nil {
-		_, _ = lf.f.Write(data)
+	if lf == nil {
+		return
+	}
+
+	out := data
+	if timestamps {
+		buf := append(lf.pending, data...)
+		lf.pending = buf[:0]
+		var now = time.Now().Format("15:04:05")
+		for {
+			i := bytes.IndexByte(buf, '\n')
+			if i < 0 {
+				lf.pending = append(lf.pending, buf...)
+				break
+			}
+			out = append(out, now...)
+			out = append(out, ' ')
+			out = append(out, buf[:i+1]...)
+			buf = buf[i+1:]
+		}
+	}
+	if len(out) > 0 {
+		_, _ = lf.f.Write(out)
 	}
 }
 
@@ -97,6 +153,10 @@ func (s *SessionLogService) Stop(sessionID string) SessionLogInfo {
 	s.mu.Unlock()
 	if !ok {
 		return SessionLogInfo{}
+	}
+	if len(lf.pending) > 0 {
+		_, _ = lf.f.Write(lf.pending)
+		lf.pending = nil
 	}
 	fmt.Fprintf(lf.f, "=== session log stopped %s ===\n", time.Now().Format("2006-01-02 15:04:05"))
 	_ = lf.f.Close()

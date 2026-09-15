@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Plug, Save, Trash2, KeyRound, Network } from "lucide-react";
+import { Loader2, Plug, Save, Trash2, KeyRound, Network, SquareTerminal, ChevronDown } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -26,6 +27,7 @@ import {
   type HostInputDTO,
 } from "@/features/hosts/api";
 import { ProxyKind } from "@/../bindings/github.com/ai-remote/workspace/internal/domain";
+import type { LoginStep } from "@/../bindings/github.com/ai-remote/workspace/internal/domain";
 import {
   useCreateHost,
   useDeleteHost,
@@ -47,6 +49,55 @@ import {
 import { useConfirm } from "@/lib/useConfirm";
 import { cn } from "@/lib/utils";
 
+/**
+ * CollapsibleCard keeps the connection tab compact: optional sub-sections
+ * (凭据 / 代理 / 登录脚本) collapse to a one-line header with a summary and
+ * expand on click. Sections with configured content default to open.
+ */
+function CollapsibleCard({
+  icon: Icon,
+  title,
+  summary,
+  open,
+  onToggle,
+  actions,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  /** One-line state hint on the header (e.g. configured proxy kind). */
+  summary?: string;
+  open: boolean;
+  onToggle: () => void;
+  /** Extra header-right controls (e.g. the login script's add button). */
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-[var(--radius)] border border-border bg-background/30">
+      <div className="flex w-full items-center gap-2 px-3 py-2">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          onClick={onToggle}
+          aria-expanded={open}
+        >
+          <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="flex-1 truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {title}
+          </span>
+          {summary && <span className="text-[11px] text-muted-foreground">{summary}</span>}
+          <ChevronDown
+            className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+          />
+        </button>
+        {actions}
+      </div>
+      {open && <div className="flex flex-col gap-3 border-t border-border px-3 pb-3 pt-3">{children}</div>}
+    </div>
+  );
+}
+
 const EMPTY_INPUT: HostInputDTO = {
   name: "",
   host: "",
@@ -60,6 +111,8 @@ const EMPTY_INPUT: HostInputDTO = {
   group: "",
   tags: [],
   tunnels: [],
+  loginScript: [],
+  terminalEncoding: "utf-8",
   proxy: { kind: ProxyKind.ProxyNone },
 };
 
@@ -107,6 +160,11 @@ export function HostFormDialog() {
   // stored one. Reset whenever the dialog target changes.
   const [proxyPassword, setProxyPassword] = useState("");
   const [clearProxyPassword, setClearProxyPassword] = useState(false);
+  // Connection-tab collapsible sections: configured content defaults open,
+  // everything else stays collapsed to keep the tab compact.
+  const [credsOpen, setCredsOpen] = useState(true);
+  const [proxyOpen, setProxyOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
 
   // Guards against duplicate submits: a form Enter-key submit + button click,
   // or a fast double-click, can both fire mutateAsync before isPending flips.
@@ -131,6 +189,8 @@ export function HostFormDialog() {
         group: existing.group || "",
         tags: existing.tags ?? [],
         tunnels: existing.tunnels ?? [],
+        loginScript: existing.loginScript ?? [],
+        terminalEncoding: existing.terminalEncoding || "utf-8",
         proxy: existing.proxy ?? { kind: ProxyKind.ProxyNone },
       });
       // Check if a remembered secret already exists for this host.
@@ -154,6 +214,9 @@ export function HostFormDialog() {
     setErrors({});
     setProxyPassword("");
     setClearProxyPassword(false);
+    setCredsOpen(true);
+    setProxyOpen(!!existing?.proxy && existing.proxy.kind !== ProxyKind.ProxyNone);
+    setLoginOpen((existing?.loginScript?.length ?? 0) > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, existing, editingTab]);
 
@@ -174,10 +237,36 @@ export function HostFormDialog() {
   const updateProxy = (patch: Partial<NonNullable<HostInputDTO["proxy"]>>) =>
     update({ proxy: { ...(input.proxy ?? { kind: ProxyKind.ProxyNone }), ...patch } });
 
+  // ── Login script (expect 序列) helpers ──────────────────────────────
+  const updateLoginStep = (i: number, patch: Partial<LoginStep>) =>
+    update({
+      loginScript: (input.loginScript ?? []).map((s, j) => (j === i ? { ...s, ...patch } : s)),
+    });
+  const addLoginStep = () =>
+    update({ loginScript: [...(input.loginScript ?? []), { expect: "", send: "" }] });
+  const removeLoginStep = (i: number) =>
+    update({ loginScript: (input.loginScript ?? []).filter((_, j) => j !== i) });
+
   // Candidate jump hosts: every other managed host (a host cannot hop
   // through itself).
   const { data: jumpCandidates } = useHosts();
   const jumpOptions = (jumpCandidates ?? []).filter((h) => h.id !== existing?.id);
+
+  // Section summaries shown on collapsed headers.
+  const proxyKindSummary = (() => {
+    const kind = input.proxy?.kind ?? ProxyKind.ProxyNone;
+    if (kind === ProxyKind.ProxyNone) return undefined;
+    if (kind === ProxyKind.ProxyJump) {
+      const jump = (jumpCandidates ?? []).find((h) => h.id === input.proxy?.hostId);
+      return jump ? jump.name : t("hostForm.proxyJump");
+    }
+    if (kind === ProxyKind.ProxyHTTP) return t("hostForm.proxyHttp");
+    return t("hostForm.proxySocks5");
+  })();
+  const loginStepSummary =
+    (input.loginScript?.length ?? 0) > 0
+      ? t("hostForm.loginStepCount", { n: input.loginScript?.length ?? 0 })
+      : undefined;
 
   // ── Tunnel rule list helpers ────────────────────────────────────────
   const updateRule = (i: number, patch: Partial<TunnelConfig>) => {
@@ -570,10 +659,12 @@ export function HostFormDialog() {
               </div>
 
               {/* Credentials sub-section */}
-              <div className="flex flex-col gap-3 rounded-[var(--radius)] border border-border bg-background/30 p-3">
-                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  <KeyRound className="h-3.5 w-3.5" /> {t("hostForm.credentials")}
-                </div>
+              <CollapsibleCard
+                icon={KeyRound}
+                title={t("hostForm.credentials")}
+                open={credsOpen}
+                onToggle={() => setCredsOpen((v) => !v)}
+              >
 
                 {input.authType === "password" && (
                   <div className="grid gap-1.5">
@@ -645,23 +736,27 @@ export function HostFormDialog() {
                     )}
                   </div>
                 )}
-              </div>
+              </CollapsibleCard>
 
               {/* Proxy sub-section: jump host (堡垒机) / HTTP / SOCKS5 */}
-              <div className="flex flex-col gap-3 rounded-[var(--radius)] border border-border bg-background/30 p-3">
-                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  <Network className="h-3.5 w-3.5" /> {t("hostForm.proxy")}
-                </div>
+              <CollapsibleCard
+                icon={Network}
+                title={t("hostForm.proxy")}
+                summary={proxyKindSummary}
+                open={proxyOpen}
+                onToggle={() => setProxyOpen((v) => !v)}
+              >
                 <div className="grid gap-1.5">
                   <Label htmlFor="proxyKind">{t("hostForm.proxyKind")}</Label>
                   <Select
                     id="proxyKind"
                     value={input.proxy?.kind ?? ProxyKind.ProxyNone}
-                    onChange={(e) =>
-                      updateProxy({
-                        kind: e.target.value as ProxyKind,
-                      })
-                    }
+                    onChange={(e) => {
+                      const kind = e.target.value as ProxyKind;
+                      updateProxy({ kind });
+                      // Choosing a routed proxy reveals its fields right away.
+                      setProxyOpen(kind !== ProxyKind.ProxyNone);
+                    }}
                   >
                     <option value={ProxyKind.ProxyNone}>{t("hostForm.proxyNone")}</option>
                     <option value="jump">{t("hostForm.proxyJump")}</option>
@@ -748,7 +843,63 @@ export function HostFormDialog() {
                     {t("hostForm.proxyHint")}
                   </p>
                 )}
-              </div>
+              </CollapsibleCard>
+
+              {/* Login script (expect 序列): post-login automation */}
+              <CollapsibleCard
+                icon={SquareTerminal}
+                title={t("hostForm.loginScript")}
+                summary={loginStepSummary}
+                open={loginOpen}
+                onToggle={() => setLoginOpen((v) => !v)}
+                actions={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation(); // don't toggle the section
+                      addLoginStep();
+                      setLoginOpen(true);
+                    }}
+                  >
+                    + {t("hostForm.loginAddStep")}
+                  </Button>
+                }
+              >
+                <p className="text-[11px] text-muted-foreground">
+                  {t("hostForm.loginScriptHint")}
+                </p>
+                {(input.loginScript ?? []).length === 0 && (
+                  <p className="text-xs text-muted-foreground">{t("hostForm.loginScriptEmpty")}</p>
+                )}
+                {(input.loginScript ?? []).map((step, i) => (
+                  <div key={i} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
+                    <Input
+                      value={step.expect}
+                      onChange={(e) => updateLoginStep(i, { expect: e.target.value })}
+                      placeholder={t("hostForm.loginExpect")}
+                      aria-label={t("hostForm.loginExpect")}
+                    />
+                    <Input
+                      value={step.send}
+                      onChange={(e) => updateLoginStep(i, { send: e.target.value })}
+                      placeholder={t("hostForm.loginSend")}
+                      aria-label={t("hostForm.loginSend")}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      onClick={() => removeLoginStep(i)}
+                      aria-label={t("common.delete")}
+                      title={t("common.delete")}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </CollapsibleCard>
             </div>
           )}
 
@@ -823,6 +974,22 @@ export function HostFormDialog() {
                     {input.terminalFontSize || 13}px
                   </span>
                 </div>
+              </div>
+
+              {/* Terminal encoding (GBK for old devices) */}
+              <div className="grid gap-1.5">
+                <Label htmlFor="termEncoding">{t("hostForm.encoding")}</Label>
+                <Select
+                  id="termEncoding"
+                  value={input.terminalEncoding || "utf-8"}
+                  onChange={(e) => update({ terminalEncoding: e.target.value })}
+                >
+                  <option value="utf-8">UTF-8</option>
+                  <option value="gbk">GBK</option>
+                  <option value="gb18030">GB18030</option>
+                  <option value="big5">Big5</option>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">{t("hostForm.encodingHint")}</p>
               </div>
 
               {/* Live preview: selected theme colours + font + size. */}

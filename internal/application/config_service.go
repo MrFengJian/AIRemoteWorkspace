@@ -40,6 +40,11 @@ func (s *configService) GetAppConfig() (domain.AppConfig, error) {
 	if cfg.MonitorIntervalSeconds == 0 {
 		cfg.MonitorIntervalSeconds = 60
 	}
+	// Terminal scrollback: older rows and first runs fall back to the
+	// built-in default (matches xterm.js's own default).
+	if cfg.TerminalScrollback == 0 {
+		cfg.TerminalScrollback = 1000
+	}
 	// Agent tunables: zero fields in an older settings row fall back to the
 	// defaults (same values as DefaultConfig, kept in sync here because the
 	// stored row may predate the field).

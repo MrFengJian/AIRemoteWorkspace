@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Dialogs } from "@wailsio/runtime";
+import { Dialogs, Events } from "@wailsio/runtime";
 import {
   Copy,
   Download,
@@ -281,6 +281,36 @@ export function SftpWorkbench({ hostID }: SftpWorkbenchProps) {
     }
   };
 
+  /** Edit a remote file in the user's local editor: the backend downloads it
+   * to a temp folder, opens the OS default application, and auto-uploads on
+   * every save (watching mtime). */
+  const handleEdit = async (entry: FileEntryDTO) => {
+    try {
+      const local = await sftpApi.beginRemoteEdit(
+        hostID,
+        joinPath("remote", remote.cwd, entry.name),
+      );
+      toast.info(t("sftp.editOpened", { path: local }));
+    } catch (e) {
+      toast.error(`${t("sftp.editFailed")}: ${errorMessage(e)}`);
+    }
+  };
+
+  // Auto-upload feedback: the backend emits "sftp:remoteEdit:saved" after a
+  // changed local copy is pushed back to the host.
+  useEffect(() => {
+    const cancel = Events.On("sftp:remoteEdit:saved", (data: unknown) => {
+      const remotePath =
+        (data as { remotePath?: string } | undefined)?.remotePath ?? "";
+      toast.success(t("sftp.editSaved", { path: remotePath }));
+      remote.refresh();
+    });
+    return () => {
+      if (typeof cancel === "function") cancel();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Workbench: local pane (left) | remote pane (right) */}
@@ -319,6 +349,7 @@ export function SftpWorkbench({ hostID }: SftpWorkbenchProps) {
           transferIcon={Download}
           transferLabel={t("sftp.download")}
           onOpenFile={(entry) => void downloadEntry(entry)}
+          onEdit={(entry) => void handleEdit(entry)}
         />
       </div>
 

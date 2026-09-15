@@ -19,6 +19,7 @@ import {
   Pencil,
   RefreshCw,
   Trash2,
+  SquarePen,
   Upload,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -57,6 +58,9 @@ interface BrowserPaneProps {
   transferLabel?: string;
   /** Double-click on a file (remote pane transfers; local pane: no-op). */
   onOpenFile?: (entry: FileEntryDTO) => void;
+  /** Context-menu "edit" on a remote file (download → local editor →
+   * auto-upload on save). Remote pane only. */
+  onEdit?: (entry: FileEntryDTO) => void;
 }
 
 export function BrowserPane({
@@ -75,6 +79,7 @@ export function BrowserPane({
   transferIcon: TransferIcon,
   transferLabel,
   onOpenFile,
+  onEdit,
 }: BrowserPaneProps) {
   const { t } = useTranslation();
   const { askConfirm, askPrompt } = useConfirm();
@@ -170,8 +175,13 @@ export function BrowserPane({
     const items: MenuItem[] = [];
     if (entry.isDir) {
       items.push({ label: t("sftp.open"), icon: FolderOpen, onClick: () => openEntry(entry) });
-    } else if (onTransfer && TransferIcon) {
-      items.push({ label: transferLabel ?? t("sftp.transferTitle"), icon: TransferIcon, onClick: () => onTransfer(entry), disabled: busy });
+    } else {
+      if (onTransfer && TransferIcon) {
+        items.push({ label: transferLabel ?? t("sftp.transferTitle"), icon: TransferIcon, onClick: () => onTransfer(entry), disabled: busy });
+      }
+      if (onEdit) {
+        items.push({ label: t("sftp.edit"), icon: SquarePen, onClick: () => onEdit(entry), disabled: busy });
+      }
     }
     items.push(
       { type: "separator" },

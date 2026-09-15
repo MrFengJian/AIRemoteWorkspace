@@ -292,7 +292,7 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
             if (openingLocal) return;
             setOpeningLocal(true);
             try {
-              await openLocal.mutateAsync(t("terminal.localTab"));
+              await openLocal.mutateAsync({ name: t("terminal.localTab") });
             } catch {
               /* failure is toasted globally */
             } finally {

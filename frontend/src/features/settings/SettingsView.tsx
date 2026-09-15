@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Events } from "@wailsio/runtime";
+import { useQuery } from "@tanstack/react-query";
 import {
   Palette,
   Languages,
@@ -12,6 +13,7 @@ import {
   X,
   Copy,
   Keyboard,
+  KeyRound,
   Sun,
   Moon,
   Monitor,
@@ -55,6 +57,7 @@ import { useUIStore, type SettingsCategory } from "@/stores/ui.store";
 import { ModelSettingsSection } from "@/features/settings/ModelSettingsSection";
 import { ShortcutSettingsSection } from "@/features/settings/ShortcutSettingsSection";
 import { AgentSettingsSection } from "@/features/settings/AgentSettingsSection";
+import { KeysSection } from "@/features/settings/KeysSection";
 import { cn } from "@/lib/utils";
 import { toast, errorMessage } from "@/lib/toast";
 import { useConfirm } from "@/lib/useConfirm";
@@ -73,6 +76,11 @@ const DEFAULT_CONFIG: AppConfig = {
   disableKeywordHighlight: false,
   middleClickAction: "pasteSelection",
   monitorIntervalSeconds: 60,
+  terminalScrollback: 1000,
+  disableSessionLog: false,
+  sessionLogTimestamps: false,
+  localShell: "",
+  disableSystemNotify: false,
   agent: {
     maxSteps: 100,
     historyTurns: 40,
@@ -168,6 +176,7 @@ export function SettingsView() {
     { id: "models", label: t("settings.models.title"), icon: Bot },
     { id: "agent", label: t("settings.agentTitle"), icon: BrainCircuit },
     { id: "shortcuts", label: t("settings.shortcuts"), icon: Keyboard },
+    { id: "keys", label: t("keys.title"), icon: KeyRound },
     { id: "advanced", label: t("settings.advanced"), icon: Settings2 },
     { id: "about", label: t("settings.about"), icon: Info },
   ];
@@ -205,6 +214,7 @@ export function SettingsView() {
           {category === "models" && <ModelSettingsSection />}
           {category === "agent" && <AgentSettingsSection config={config} update={updateConfig} />}
           {category === "shortcuts" && <ShortcutSettingsSection config={config} update={updateConfig} />}
+          {category === "keys" && <KeysSection />}
           {category === "advanced" && <AdvancedSection config={config} update={updateConfig} />}
           {category === "about" && <AboutSection />}
         </div>
@@ -225,6 +235,13 @@ function AppearanceSection({
   saving: boolean;
 }) {
   const { t } = useTranslation();
+  // Detected local command lines (Phase 8 本地终端增强) — stable per run.
+  const { data: localShells } = useQuery({
+    queryKey: ["local-shells"],
+    queryFn: () => SystemService.ListLocalShells().then((r) => r ?? []),
+    staleTime: Infinity,
+    retry: 1,
+  });
   const themeOptions = [
     { value: "light", label: t("settings.themeLight"), icon: Sun },
     { value: "dark", label: t("settings.themeDark"), icon: Moon },
@@ -426,6 +443,55 @@ function AppearanceSection({
           })}
         </CardContent>
       </Card>
+
+      {/* Local terminal default shell (detected per OS) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">{t("settings.localShellTitle")}</CardTitle>
+          <CardDescription>{t("settings.localShellDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-[8rem_1fr] items-center gap-3">
+            <Label htmlFor="localShell">{t("settings.localShellDefault")}</Label>
+            <Select
+              id="localShell"
+              value={config.localShell ?? ""}
+              onChange={(e) => update({ localShell: e.target.value })}
+              className="max-w-60"
+            >
+              <option value="">{t("settings.localShellAuto")}</option>
+              {(localShells ?? []).map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Terminal scrollback lines (global default for new panes) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">{t("settings.scrollbackTitle")}</CardTitle>
+          <CardDescription>{t("settings.scrollbackDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-[8rem_1fr] items-center gap-3">
+            <Label htmlFor="terminalScrollback">{t("settings.scrollbackLines")}</Label>
+            <Input
+              id="terminalScrollback"
+              type="number"
+              min={100}
+              max={1000000}
+              step={100}
+              value={config.terminalScrollback || 1000}
+              onChange={(e) => update({ terminalScrollback: Number(e.target.value) })}
+              className="max-w-40"
+            />
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -502,6 +568,45 @@ function AdvancedSection({
               ))}
             </Select>
           </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">{t("settings.notifyTitle")}</CardTitle>
+          <CardDescription>{t("settings.notifyDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <Checkbox
+              checked={!config.disableSystemNotify}
+              onCheckedChange={(v) => update({ disableSystemNotify: v !== true })}
+            />
+            <span>{t("settings.notifyToggle")}</span>
+          </label>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">{t("settings.sessionLogTitle")}</CardTitle>
+          <CardDescription>{t("settings.sessionLogDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <Checkbox
+              checked={!config.disableSessionLog}
+              onCheckedChange={(v) => update({ disableSessionLog: v !== true })}
+            />
+            <span>{t("settings.sessionLogToggle")}</span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <Checkbox
+              checked={config.sessionLogTimestamps}
+              disabled={config.disableSessionLog}
+              onCheckedChange={(v) => update({ sessionLogTimestamps: v === true })}
+            />
+            <span>{t("settings.sessionLogTimestamps")}</span>
+          </label>
+          <p className="text-[11px] text-muted-foreground">{t("settings.sessionLogEntry")}</p>
         </CardContent>
       </Card>
       <Card>

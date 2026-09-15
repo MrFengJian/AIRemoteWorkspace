@@ -5,6 +5,7 @@ import {
   Play,
   Settings2,
   ListChecks,
+  Radio,
 } from "lucide-react";
 
 import {
@@ -14,6 +15,7 @@ import {
   type QuickCommand,
 } from "@/features/terminal/quickCommands";
 import { useSendTargets, sendPayloadToTabs } from "@/features/terminal/sendTargets";
+import { useBroadcastStore } from "@/features/terminal/broadcast.store";
 import { QuickCommandManageDialog } from "@/features/terminal/QuickCommandManageDialog";
 import { SendConfirmDialog } from "@/features/terminal/SendConfirmDialog";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -42,6 +44,11 @@ export function QuickCommandBar() {
   const commands = useQuickCommands();
   const { sessions, sendable, targets, targetTabs, toggleTarget, selectAllTargets, selectNoTargets } =
     useSendTargets();
+  // 同步键入: the toggle lives on this bar; TerminalPanel mirrors keystrokes
+  // from the focused pane into these target tabs while it is on.
+  const syncEnabled = useBroadcastStore((s) => s.enabled);
+  const setSyncEnabled = useBroadcastStore((s) => s.setEnabled);
+  const setSyncTargets = useBroadcastStore((s) => s.setTargets);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
@@ -53,6 +60,12 @@ export function QuickCommandBar() {
   } | null>(null);
 
   const pickerRef = useRef<HTMLDivElement | null>(null);
+
+  // Keep the broadcast store's target list in lockstep with this bar's
+  // multi-select so 同步键入 mirrors to exactly what is selected here.
+  useEffect(() => {
+    setSyncTargets(targetTabs.map((tab) => tab.id));
+  }, [targetTabs, setSyncTargets]);
 
   // Close the target picker on outside click / Escape (ContextMenu-style).
   useEffect(() => {
@@ -197,6 +210,33 @@ export function QuickCommandBar() {
           </span>
         )}
       </div>
+
+      {/* 同步键入 toggle: while on, keystrokes typed in the focused pane are
+          mirrored in real time to every target tab selected on the left. */}
+      <button
+        type="button"
+        disabled={targetTabs.length === 0}
+        onClick={() => {
+          const next = !syncEnabled;
+          setSyncEnabled(next);
+          if (next) {
+            toast.info(t("quickCmd.syncOn", { n: targetTabs.length }));
+          } else {
+            toast.info(t("quickCmd.syncOff"));
+          }
+        }}
+        title={t("quickCmd.syncTitle")}
+        aria-pressed={syncEnabled}
+        className={cn(
+          "flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius)] transition-colors",
+          syncEnabled
+            ? "bg-primary/15 text-primary"
+            : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+          targetTabs.length === 0 && "opacity-40",
+        )}
+      >
+        <Radio className="h-3.5 w-3.5" />
+      </button>
 
       {/* Manage entries (add / edit / delete / reorder). */}
       <button

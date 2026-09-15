@@ -42,11 +42,13 @@ export function GetSessionLog(sessionID: string): $CancellablePromise<$models.Se
 
 /**
  * OpenLocalSession starts an interactive shell on the user's machine over a
- * local PTY (Windows: PowerShell/cmd via ConPTY; Unix: the login shell via
- * openpty). Same event contract as OpenSession.
+ * local PTY (Windows: PowerShell/cmd/WSL/Git Bash via ConPTY; Unix: the
+ * chosen login shell via openpty). shellID picks the command line from the
+ * detected catalogue — "" = the system default. Same event contract as
+ * OpenSession.
  */
-export function OpenLocalSession(size: $models.PtySizeDTO): $CancellablePromise<$models.OpenSessionResult> {
-    return $Call.ByID(3464489582, size);
+export function OpenLocalSession(size: $models.PtySizeDTO, shellID: string): $CancellablePromise<$models.OpenSessionResult> {
+    return $Call.ByID(3464489582, size, shellID);
 }
 
 /**
@@ -89,7 +91,9 @@ export function StopSessionLog(sessionID: string): $CancellablePromise<$models.S
 }
 
 /**
- * WriteStdin forwards a keystroke/line to the session's shell (local or SSH).
+ * WriteStdin forwards a keystroke/line to the session's shell (local or
+ * SSH). Sessions with a non-UTF-8 terminal encoding have their input
+ * encoded through the session's encoder first.
  */
 export function WriteStdin(sessionID: string, data: string | null): $CancellablePromise<void> {
     return $Call.ByID(925434392, sessionID, data);

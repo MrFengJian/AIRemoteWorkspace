@@ -22,6 +22,7 @@ export type {
     DockerNetworkSubnet,
     HighlightRule,
     LLMConfig,
+    LoginStep,
     MCPConfig,
     MCPStatus,
     MonitorDiskUsage,

@@ -13,6 +13,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as localpty$0 from "../infrastructure/localpty/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
@@ -30,6 +34,15 @@ export function GetDataDirInfo(): $CancellablePromise<$models.DataDirInfoDTO> {
  */
 export function GetLocalIP(): $CancellablePromise<$models.LocalIPResult> {
     return $Call.ByID(1333072652);
+}
+
+/**
+ * ListLocalShells returns the command lines detected on this machine, in
+ * preference order — the first entry is the effective default when no
+ * explicit default is configured.
+ */
+export function ListLocalShells(): $CancellablePromise<localpty$0.LocalShell[] | null> {
+    return $Call.ByID(644928086);
 }
 
 /**

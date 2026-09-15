@@ -35,6 +35,10 @@ type HostDTO struct {
 	AgentModel      string `json:"agentModel"`
 	// SSH tunnel rules (host settings form; several allowed per host).
 	Tunnels []domain.TunnelConfig `json:"tunnels"`
+	// Login script (expect 序列): run when a session opens on this host.
+	LoginScript []domain.LoginStep `json:"loginScript,omitempty"`
+	// Terminal encoding of the remote side ("" / "utf-8" | "gbk" | …).
+	TerminalEncoding string `json:"terminalEncoding,omitempty"`
 	// Pre-SSH reachability (jump host / HTTP / SOCKS5); nil = direct.
 	Proxy *domain.ProxyConfig `json:"proxy,omitempty"`
 }
@@ -53,6 +57,8 @@ type HostInputDTO struct {
 	Group            string                `json:"group"`
 	Tags             []string              `json:"tags"`
 	Tunnels          []domain.TunnelConfig `json:"tunnels"`
+	LoginScript      []domain.LoginStep    `json:"loginScript,omitempty"`
+	TerminalEncoding string                `json:"terminalEncoding,omitempty"`
 	// Proxy: nil means "keep the stored proxy untouched" so callers that
 	// build partial inputs (appearance dialog) never wipe it; the host form
 	// always sends an explicit value — a zero-kind config clears it.
@@ -239,6 +245,8 @@ func toHostInput(in HostInputDTO) appsvc.CreateHostInput {
 		Group:            in.Group,
 		Tags:             in.Tags,
 		Tunnels:          in.Tunnels,
+		LoginScript:      in.LoginScript,
+		TerminalEncoding: in.TerminalEncoding,
 		Proxy:            in.Proxy,
 	}
 }
@@ -255,12 +263,14 @@ func toHostDTO(h domain.Host) HostDTO {
 		TerminalTheme:    h.TerminalTheme,
 		TerminalFont:     h.TerminalFont,
 		TerminalFontSize: h.TerminalFontSize,
+		TerminalEncoding: h.TerminalEncoding,
 		Group:            h.Group,
 		Tags:             h.Tags,
 		OS:               h.OS,
 		AgentProviderID:  h.AgentProviderID,
 		AgentModel:       h.AgentModel,
 		Tunnels:          h.Tunnels,
+		LoginScript:      h.LoginScript,
 		Proxy:            h.Proxy,
 	}
 }

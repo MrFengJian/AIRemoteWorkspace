@@ -49,6 +49,8 @@ const progressEmitInterval = 100 * time.Millisecond
 type SftpService struct {
 	svc *appsvc.SftpService
 	app *wailsapp.App
+	// edits (may be nil) powers the "edit in local editor" flow.
+	edits *appsvc.RemoteEditService
 
 	mu        sync.Mutex
 	transfers map[string]context.CancelFunc
@@ -59,6 +61,11 @@ func NewSftpService(svc *appsvc.SftpService) *SftpService {
 	return &SftpService{svc: svc}
 }
 
+// SetRemoteEdits wires the remote-edit service (下载到本地临时目录 + 自动回传).
+func (s *SftpService) SetRemoteEdits(e *appsvc.RemoteEditService) {
+	s.edits = e
+}
+
 // ServiceName lets Wails register the service under a stable name.
 func (s *SftpService) ServiceName() string { return "SftpService" }
 
@@ -66,7 +73,31 @@ func (s *SftpService) ServiceName() string { return "SftpService" }
 // emitted (same pattern as TerminalService).
 func (s *SftpService) ServiceStartup(_ context.Context, _ wailsapp.ServiceOptions) error {
 	s.app = wailsapp.Get()
+	if s.edits != nil {
+		s.edits.SetOnChanged(func(_, remotePath string) {
+			if s.app != nil {
+				s.app.Event.Emit("sftp:remoteEdit:saved", map[string]string{"remotePath": remotePath})
+			}
+		})
+	}
 	return nil
+}
+
+// BeginRemoteEdit downloads a remote file to the local temp folder and
+// registers a watcher that uploads it back on every local save. Returns the
+// local path for the caller to open with the OS default application.
+func (s *SftpService) BeginRemoteEdit(hostID, remotePath string) (string, error) {
+	if s.edits == nil {
+		return "", fmt.Errorf("remote edit not available")
+	}
+	local, err := s.edits.Begin(hostID, remotePath)
+	if err != nil {
+		return "", err
+	}
+	if err := openWithDefaultApp(local); err != nil {
+		return local, err
+	}
+	return local, nil
 }
 
 // ListDir returns the entries of a remote directory.

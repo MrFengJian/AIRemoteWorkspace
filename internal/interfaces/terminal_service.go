@@ -7,14 +7,37 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 
 	wailsapp "github.com/wailsapp/wails/v3/pkg/application"
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/encoding/traditionalchinese"
 
 	appsvc "github.com/ai-remote/workspace/internal/application"
 	"github.com/ai-remote/workspace/internal/infrastructure/localpty"
 	ssh "github.com/ai-remote/workspace/internal/infrastructure/ssh"
 )
+
+// terminalCodecs resolves a host's terminal encoding name into a stateful
+// decoder/encoder pair (output → UTF-8, input ← UTF-8). Unknown or empty
+// names mean UTF-8 passthrough (nil, nil).
+func terminalCodecs(name string) (*encoding.Decoder, *encoding.Encoder) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "gbk":
+		e := simplifiedchinese.GBK
+		return e.NewDecoder(), e.NewEncoder()
+	case "gb18030":
+		e := simplifiedchinese.GB18030
+		return e.NewDecoder(), e.NewEncoder()
+	case "big5":
+		e := traditionalchinese.Big5
+		return e.NewDecoder(), e.NewEncoder()
+	default:
+		return nil, nil
+	}
+}
 
 // OpenSessionRequest carries what the frontend needs to start a terminal.
 type OpenSessionRequest struct {
@@ -58,6 +81,12 @@ type TerminalService struct {
 	localMgr    *localpty.Manager
 	tunnels     *ssh.TunnelManager
 	logs        *appsvc.SessionLogService
+
+	// Per-session input encoders (non-UTF-8 terminal encodings) and login
+	// script runners, keyed by session id; registered at open, dropped at
+	// close. sync.Map: pumps/close race freely.
+	encoders sync.Map // sessionID → *encoding.Encoder
+	scripts  sync.Map // sessionID → *appsvc.LoginScriptRunner
 
 	mu sync.Mutex
 }
@@ -110,10 +139,31 @@ func (t *TerminalService) OpenSession(req OpenSessionRequest) (OpenSessionResult
 		return OpenSessionResult{}, err
 	}
 
+	// Per-host terminal encoding (GBK for old devices): stateful dec/enc
+	// pair applied to the output/input streams of THIS session.
+	events.decoder, events.encoder = terminalCodecs(host.TerminalEncoding)
+
 	ctx := context.Background()
 	sessionID, err := t.connManager.OpenSession(ctx, host, creds, req.Size.Cols, req.Size.Rows, events)
 	if err != nil {
 		return OpenSessionResult{}, err
+	}
+
+	// Input side of the encoding: WriteStdin encodes through the same pair.
+	if events.encoder != nil {
+		t.encoders.Store(sessionID, events.encoder)
+	}
+
+	// Login script (expect 序列): run in the background against this
+	// session's output stream; failures are silent by design.
+	if len(host.LoginScript) > 0 {
+		sid := sessionID
+		runner := appsvc.NewLoginScriptRunner(host.LoginScript, func(s string) error {
+			return t.WriteStdin(sid, []byte(s))
+		})
+		events.script = runner
+		t.scripts.Store(sessionID, runner)
+		go runner.Run()
 	}
 
 	// Auto-detect the host OS in the background (if not already recorded).
@@ -138,19 +188,28 @@ func (t *TerminalService) OpenSession(req OpenSessionRequest) (OpenSessionResult
 }
 
 // OpenLocalSession starts an interactive shell on the user's machine over a
-// local PTY (Windows: PowerShell/cmd via ConPTY; Unix: the login shell via
-// openpty). Same event contract as OpenSession.
-func (t *TerminalService) OpenLocalSession(size PtySizeDTO) (OpenSessionResult, error) {
+// local PTY (Windows: PowerShell/cmd/WSL/Git Bash via ConPTY; Unix: the
+// chosen login shell via openpty). shellID picks the command line from the
+// detected catalogue — "" = the system default. Same event contract as
+// OpenSession.
+func (t *TerminalService) OpenLocalSession(size PtySizeDTO, shellID string) (OpenSessionResult, error) {
 	events := &terminalEvents{app: t.app, logs: t.logs}
-	sessionID, err := t.localMgr.Open(size.Cols, size.Rows, events)
+	sessionID, err := t.localMgr.Open(size.Cols, size.Rows, events, shellID)
 	if err != nil {
 		return OpenSessionResult{}, err
 	}
 	return OpenSessionResult{SessionID: sessionID}, nil
 }
 
-// WriteStdin forwards a keystroke/line to the session's shell (local or SSH).
+// WriteStdin forwards a keystroke/line to the session's shell (local or
+// SSH). Sessions with a non-UTF-8 terminal encoding have their input
+// encoded through the session's encoder first.
 func (t *TerminalService) WriteStdin(sessionID string, data []byte) error {
+	if enc, ok := t.encoders.Load(sessionID); ok {
+		if out, encErr := enc.(*encoding.Encoder).Bytes(data); encErr == nil {
+			data = out
+		}
+	}
 	var err error
 	if localpty.IsLocal(sessionID) {
 		err = t.localMgr.WriteStdin(sessionID, data)
@@ -192,6 +251,12 @@ func (t *TerminalService) CloseSession(sessionID string) error {
 	if t.logs != nil {
 		t.logs.Stop(sessionID)
 	}
+	// Stop the login script runner and forget the input encoder.
+	if r, ok := t.scripts.Load(sessionID); ok {
+		r.(*appsvc.LoginScriptRunner).Stop()
+		t.scripts.Delete(sessionID)
+	}
+	t.encoders.Delete(sessionID)
 	var err error
 	if localpty.IsLocal(sessionID) {
 		err = t.localMgr.Close(sessionID)
@@ -215,11 +280,16 @@ func (t *TerminalService) CloseSession(sessionID string) error {
 // progress stages additionally go out under "terminal:connect" tagged with
 // the request's ConnectID so the UI can correlate them with the opening call.
 // logs (may be nil) receives every output chunk for sessions the user is
-// recording, and is closed out on exit.
+// recording, and is closed out on exit. decoder (may be nil) transcodes
+// non-UTF-8 terminal encodings before anything downstream sees the bytes;
+// script (may be nil) feeds the host's login script runner.
 type terminalEvents struct {
 	app       *wailsapp.App
 	connectID string
 	logs      *appsvc.SessionLogService
+	decoder   *encoding.Decoder
+	encoder   *encoding.Encoder
+	script    *appsvc.LoginScriptRunner
 }
 
 // terminalConnectEvent is the payload of the "terminal:connect" progress
@@ -240,8 +310,22 @@ func (te *terminalEvents) OnProgress(_, stage string) {
 }
 
 func (te *terminalEvents) OnData(sessionID string, data []byte) {
+	// Non-UTF-8 terminal encoding: transcode FIRST so the session log, the
+	// login-script matcher and the terminal all see UTF-8. The decoder is
+	// stateful — multi-byte sequences split across reads are handled. Best
+	// effort: on a conversion error the partial result is used.
+	if te.decoder != nil {
+		if out, err := te.decoder.Bytes(data); err == nil {
+			data = out
+		} else if len(out) > 0 {
+			data = out
+		}
+	}
 	if te.logs != nil {
 		te.logs.Write(sessionID, data) // best-effort session logging; never fails the pump
+	}
+	if te.script != nil {
+		te.script.Feed(data)
 	}
 	if te.app == nil {
 		return
@@ -262,6 +346,9 @@ func (te *terminalEvents) OnReconnecting(sessionID string, attempt int) {
 func (te *terminalEvents) OnExit(sessionID string, exitErr error) {
 	if te.logs != nil {
 		te.logs.Stop(sessionID) // close the log file — the session is over
+	}
+	if te.script != nil {
+		te.script.Stop() // abort the login script — the session is over
 	}
 	if te.app == nil {
 		return

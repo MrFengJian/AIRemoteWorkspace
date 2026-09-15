@@ -45,6 +45,18 @@ type Host struct {
 	// tunnel manager dedupes per host + rule.
 	Tunnels []TunnelConfig
 
+	// Login script (expect 序列, host settings form): steps run in order
+	// when a session opens on this host — wait for the Expect substring in
+	// the output (empty = don't wait), then send Send + carriage return.
+	// For post-login automation: enable passwords, initial cd, tmux attach…
+	LoginScript []LoginStep
+
+	// Terminal encoding of the remote side ("" = utf-8). When set (e.g.
+	// "gbk" for old devices), PTY output is transcoded to UTF-8 for the
+	// frontend and input is encoded back — the terminal itself always
+	// speaks UTF-8.
+	TerminalEncoding string
+
 	// How to reach this host before SSH: directly (nil), through a jump
 	// host (堡垒机, itself possibly behind another jump / proxy — chains
 	// form by recursion), or through an HTTP CONNECT / SOCKS5 proxy.
@@ -53,6 +65,14 @@ type Host struct {
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// LoginStep is one expect→send pair of a host's login script. Expect is a
+// plain substring matched against the session output ("" = don't wait);
+// Send is written to the PTY followed by a carriage return ("" = wait only).
+type LoginStep struct {
+	Expect string `json:"expect"`
+	Send   string `json:"send"`
 }
 
 // ProxyKind enumerates the ways a host can be reached before SSH.

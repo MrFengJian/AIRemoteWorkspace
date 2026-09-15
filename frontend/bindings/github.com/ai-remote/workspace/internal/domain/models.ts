@@ -118,6 +118,33 @@ export interface AppConfig {
     "monitorIntervalSeconds": number;
 
     /**
+     * Terminal scrollback lines for NEW panes (0 = built-in default 1000).
+     */
+    "terminalScrollback": number;
+
+    /**
+     * Default local terminal command line (LocalShell.ID from the detected
+     * catalogue; "" = system default / first detected).
+     */
+    "localShell": string;
+
+    /**
+     * Session logging (terminal right-click → 日志): false = enabled.
+     */
+    "disableSessionLog": boolean;
+
+    /**
+     * Prefix every session-log line with a HH:MM:SS timestamp.
+     */
+    "sessionLogTimestamps": boolean;
+
+    /**
+     * System notifications (session disconnect while the window is
+     * unfocused) — false = enabled (the out-of-box default).
+     */
+    "disableSystemNotify": boolean;
+
+    /**
      * AI agent runtime tunables (提示词 / 最大步数等, user-adjustable).
      */
     "agent": AgentConfig;
@@ -315,6 +342,16 @@ export interface LLMConfig {
      * e.g. "gpt-4o", "deepseek-chat"
      */
     "model": string;
+}
+
+/**
+ * LoginStep is one expect→send pair of a host's login script. Expect is a
+ * plain substring matched against the session output ("" = don't wait);
+ * Send is written to the PTY followed by a carriage return ("" = wait only).
+ */
+export interface LoginStep {
+    "expect": string;
+    "send": string;
 }
 
 /**

@@ -21,7 +21,20 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as application$0 from "../application/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
+
+/**
+ * BeginRemoteEdit downloads a remote file to the local temp folder and
+ * registers a watcher that uploads it back on every local save. Returns the
+ * local path for the caller to open with the OS default application.
+ */
+export function BeginRemoteEdit(hostID: string, remotePath: string): $CancellablePromise<string> {
+    return $Call.ByID(608531969, hostID, remotePath);
+}
 
 /**
  * CancelTransfer aborts a running streaming transfer by its id.
@@ -115,6 +128,13 @@ export function RemoteExists(hostID: string, remotePath: string): $CancellablePr
  */
 export function RenameFile(hostID: string, oldPath: string, newPath: string): $CancellablePromise<void> {
     return $Call.ByID(3195865754, hostID, oldPath, newPath);
+}
+
+/**
+ * SetRemoteEdits wires the remote-edit service (下载到本地临时目录 + 自动回传).
+ */
+export function SetRemoteEdits(e: application$0.RemoteEditService | null): $CancellablePromise<void> {
+    return $Call.ByID(369554909, e);
 }
 
 /**

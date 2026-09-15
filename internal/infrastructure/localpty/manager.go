@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
@@ -63,10 +62,12 @@ func NewManager() *Manager {
 	return &Manager{sessions: make(map[string]*localSession)}
 }
 
-// Open starts an interactive local shell attached to a fresh PTY. Output is
-// streamed via events.OnData; termination via events.OnExit — the same
-// contract the SSH manager honours, so the frontend needs no changes.
-func (m *Manager) Open(cols, rows int, events application.SessionEvents) (string, error) {
+// Open starts an interactive local shell attached to a fresh PTY. shellID
+// selects the command line ("" = the first detected / AppConfig default);
+// an unknown id resolves to the default as well. Output is streamed via
+// events.OnData; termination via events.OnExit — the same contract the SSH
+// manager honours, so the frontend needs no changes.
+func (m *Manager) Open(cols, rows int, events application.SessionEvents, shellID string) (string, error) {
 	if cols <= 0 {
 		cols = 80
 	}
@@ -74,7 +75,7 @@ func (m *Manager) Open(cols, rows int, events application.SessionEvents) (string
 		rows = 24
 	}
 
-	shell, shellArgs, err := detectShell()
+	shell, err := resolveShell(shellID)
 	if err != nil {
 		return "", err
 	}
@@ -90,13 +91,13 @@ func (m *Manager) Open(cols, rows int, events application.SessionEvents) (string
 	}
 
 	sessionID := SessionIDPrefix + uuid.NewString()
-	cmd := p.Command(shell, shellArgs...)
+	cmd := p.Command(shell.Program, shell.Args...)
 	cmd.Dir = homeDir()
 	cmd.Env = shellEnv()
 
 	if err := cmd.Start(); err != nil {
 		_ = p.Close()
-		return "", fmt.Errorf("start %s: %w", shell, err)
+		return "", fmt.Errorf("start %s: %w", shell.Program, err)
 	}
 
 	s := &localSession{id: sessionID, pty: p, cmd: cmd}
@@ -202,35 +203,22 @@ const psUTF8Bootstrap = `[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;
 	`[Console]::InputEncoding=[System.Text.Encoding]::UTF8;` +
 	`$PSDefaultParameterValues['*:Encoding']='utf8'`
 
-// detectShell picks the interactive shell for this OS:
-// Windows prefers PowerShell (pwsh → powershell → COMSPEC/cmd); Unix uses the
-// user's login shell with zsh/bash fallbacks.
-func detectShell() (string, []string, error) {
-	switch runtime.GOOS {
-	case "windows":
-		for _, cand := range []string{"pwsh.exe", "powershell.exe"} {
-			if path, err := exec.LookPath(cand); err == nil {
-				return path, []string{"-NoLogo", "-NoExit", "-Command", psUTF8Bootstrap}, nil
-			}
-		}
-		if comspec := os.Getenv("COMSPEC"); comspec != "" {
-			return comspec, []string{"/k", "chcp 65001>nul"}, nil
-		}
-		if path, err := exec.LookPath("cmd.exe"); err == nil {
-			return path, []string{"/k", "chcp 65001>nul"}, nil
-		}
-		return "", nil, errors.New("no local shell found (tried pwsh, powershell, cmd)")
-	default:
-		if shell := os.Getenv("SHELL"); shell != "" {
-			return shell, []string{"-l"}, nil // login shell: pick up the user's profile
-		}
-		for _, cand := range []string{"/bin/zsh", "/bin/bash", "/bin/sh"} {
-			if _, err := os.Stat(cand); err == nil {
-				return cand, []string{"-l"}, nil
-			}
-		}
-		return "", nil, errors.New("no local shell found (tried $SHELL, zsh, bash, sh)")
+// resolveShell picks the shell for a new session: the requested id when it
+// is available, otherwise the first detected shell (the AppConfig default is
+// applied by the CALLER, which maps config → id before calling Open).
+func resolveShell(shellID string) (LocalShell, error) {
+	shells := ListShells()
+	if len(shells) == 0 {
+		return LocalShell{}, errors.New("no local shell found")
 	}
+	if shellID != "" {
+		for _, s := range shells {
+			if s.ID == shellID {
+				return s, nil
+			}
+		}
+	}
+	return shells[0], nil
 }
 
 // shellEnv returns the child environment; Unix shells get a color TERM.

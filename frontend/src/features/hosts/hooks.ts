@@ -24,14 +24,15 @@ export type OpenTerminalVars = {
 };
 
 /**
- * Global terminal appearance defaults (AppConfig). Per-host values of "" / 0
- * fall back to these; a failure to load the config falls back to the
- * built-in defaults ("" / 0), same as before the fields existed.
+ * Global terminal defaults (AppConfig): appearance for new tabs plus the
+ * preferred local shell. Per-host appearance values of "" / 0 fall back to
+ * these; a failure to load the config falls back to the built-in defaults.
  */
 async function globalTerminalDefaults(): Promise<{
   terminalTheme: string;
   terminalFont: string;
   terminalFontSize: number;
+  localShell: string;
 }> {
   try {
     const cfg = await ConfigService.GetAppConfig();
@@ -39,9 +40,10 @@ async function globalTerminalDefaults(): Promise<{
       terminalTheme: cfg.terminalTheme ?? "",
       terminalFont: cfg.terminalFont ?? "",
       terminalFontSize: cfg.terminalFontSize ?? 0,
+      localShell: cfg.localShell ?? "",
     };
   } catch {
-    return { terminalTheme: "", terminalFont: "", terminalFontSize: 0 };
+    return { terminalTheme: "", terminalFont: "", terminalFontSize: 0, localShell: "" };
   }
 }
 
@@ -149,19 +151,23 @@ export function useOpenTerminal() {
 
 /**
  * useOpenLocalTerminal starts an interactive shell on the user's machine over
- * a local PTY (no SSH) and registers it as a terminal tab.
+ * a local PTY (no SSH) and registers it as a terminal tab. shellID picks the
+ * command line from the detected catalogue ("" / omitted = the AppConfig
+ * default or the system default).
  */
 export function useOpenLocalTerminal() {
   const addLocalSession = useTerminalStore((s) => s.addLocalSession);
 
   return useMutation({
-    // The name is the tab label; the appearance comes from the global
-    // terminal defaults (the appearance dialog in a local tab persists there).
-    mutationFn: async (name: string) => {
-      const [res, defaults] = await Promise.all([
-        TerminalService.OpenLocalSession({ cols: 80, rows: 24 }),
-        globalTerminalDefaults(),
-      ]);
+    // The name is the tab label; the appearance and the shell come from the
+    // global defaults (an explicit shellID — the tab-bar dropdown — wins
+    // over the configured preference).
+    mutationFn: async ({ name, shellID }: { name: string; shellID?: string }) => {
+      const defaults = await globalTerminalDefaults();
+      const res = await TerminalService.OpenLocalSession(
+        { cols: 80, rows: 24 },
+        shellID || defaults.localShell || "",
+      );
       return {
         sessionId: res.sessionId,
         name,

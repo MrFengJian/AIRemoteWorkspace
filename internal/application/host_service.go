@@ -52,6 +52,12 @@ type CreateHostInput struct {
 	Group            string // host group (test/stage/production/custom)
 	Tags             []string
 	Tunnels          []domain.TunnelConfig // SSH tunnel rules (host settings)
+	// Login script (expect sequence, run on session open). Nil means "keep
+	// the stored script" on Update — same partial-input rule as Proxy.
+	LoginScript []domain.LoginStep
+	// Terminal encoding of the remote side ("" = keep on Update, "utf-8" to
+	// explicitly clear a non-UTF-8 setting).
+	TerminalEncoding string
 	// Proxy is the pre-SSH route (jump host / HTTP / SOCKS5). Nil means
 	// "keep the stored proxy" on Update (partial-input callers like the
 	// appearance dialog never wipe it); a zero-kind config clears it.
@@ -82,6 +88,8 @@ func (s *HostService) Create(in CreateHostInput) (domain.Host, error) {
 		Group:            in.Group,
 		Tags:             in.Tags,
 		Tunnels:          in.Tunnels,
+		LoginScript:      in.LoginScript,
+		TerminalEncoding: in.TerminalEncoding,
 		Proxy:            normalizeProxy(in.Proxy, ""),
 	}
 	if err := s.repo.Save(h); err != nil {
@@ -115,6 +123,15 @@ func (s *HostService) Update(id string, in CreateHostInput) (domain.Host, error)
 	existing.Group = in.Group
 	existing.Tags = in.Tags
 	existing.Tunnels = in.Tunnels
+	// Partial-input preservation: nil LoginScript / empty TerminalEncoding
+	// keep the stored values so partial callers (appearance dialog) never
+	// wipe them; the host form always sends explicit values.
+	if in.LoginScript != nil {
+		existing.LoginScript = in.LoginScript
+	}
+	if in.TerminalEncoding != "" {
+		existing.TerminalEncoding = in.TerminalEncoding
+	}
 	if in.Proxy != nil {
 		existing.Proxy = normalizeProxy(in.Proxy, id)
 	}

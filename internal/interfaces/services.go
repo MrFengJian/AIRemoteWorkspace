@@ -18,6 +18,7 @@ import (
 
 	appsvc "github.com/ai-remote/workspace/internal/application"
 	"github.com/ai-remote/workspace/internal/domain"
+	"github.com/ai-remote/workspace/internal/infrastructure/localpty"
 )
 
 // --- SystemService -------------------------------------------------------
@@ -84,6 +85,15 @@ func (s *SystemService) GetLocalIP() (LocalIPResult, error) {
 	return LocalIPResult{IP: localAddr.IP.String()}, nil
 }
 
+// ── Local shells (terminal tab picker + settings default) ────────────────
+
+// ListLocalShells returns the command lines detected on this machine, in
+// preference order — the first entry is the effective default when no
+// explicit default is configured.
+func (s *SystemService) ListLocalShells() ([]localpty.LocalShell, error) {
+	return localpty.ListShells(), nil
+}
+
 // ── Data directory (settings → advanced) ---------------------------------
 
 // OpenDataDir opens the current data directory in the OS file browser
@@ -110,6 +120,19 @@ func openInFileBrowser(dir string) error {
 		return exec.Command("open", dir).Start()
 	default:
 		return exec.Command("xdg-open", dir).Start()
+	}
+}
+
+// openWithDefaultApp opens a FILE with the OS default application (the
+// remote-edit flow: user edits in their usual editor).
+func openWithDefaultApp(path string) error {
+	switch runtime.GOOS {
+	case "windows":
+		return exec.Command("cmd", "/c", "start", "", path).Start()
+	case "darwin":
+		return exec.Command("open", path).Start()
+	default:
+		return exec.Command("xdg-open", path).Start()
 	}
 }
 

@@ -98,6 +98,9 @@ export interface SftpApi {
   localMkdir: (path: string) => Promise<void>;
   localRename: (oldPath: string, newPath: string) => Promise<void>;
   localDelete: (path: string) => Promise<void>;
+  /** Download a remote file to the temp folder and start the auto-upload
+   * watcher; returns the local path (open it with the default editor). */
+  beginRemoteEdit: (hostID: string, remotePath: string) => Promise<string>;
 }
 
 export const sftpApi: SftpApi = {
@@ -122,4 +125,6 @@ export const sftpApi: SftpApi = {
   localMkdir: (path) => SftpService.LocalMkdir(path),
   localRename: (oldPath, newPath) => SftpService.LocalRename(oldPath, newPath),
   localDelete: (path) => SftpService.LocalDelete(path),
+  beginRemoteEdit: (hostID, remotePath) =>
+    SftpService.BeginRemoteEdit(hostID, remotePath),
 };

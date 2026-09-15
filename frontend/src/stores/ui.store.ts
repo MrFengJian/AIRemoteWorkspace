@@ -15,6 +15,7 @@ export type SettingsCategory =
   | "models"
   | "agent"
   | "shortcuts"
+  | "keys"
   | "advanced"
   | "about";
 

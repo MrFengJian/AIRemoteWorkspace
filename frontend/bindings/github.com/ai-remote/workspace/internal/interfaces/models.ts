@@ -69,6 +69,21 @@ export interface FileEntryDTO {
 }
 
 /**
+ * GenerateKeyRequestDTO is the generate/import payload from the frontend.
+ */
+export interface GenerateKeyRequestDTO {
+    "name": string;
+
+    /**
+     * "ed25519" | "rsa" | "ecdsa"
+     */
+    "algorithm": string;
+    "bits": number;
+    "passphrase": string;
+    "comment": string;
+}
+
+/**
  * HostDTO is the frontend-facing host representation. It mirrors domain.Host
  * but exposes authType as a plain string and omits internal timestamps that
  * the UI doesn't need.
@@ -118,6 +133,16 @@ export interface HostDTO {
     "tunnels": domain$0.TunnelConfig[] | null;
 
     /**
+     * Login script (expect 序列): run when a session opens on this host.
+     */
+    "loginScript"?: domain$0.LoginStep[] | null;
+
+    /**
+     * Terminal encoding of the remote side ("" / "utf-8" | "gbk" | …).
+     */
+    "terminalEncoding"?: string;
+
+    /**
      * Pre-SSH reachability (jump host / HTTP / SOCKS5); nil = direct.
      */
     "proxy"?: domain$0.ProxyConfig | null;
@@ -139,6 +164,8 @@ export interface HostInputDTO {
     "group": string;
     "tags": string[] | null;
     "tunnels": domain$0.TunnelConfig[] | null;
+    "loginScript"?: domain$0.LoginStep[] | null;
+    "terminalEncoding"?: string;
 
     /**
      * Proxy: nil means "keep the stored proxy untouched" so callers that
@@ -156,10 +183,32 @@ export interface HostInputDTO {
 }
 
 /**
+ * ImportKeyRequestDTO is the import payload from the frontend.
+ */
+export interface ImportKeyRequestDTO {
+    "name": string;
+    "path": string;
+    "passphrase": string;
+}
+
+/**
  * LocalIPResult carries the machine's primary local IP address.
  */
 export interface LocalIPResult {
     "ip": string;
+}
+
+/**
+ * ManagedKeyDTO mirrors application.ManagedKey for the frontend.
+ */
+export interface ManagedKeyDTO {
+    "id": string;
+    "name": string;
+    "algorithm": string;
+    "fingerprint": string;
+    "comment": string;
+    "encrypted": boolean;
+    "createdAt": string;
 }
 
 /**

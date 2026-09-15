@@ -54,6 +54,9 @@ import { useKeybindingStore } from "@/keybindings/store";
 import { registerPaneActions } from "@/keybindings/registry";
 import { base64ToBytes, encodeBase64, bytesToBase64 } from "@/lib/base64";
 import { toast, errorMessage } from "@/lib/toast";
+import { systemNotify, windowUnfocused } from "@/lib/notify";
+import { useBroadcastStore } from "@/features/terminal/broadcast.store";
+import { sendPayloadToTabs } from "@/features/terminal/sendTargets";
 
 import "@xterm/xterm/css/xterm.css";
 
@@ -137,20 +140,25 @@ export function TerminalPanel({
   // Content-highlight rules: built-ins (links / ERROR/WARN per toggles) plus
   // user regex rules, all through one regex→color pipeline. Loaded on mount
   // and re-read whenever the config changes anywhere (SettingsView saves →
-  // "config:changed").
+  // "config:changed"). The same load carries the global scrollback size and
+  // the system-notification opt-out.
   const [hlOptions, setHlOptions] = useState<HighlightOptions>({ rules: [] });
+  const [scrollback, setScrollback] = useState(1000);
+  const notifyEnabledRef = useRef(true);
   useEffect(() => {
     const load = () => {
       ConfigService.GetAppConfig()
-        .then((cfg) =>
+        .then((cfg) => {
           setHlOptions({
             rules: buildRules(
               !cfg.disableLinkHighlight,
               !cfg.disableKeywordHighlight,
               compileRules(cfg.highlightRules),
             ),
-          }),
-        )
+          });
+          setScrollback(cfg.terminalScrollback || 1000);
+          notifyEnabledRef.current = !cfg.disableSystemNotify;
+        })
         .catch(() => {});
     };
     load();
@@ -159,6 +167,14 @@ export function TerminalPanel({
       if (typeof cancel === "function") cancel();
     };
   }, []);
+
+  // Live-apply the scrollback size (settings changed while the pane is open;
+  // xterm trims or extends the buffer in place).
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.options.scrollback = scrollback;
+    }
+  }, [scrollback]);
 
   // Auto-focus: when the terminal view is showing and this pane belongs to the
   // active tab, grab focus so typing works immediately (no manual click).
@@ -315,6 +331,18 @@ export function TerminalPanel({
 
     const onDataDisp = term.onData((data) => {
       TerminalService.WriteStdin(session.id, encodeBase64(data)).catch(() => {});
+      // 同步键入: while broadcast is on, mirror these keystrokes to every
+      // target tab selected in the quick command bar (the source pane
+      // receives its input naturally; a target's echoed output is output,
+      // never re-broadcast — only the focused pane emits onData).
+      const broadcast = useBroadcastStore.getState();
+      if (broadcast.enabled && broadcast.targetIds.length > 0) {
+        const all = useTerminalStore.getState().sessions;
+        const targets = broadcast.targetIds.filter((id) => id !== tabId);
+        if (targets.length > 0) {
+          sendPayloadToTabs(all, data, targets);
+        }
+      }
     });
 
     const outEventName = `term:${session.id}:out`;
@@ -358,6 +386,14 @@ export function TerminalPanel({
       } else {
         term.write(`\r\n\r\n${t("terminal.sessionExited")}\r\n`);
         setSessionStatus(session.id, "closed");
+      }
+      // System notification when the session ends while the user is
+      // elsewhere (respects the settings opt-out; best-effort).
+      if (notifyEnabledRef.current && windowUnfocused()) {
+        void systemNotify(
+          t("terminal.notifyTitle", { host: session.hostName }),
+          t("terminal.notifyBody"),
+        );
       }
     });
 
@@ -610,6 +646,8 @@ export function TerminalPanel({
           group: host.group ?? "",
           tags: host.tags ?? [],
           tunnels: host.tunnels ?? [],
+          loginScript: host.loginScript ?? [],
+          terminalEncoding: host.terminalEncoding || "utf-8",
           proxy: host.proxy ?? undefined,
         },
       },
