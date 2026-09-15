@@ -3,13 +3,14 @@
 
 /**
  * AgentService exposes the AI agent to the frontend. Provider/model selection
- * is per chat call; provider management lives in ModelProviderService.
+ * is per chat call; provider management lives in ModelProviderService and
+ * the digital-employee roster in ExpertService.
  * @module
  */
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -67,7 +68,9 @@ export function DeleteSkill(name: string): $CancellablePromise<void> {
  * previews it and calls SaveSkill after the user confirms/edits.
  */
 export function DraftScenario(conversationID: string, providerID: string, model: string): $CancellablePromise<$models.ScenarioDraftDTO> {
-    return $Call.ByID(2640901155, conversationID, providerID, model);
+    return $Call.ByID(2640901155, conversationID, providerID, model).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
 /**
@@ -83,45 +86,56 @@ export function EmitApproval(req: application$0.ApprovalRequest): $CancellablePr
  * GetConversationMessages returns a conversation's user/assistant messages
  * in order.
  */
-export function GetConversationMessages(conversationID: string): $CancellablePromise<$models.ConversationMessageDTO[] | null> {
-    return $Call.ByID(4084462485, conversationID);
+export function GetConversationMessages(conversationID: string): $CancellablePromise<$models.ConversationMessageDTO[]> {
+    return $Call.ByID(4084462485, conversationID).then(($result: any) => {
+        return $$createType2($result);
+    });
 }
 
 /**
  * GetSkill returns one skill including its markdown body (scenario editor).
  */
 export function GetSkill(name: string): $CancellablePromise<$models.SkillDTO> {
-    return $Call.ByID(1318065623, name);
+    return $Call.ByID(1318065623, name).then(($result: any) => {
+        return $$createType3($result);
+    });
 }
 
 /**
  * ListContextPaths lists a directory for the @-completion popup (remote
  * session → SFTP listing; local session → disk listing).
  */
-export function ListContextPaths(sessionID: string, dir: string): $CancellablePromise<$models.ContextPathDTO[] | null> {
-    return $Call.ByID(2029077267, sessionID, dir);
+export function ListContextPaths(sessionID: string, dir: string): $CancellablePromise<$models.ContextPathDTO[]> {
+    return $Call.ByID(2029077267, sessionID, dir).then(($result: any) => {
+        return $$createType5($result);
+    });
 }
 
 /**
  * ListConversations returns all persisted agent conversations (newest
  * first); the frontend filters by host.
  */
-export function ListConversations(): $CancellablePromise<$models.ConversationDTO[] | null> {
-    return $Call.ByID(4124442514);
+export function ListConversations(): $CancellablePromise<$models.ConversationDTO[]> {
+    return $Call.ByID(4124442514).then(($result: any) => {
+        return $$createType7($result);
+    });
 }
 
 /**
  * ListSkills returns the metadata of every available skill (the `/` picker
  * and the scenario manager list).
  */
-export function ListSkills(): $CancellablePromise<$models.SkillDTO[] | null> {
-    return $Call.ByID(1215304444);
+export function ListSkills(): $CancellablePromise<$models.SkillDTO[]> {
+    return $Call.ByID(1215304444).then(($result: any) => {
+        return $$createType8($result);
+    });
 }
 
 /**
  * ResumeConversation points a terminal session at a persisted conversation
  * and replays it into the agent's multi-turn memory, so follow-up questions
- * keep context.
+ * keep context. The conversation's expert (if any) becomes the session's
+ * active expert again; the frontend reads it from the conversation DTO.
  */
 export function ResumeConversation(sessionID: string, conversationID: string): $CancellablePromise<void> {
     return $Call.ByID(4110104030, sessionID, conversationID);
@@ -135,12 +149,12 @@ export function SaveSkill(name: string, content: string): $CancellablePromise<vo
 }
 
 /**
- * SetDiagnosisMode toggles the diagnosis-mode system prompt for a session's
- * turns (the header pill's exit action). Off switches the session back to
- * the regular prompt while keeping the conversation and its history.
+ * SetExpert records a session's active expert without starting a chat (used
+ * when resuming a conversation or switching the persona from the UI).
+ * Unknown ids fall back to the general assistant ("").
  */
-export function SetDiagnosisMode(sessionID: string, on: boolean): $CancellablePromise<void> {
-    return $Call.ByID(2423925400, sessionID, on);
+export function SetExpert(sessionID: string, expertID: string): $CancellablePromise<void> {
+    return $Call.ByID(264241926, sessionID, expertID);
 }
 
 /**
@@ -155,22 +169,26 @@ export function SetSessionPolicy(sessionID: string, policy: string): $Cancellabl
 
 /**
  * StartChat kicks off a streaming agent chat against the selected provider +
- * model. Output flows via events:
+ * model. expertID ("" = general assistant) selects the digital-employee
+ * persona; an AutoSnapshot expert injects a fresh health snapshot on its
+ * first turn. Output flows via events:
  *   agent:<sessionID>:chunk    — incremental LLM text
  *   agent:<sessionID>:toolcall — tool invocation start (id/tool/args)
  *   agent:<sessionID>:toolend  — tool invocation result (id/result)
  *   agent:<sessionID>:done     — chat completed
  *   agent:<sessionID>:error    — chat failed
  */
-export function StartChat(sessionID: string, providerID: string, model: string, message: string): $CancellablePromise<void> {
-    return $Call.ByID(960310724, sessionID, providerID, model, message);
+export function StartChat(sessionID: string, providerID: string, model: string, expertID: string, message: string): $CancellablePromise<void> {
+    return $Call.ByID(960310724, sessionID, providerID, model, expertID, message);
 }
 
-/**
- * StartDiagnosis kicks off a diagnosis-mode chat: the runtime switches to the
- * triage prompt, auto-collects the deterministic health snapshot and attaches
- * it to the symptom as the first turn. Events flow exactly like StartChat.
- */
-export function StartDiagnosis(sessionID: string, providerID: string, model: string, symptom: string): $CancellablePromise<void> {
-    return $Call.ByID(701729719, sessionID, providerID, model, symptom);
-}
+// Private type creation functions
+const $$createType0 = $models.ScenarioDraftDTO.createFrom;
+const $$createType1 = $models.ConversationMessageDTO.createFrom;
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = $models.SkillDTO.createFrom;
+const $$createType4 = $models.ContextPathDTO.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = $models.ConversationDTO.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = $Create.Array($$createType3);

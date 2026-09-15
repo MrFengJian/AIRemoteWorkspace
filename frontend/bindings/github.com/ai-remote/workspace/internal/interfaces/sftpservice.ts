@@ -17,7 +17,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -54,22 +54,28 @@ export function DeleteFile(hostID: string, remotePath: string): $CancellableProm
  * DownloadFile reads a remote file and returns its bytes. Progress events are
  * emitted on "sftp:transfer:<transferID>" while the read runs.
  */
-export function DownloadFile(hostID: string, remotePath: string, transferID: string): $CancellablePromise<string | null> {
-    return $Call.ByID(3243520916, hostID, remotePath, transferID);
+export function DownloadFile(hostID: string, remotePath: string, transferID: string): $CancellablePromise<string> {
+    return $Call.ByID(3243520916, hostID, remotePath, transferID).then(($result: any) => {
+        return $Create.ByteSlice($result);
+    });
 }
 
 /**
  * ListDir returns the entries of a remote directory.
  */
-export function ListDir(hostID: string, dir: string): $CancellablePromise<$models.FileEntryDTO[] | null> {
-    return $Call.ByID(358301269, hostID, dir);
+export function ListDir(hostID: string, dir: string): $CancellablePromise<$models.FileEntryDTO[]> {
+    return $Call.ByID(358301269, hostID, dir).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
 /**
  * ListLocalDir lists a local directory (empty dir → the user's home).
  */
-export function ListLocalDir(dir: string): $CancellablePromise<$models.FileEntryDTO[] | null> {
-    return $Call.ByID(676872852, dir);
+export function ListLocalDir(dir: string): $CancellablePromise<$models.FileEntryDTO[]> {
+    return $Call.ByID(676872852, dir).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
 /**
@@ -188,6 +194,10 @@ export function UploadClipboardImage(hostID: string, name: string, dataB64: stri
  * UploadFile writes data to a remote path. Progress events are emitted on
  * "sftp:transfer:<transferID>" while the write runs.
  */
-export function UploadFile(hostID: string, remotePath: string, data: string | null, transferID: string): $CancellablePromise<void> {
+export function UploadFile(hostID: string, remotePath: string, data: string, transferID: string): $CancellablePromise<void> {
     return $Call.ByID(2314891305, hostID, remotePath, data, transferID);
 }
+
+// Private type creation functions
+const $$createType0 = $models.FileEntryDTO.createFrom;
+const $$createType1 = $Create.Array($$createType0);

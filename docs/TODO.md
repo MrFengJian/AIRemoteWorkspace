@@ -130,6 +130,37 @@
 
 ---
 
+## Phase 9 — 数字员工（运维专家角色系统）
+
+> 背景与方案见 [ROADMAP.md](./ROADMAP.md) Phase 9。按业界数字员工最佳实践建模；诊断模式统一为内置 SRE 诊断专家。
+
+- [x] 域模型与存储
+  - [x] `domain.Expert`：身份档案（名称/职位/图标/配色/职责）+ `SystemPrompt` 人设指令 + `AllowedTools` 工具白名单 + `SkillRefs` 绑定技能 + 默认模型/审批策略/温度/步数 + 开场白/推荐问题 + `AutoSnapshot` + 内置/启用/Dismissed 生命周期
+  - [x] SQLite `experts` 表 + `ExpertRepo`（JSON 列表字段；Dismissed 保留被删内置行）；`conversations` 增加 expert_id / expert_name
+  - [x] `ExpertService`：启动种子内置专家（编辑不覆盖、删除仅 Dismissed，语义对齐内置 SKILL.md）+ CRUD + 校验（名称必填、策略归一化、内置标志防伪造）
+- [x] 内置专家（`application/experts_builtin.go`，随应用分发）
+  - [x] SRE 诊断专家（AutoSnapshot，人设迁移自原诊断模板，保留 现象/根因/证据/建议/风险 结论格式）
+  - [x] K8s 运维专家 / K8s 应用开发者 / Docker 专家（绑定 container-restart-loop）/ Linux 系统专家 / 数据库运维专家
+- [x] Agent 运行时集成（`infrastructure/agent`）
+  - [x] `Chat` 增加 expertID；`diagnosis` 开关重构为 `activeExperts` 会话级专家映射；`StartDiagnosis`/`SetDiagnosisMode`/`diagnosisPrompt` 删除（人设迁入内置专家）
+  - [x] SystemPrompt 分层组装：专家层 + 环境层 + 工具契约（过滤）+ 权限契约（逐字保留、人设不可覆盖）+ 绑定技能 + 全局自定义指令
+  - [x] 快照窗口通用化：AutoSnapshot 专家选中/切换/新对话后的首回合自动注入体检快照（失败降级为提示）
+  - [x] 工具白名单过滤（skill 工具始终保留）；专家 Temperature（eino-ext `*float32`）/ MaxSteps 覆盖全局
+  - [x] 新对话保留专家选择（行为变化，已在 ROADMAP 注明）；`ResumeConversation` 还原对话所属专家
+- [x] 接口层与接线
+  - [x] 新增 `ExpertService`（List/Get/Save/Delete）；`AgentService.StartChat` 增加 expertID、新增 `SetExpert`；会话映射/对话持久化携带专家信息
+  - [x] main.go 装配 + Wails 绑定重新生成（14 → 15 Services）
+- [x] 前端
+  - [x] `features/experts/`：api / hooks（queryKey `experts`）/ 头像组件（图标名 + 配色方案，降级安全）
+  - [x] AI 面板：输入区专家选择器（通用助手 + 启用专家）、切换应用默认模型/策略（best-effort）、头部人设徽章（X 退回）、空会话开场白卡片 + 推荐问题、助手消息按人设渲染头像、历史列表专家徽章
+  - [x] 诊断入口：⚡ 按钮 → 诊断对话框 → 选中诊断专家发送（AutoSnapshot 注入快照），场景种子流程不变
+  - [x] 设置 → 数字员工：名册管理（启用开关/编辑/副本/删除确认）+ 表单对话框（身份/人设/能力/模型/交互五区块）
+  - [x] i18n 中英词条补全
+- [x] 质量验证：`go build` + `go test ./internal/...`（新增 expert_service / expert_repo / runtime 专家层测试）+ `npm run build`
+- [ ] 手测清单：专家选择器切换人设（徽章/头像/开场白联动）→ 诊断按钮发起 → 快照注入对话 → 工具白名单生效（审批框只见允许工具）→ 设置增删改专家实时同步到选择器 → 恢复历史对话还原人设 → 本地终端会话使用专家
+
+---
+
 ## 计划外已交付
 
 - [x] 本地终端（跨平台本地 PTY，ConPTY / Unix pty）

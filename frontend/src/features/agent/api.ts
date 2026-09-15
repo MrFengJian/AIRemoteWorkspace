@@ -18,15 +18,13 @@ export type {
 };
 
 export const agentApi = {
-  /** Start a streaming chat on a session using the selected provider + model. */
-  startChat: (sessionID: string, providerID: string, model: string, message: string) =>
-    AgentService.StartChat(sessionID, providerID, model, message),
-  /** Diagnosis-mode chat: triage prompt + auto-collected health snapshot. */
-  startDiagnosis: (sessionID: string, providerID: string, model: string, symptom: string) =>
-    AgentService.StartDiagnosis(sessionID, providerID, model, symptom),
-  /** Toggle the diagnosis-mode prompt for a session (exit keeps the chat). */
-  setDiagnosisMode: (sessionID: string, on: boolean) =>
-    AgentService.SetDiagnosisMode(sessionID, on),
+  /** Start a streaming chat on a session using the selected provider + model
+   *  and expert persona ("" = the general assistant). */
+  startChat: (sessionID: string, providerID: string, model: string, expertID: string, message: string) =>
+    AgentService.StartChat(sessionID, providerID, model, expertID, message),
+  /** Record a session's active expert without starting a chat. */
+  setExpert: (sessionID: string, expertID: string) =>
+    AgentService.SetExpert(sessionID, expertID),
   cancelChat: (sessionID: string) => AgentService.CancelChat(sessionID),
   /** Forget the backend's conversation memory for a session (multi-turn replay). */
   clearHistory: (sessionID: string) => AgentService.ClearHistory(sessionID),

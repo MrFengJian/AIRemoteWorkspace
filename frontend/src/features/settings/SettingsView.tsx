@@ -23,6 +23,7 @@ import {
   Loader2,
   PlugZap,
   RefreshCw,
+  UsersRound,
 } from "lucide-react";
 
 import { Label } from "@/components/ui/label";
@@ -58,6 +59,7 @@ import { ModelSettingsSection } from "@/features/settings/ModelSettingsSection";
 import { ShortcutSettingsSection } from "@/features/settings/ShortcutSettingsSection";
 import { AgentSettingsSection } from "@/features/settings/AgentSettingsSection";
 import { KeysSection } from "@/features/settings/KeysSection";
+import { ExpertsSection } from "@/features/settings/ExpertsSection";
 import { cn } from "@/lib/utils";
 import { toast, errorMessage } from "@/lib/toast";
 import { useConfirm } from "@/lib/useConfirm";
@@ -174,6 +176,7 @@ export function SettingsView() {
     { id: "appearance", label: t("settings.appearance"), icon: Palette },
     { id: "language", label: t("settings.language"), icon: Languages },
     { id: "models", label: t("settings.models.title"), icon: Bot },
+    { id: "experts", label: t("settings.experts.title"), icon: UsersRound },
     { id: "agent", label: t("settings.agentTitle"), icon: BrainCircuit },
     { id: "shortcuts", label: t("settings.shortcuts"), icon: Keyboard },
     { id: "keys", label: t("keys.title"), icon: KeyRound },
@@ -212,6 +215,7 @@ export function SettingsView() {
           {category === "appearance" && <AppearanceSection config={config} update={updateConfig} saving={saving} />}
           {category === "language" && <LanguageSection i18n={i18n} />}
           {category === "models" && <ModelSettingsSection />}
+          {category === "experts" && <ExpertsSection />}
           {category === "agent" && <AgentSettingsSection config={config} update={updateConfig} />}
           {category === "shortcuts" && <ShortcutSettingsSection config={config} update={updateConfig} />}
           {category === "keys" && <KeysSection />}

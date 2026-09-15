@@ -39,6 +39,19 @@ func (r *ConversationRepo) List() ([]domain.Conversation, error) {
 	return out, nil
 }
 
+// Get returns one conversation by id.
+func (r *ConversationRepo) Get(conversationID string) (domain.Conversation, error) {
+	var m conversationModel
+	err := r.store.db.First(&m, "id = ?", conversationID).Error
+	if errors.Is(err, gormErrRecordNotFound) {
+		return domain.Conversation{}, ErrConversationNotFound
+	}
+	if err != nil {
+		return domain.Conversation{}, err
+	}
+	return conversationFromModel(m), nil
+}
+
 // Create stores a new conversation.
 func (r *ConversationRepo) Create(c domain.Conversation) error {
 	now := time.Now().UTC()
@@ -47,12 +60,14 @@ func (r *ConversationRepo) Create(c domain.Conversation) error {
 	}
 	c.UpdatedAt = now
 	return r.store.db.Save(&conversationModel{
-		ID:        c.ID,
-		HostID:    c.HostID,
-		HostName:  c.HostName,
-		Title:     c.Title,
-		CreatedAt: c.CreatedAt,
-		UpdatedAt: c.UpdatedAt,
+		ID:         c.ID,
+		HostID:     c.HostID,
+		HostName:   c.HostName,
+		Title:      c.Title,
+		ExpertID:   c.ExpertID,
+		ExpertName: c.ExpertName,
+		CreatedAt:  c.CreatedAt,
+		UpdatedAt:  c.UpdatedAt,
 	}).Error
 }
 
@@ -113,11 +128,13 @@ func (r *ConversationRepo) Delete(conversationID string) error {
 
 func conversationFromModel(m conversationModel) domain.Conversation {
 	return domain.Conversation{
-		ID:        m.ID,
-		HostID:    m.HostID,
-		HostName:  m.HostName,
-		Title:     m.Title,
-		CreatedAt: m.CreatedAt,
-		UpdatedAt: m.UpdatedAt,
+		ID:         m.ID,
+		HostID:     m.HostID,
+		HostName:   m.HostName,
+		Title:      m.Title,
+		ExpertID:   m.ExpertID,
+		ExpertName: m.ExpertName,
+		CreatedAt:  m.CreatedAt,
+		UpdatedAt:  m.UpdatedAt,
 	}
 }

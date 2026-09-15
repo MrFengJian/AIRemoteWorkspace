@@ -1027,6 +1027,48 @@ TunnelManager.Ensure（按规则 reconcile：同配置去重、变更替换、�
 
 ---
 
+# 16.8 数字员工（运维专家角色系统）
+
+按业界数字员工最佳实践建模（结构化人设 + 能力配置 + 安全边界 + 交互设计 + 生命周期）。详设见 `docs/ROADMAP.md` Phase 9。
+
+专家档案（domain.Expert）：
+
+```
+身份档案   Name / Role / Icon / Color / Description
+人设指令   SystemPrompt（身份-专长-工作方法-输出规范-边界）
+能力配置   AllowedTools 工具白名单 + SkillRefs 绑定 SKILL.md 技能包
+模型绑定   ProviderID / Model / Temperature / MaxSteps
+安全边界   Policy 默认审批策略（权限契约由运行时固定注入，人设不可覆盖）
+交互设计   OpeningMessage 开场白 + SuggestedPrompts 推荐问题
+生命周期   内置种子 / CRUD / 启用停用 / 副本 / 内置删除仅 Dismissed
+```
+
+关键规则：
+
+```
+SystemPrompt 分层组装：专家层 + 环境层 + 工具契约 + 权限契约 + 技能层 + 全局指令
+权限契约逐字固定（runtime.go），任何人设不能提权 —— 安全不变量
+诊断模式已统一为内置 SRE 诊断专家（AutoSnapshot：选中/切换/新对话后的首回合自动注入体检快照）
+新对话保留专家选择；退出人设是显式操作（徽章 X / 选择器）
+内置专家语义与内置 SKILL.md 一致：编辑不覆盖、删除仅 Dismissed、重新保存恢复
+```
+
+落点：
+
+```
+domain/expert.go                     Expert 模型 + 内置 ID 常量
+application/experts_builtin.go       6 个内置专家人设（SRE/K8s运维/K8s开发/Docker/Linux/DBA）
+application/expert_service.go        种子 + CRUD（GetExpert 兼作 runtime ExpertSource）
+infrastructure/sqlite/expert_repo.go experts 表
+infrastructure/agent/runtime.go      activeExperts 映射、resolveExpert、expertPrompt、工具过滤
+infrastructure/agent/tools           BuildForSession(sessionID, allowed)
+interfaces/expert_service.go         Wails ExpertService
+frontend features/experts/           api / hooks / 头像组件
+frontend settings ExpertsSection     设置 → 数字员工 管理界面
+```
+
+---
+
 # 17. Development Roadmap
 
 # Phase 1 - Desktop Foundation
@@ -1138,13 +1180,37 @@ TODO:
 TODO:
 
 ```
-[ ] Docker Tools
+[x] Docker Tools
 
 [ ] Kubernetes Tools
 
-[ ] Diagnosis Agent
+[x] Diagnosis Agent
 
-[ ] Experience Packs
+[x] Experience Packs
+```
+
+---
+
+# Phase 8 - Xshell 能力对齐
+
+详见 docs/ROADMAP.md Phase 8 / docs/TODO.md。
+
+---
+
+# Phase 9 - Digital Employees（数字员工）
+
+详见 docs/ROADMAP.md Phase 9 / §16.8。
+
+```
+[x] Expert Persona Card（domain.Expert）
+
+[x] Expert Roster + Builtin Seeds（6 角色）
+
+[x] Runtime Persona Layer + Tool Allowlist
+
+[x] Diagnosis Mode → Builtin SRE Expert（统一）
+
+[x] Settings 管理界面 + 会话选择器
 ```
 
 ---

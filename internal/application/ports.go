@@ -112,6 +112,8 @@ type ToolRegistry interface {
 type ConversationRepository interface {
 	// List returns all conversations, newest first.
 	List() ([]domain.Conversation, error)
+	// Get returns one conversation by id.
+	Get(conversationID string) (domain.Conversation, error)
 	// Create stores a new conversation.
 	Create(c domain.Conversation) error
 	// Touch refreshes a conversation's UpdatedAt (after a new turn).
@@ -122,6 +124,20 @@ type ConversationRepository interface {
 	AppendMessage(conversationID string, role, content string) error
 	// Delete removes a conversation and its messages.
 	Delete(conversationID string) error
+}
+
+// ExpertRepository persists the digital-employee expert roster. Implemented
+// by infrastructure/sqlite.ExpertRepo. Dismissed builtins keep their row so
+// the seeder can tell "deleted on purpose" from "never seeded".
+type ExpertRepository interface {
+	// List returns every expert row, including dismissed builtins.
+	List() ([]domain.Expert, error)
+	// Get returns one expert by id.
+	Get(id string) (domain.Expert, error)
+	// Save inserts or updates an expert (upsert on id).
+	Save(e domain.Expert) error
+	// Delete removes an expert row.
+	Delete(id string) error
 }
 
 // Sentinel errors shared across the application layer. Use errors.Is to test.

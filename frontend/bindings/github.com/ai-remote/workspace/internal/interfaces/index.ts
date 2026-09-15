@@ -4,6 +4,7 @@
 import * as AgentService from "./agentservice.js";
 import * as ConfigService from "./configservice.js";
 import * as DockerService from "./dockerservice.js";
+import * as ExpertService from "./expertservice.js";
 import * as HostService from "./hostservice.js";
 import * as KeyManagerService from "./keymanagerservice.js";
 import * as MCPService from "./mcpservice.js";
@@ -18,6 +19,7 @@ export {
     AgentService,
     ConfigService,
     DockerService,
+    ExpertService,
     HostService,
     KeyManagerService,
     MCPService,
@@ -30,12 +32,13 @@ export {
     WindowService
 };
 
-export type {
+export {
     ContextPathDTO,
     ConversationDTO,
     ConversationMessageDTO,
     CredentialsDTO,
     DataDirInfoDTO,
+    ExpertDTO,
     FileEntryDTO,
     GenerateKeyRequestDTO,
     HostDTO,

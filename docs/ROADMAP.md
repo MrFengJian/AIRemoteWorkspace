@@ -22,6 +22,7 @@ Phase 6  MCP Server             ✅ 已完成
 Phase 7  Docker / Kubernetes    Docker 面板 ✅ · K8s 面板延后
    ↓
 Phase 8  Xshell 能力对齐        连接链路 / 审计 / 传输 / 运维效率
+Phase 9  数字员工              角色化运维专家（人设 + 能力 + 安全边界）
 ```
 
 ---
@@ -212,6 +213,63 @@ PTY 输出 tee 到 `<数据目录>/logs/<主机>/<日期>.log`，全局开关 + 
 - 第一批（P0）：v0.6.x — 跳板/代理、会话日志、自动重连
 - 第二批（P1）：v0.7 — 同步键入、Zmodem、登录脚本、会话恢复
 - 第三批（P2）：按反馈排期
+
+---
+
+## Phase 9 — 数字员工（运维专家角色系统）✅
+
+> 按业界数字员工（Coze / Dify / GPTs 类产品）的最佳实践建模：**结构化人设档案 + 能力配置 + 安全边界 + 交互设计 + 生命周期管理**。用户可自定义不同角色的运维专家（K8s 运维专家、K8s 应用开发者、Docker 专家……），也可直接使用内置角色。
+
+### 数字员工模型（domain.Expert）
+
+| 最佳实践要素 | 落地字段 / 机制 |
+|---|---|
+| 身份档案（Persona Card） | `Name` / `Role` / `Icon`（lucide 图标）/ `Color`（头像渐变）/ `Description` |
+| 人设指令 | `SystemPrompt`（身份-专长-工作方法-输出规范-边界；运行时分层组装） |
+| 能力配置 | `AllowedTools` 工具子集授权 + `SkillRefs` 绑定 SKILL.md 技能包（模型按需加载） |
+| 模型绑定 | `ProviderID` / `Model` 默认模型 + `Temperature` 采样温度 + `MaxSteps` 步数预算 |
+| 安全边界 | `Policy` 默认审批策略；**权限契约由运行时固定注入，人设不可覆盖**（安全不变量） |
+| 交互设计 | `OpeningMessage` 开场白 + `SuggestedPrompts` 推荐问题（空会话卡片一键填入） |
+| 生命周期 | 内置模板种子 + CRUD + 启用/停用 + 创建副本（fork）+ 内置删除仅隐藏可恢复 |
+
+### 诊断模式统一为内置专家
+
+原硬编码「诊断模式」重构为内置 **SRE 诊断专家**（`builtin-diagnosis-sre`，AutoSnapshot）：人设即原三段式 triage 模板（证据优先 + 现象/根因/证据/建议/风险结论格式），`AutoSnapshot` 标志使其在被选中/切换后的首回合自动注入只读体检快照（采集失败降级为提示，不失败）。诊断入口对话框与一键场景种子流程保持不变。行为变化：新对话不再自动退出诊断专家——「新对话 = 与同一位数字员工开新话题」，退出人设是显式操作（徽章 X / 选择器）。
+
+### SystemPrompt 分层组装（运行时）
+
+```
+[专家层]   身份卡片 + 专家 SystemPrompt（人设核心）
+[环境层]   当前主机 user@addr（或本地终端声明）
+[工具契约] 按 AllowedTools 过滤后的工具清单（与默认模板同一文案源）
+[权限契约] 审批语义段落 —— 与既有版本逐字一致，紧跟人设之后，不可被人设覆盖
+[技能层]   绑定技能清单（经 skill 工具按需加载全文）
+[全局层]   用户自定义指令（CustomInstructions，行为不变）
+```
+
+### 内置专家（随应用分发，可编辑可隐藏）
+
+| ID | 名称 | 角色定位 |
+|---|---|---|
+| `builtin-diagnosis-sre` | SRE 诊断专家 | 证据优先故障诊断，自动体检快照，规范结论格式 |
+| `builtin-k8s-ops` | K8s 运维专家 | 集群巡检 / 节点与控制面 / 调度与 RBAC 排障 |
+| `builtin-k8s-dev` | K8s 应用开发者 | 工作负载编排 / 探针与资源 / Helm / 发布回滚 |
+| `builtin-docker` | Docker 专家 | 引擎与 Compose 运维 / 容器调试 / 镜像优化（绑定 restart-loop 技能） |
+| `builtin-linux-sys` | Linux 系统专家 | 性能瓶颈 / systemd / 磁盘与文件系统 / 内核参数 |
+| `builtin-dba` | 数据库运维专家 | MySQL / PostgreSQL / Redis：连接锁等待 / 慢查询 / 复制备份 |
+
+### 实现落点
+
+- **存储**：SQLite `experts` 表（`sqlite/expert_repo.go`）；内置专家随 binary 定义（`application/experts_builtin.go`）启动种子，用户编辑不覆盖、删除仅 Dismissed（与内置 SKILL.md 同语义）
+- **运行时**：`agent.Runtime` 以 `experts map[session]expert` 取代诊断开关；`Chat(..., expertID, ...)`；快照窗口随专家切换 / 新对话重开；工具集按白名单过滤（`tools.BuildForSession(sessionID, allowed)`，skill 工具始终保留）；专家 Temperature/MaxSteps 覆盖全局默认
+- **接口**：新增 `ExpertService`（List/Get/Save/Delete）；`AgentService.StartChat` 增加 expertID；`ConversationDTO` 携带 expertId/expertName（历史列表徽章 + 恢复对话还原人设）
+- **前端**：设置新增「数字员工」分类（列表 + 表单对话框：身份/人设/能力/模型/交互五区块）；AI 面板输入区专家选择器 + 头部人设徽章 + 空会话开场白卡片与推荐问题 + 助手消息按人设渲染头像
+
+### 后续可选（未排期）
+
+- 专家导入 / 导出（JSON 分享）
+- 会话内多专家快速 @ 引用与协作（编排）
+- 专家级自定义工具（MCP 工具子集绑定）
 
 ---
 

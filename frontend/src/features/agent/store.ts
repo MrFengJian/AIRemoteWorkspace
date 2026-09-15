@@ -35,14 +35,14 @@ interface AgentState {
   activeConvBySession: Record<string, string>;
   /** Approval policy per session (the input-bar dropdown). */
   policies: Record<string, SessionPolicy>;
-  /** Sessions currently in diagnosis mode (triage prompt + header pill).
-   *  Mirrors the backend runtime flag; also reset by clearHistory (new chat). */
-  diagnosis: Record<string, boolean>;
+  /** Active expert (digital employee) per session; "" = the general
+   *  assistant. Kept across new chats — leaving a persona is explicit. */
+  expertsBySession: Record<string, string>;
 
   addMessage: (sessionID: string, msg: Omit<ChatMessage, "id">) => void;
   setActiveConv: (sessionID: string, conversationID: string | null) => void;
   setPolicy: (sessionID: string, policy: SessionPolicy) => void;
-  setDiagnosis: (sessionID: string, on: boolean) => void;
+  setExpert: (sessionID: string, expertID: string) => void;
   appendToLast: (sessionID: string, text: string) => void;
   setStreaming: (sessionID: string, v: boolean) => void;
   /** Attach a tool execution result to its step (matched by call id; an empty
@@ -66,7 +66,7 @@ export const useAgentStore = create<AgentState>((set) => ({
   streaming: {},
   activeConvBySession: {},
   policies: {},
-  diagnosis: {},
+  expertsBySession: {},
 
   setActiveConv: (sessionID, conversationID) =>
     set((s) => {
@@ -79,13 +79,8 @@ export const useAgentStore = create<AgentState>((set) => ({
   setPolicy: (sessionID, policy) =>
     set((s) => ({ policies: { ...s.policies, [sessionID]: policy } })),
 
-  setDiagnosis: (sessionID, on) =>
-    set((s) => {
-      const next = { ...s.diagnosis };
-      if (on) next[sessionID] = true;
-      else delete next[sessionID];
-      return { diagnosis: next };
-    }),
+  setExpert: (sessionID, expertID) =>
+    set((s) => ({ expertsBySession: { ...s.expertsBySession, [sessionID]: expertID } })),
 
   addMessage: (sessionID, msg) =>
     set((s) => ({
@@ -172,10 +167,8 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((s) => {
       const h = { ...s.histories };
       delete h[sessionID];
-      // A new conversation also leaves diagnosis mode (mirrors the backend's
-      // ClearHistory resetting the triage prompt).
-      const d = { ...s.diagnosis };
-      delete d[sessionID];
-      return { histories: h, diagnosis: d };
+      // The expert selection is deliberately KEPT: a new conversation is a
+      // new topic with the same digital employee.
+      return { histories: h };
     }),
 }));

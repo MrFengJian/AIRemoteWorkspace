@@ -107,15 +107,34 @@ type sessionToolSet struct {
 	sessionID string
 }
 
+// allowed filters a built tool by an expert's allowlist: nil/empty = keep
+// everything; otherwise the name must be listed. The skill tool bypasses the
+// filter (it is the persona's knowledge channel, not a host capability).
+func allowedTool(allowed map[string]bool, name string) bool {
+	return len(allowed) == 0 || name == "skill" || allowed[name]
+}
+
 // BuildForSession returns a fresh tool list bound to sessionID, for one chat.
-func (ts *ToolSet) BuildForSession(sessionID string) ([]tool.BaseTool, error) {
+// allowed (may be nil) scopes the toolset to an expert's allowlist.
+func (ts *ToolSet) BuildForSession(sessionID string, allowed map[string]bool) ([]tool.BaseTool, error) {
 	ss := ts.withSession(sessionID)
-	return ss.build()
+	built, err := ss.build()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]tool.BaseTool, 0, len(built))
+	for _, e := range built {
+		if allowedTool(allowed, e.name) {
+			out = append(out, e.tool)
+		}
+	}
+	return out, nil
 }
 
 // BuildLocalForSession returns only the two LOCAL tools, for agent chats on
-// a local terminal session (no SSH host behind it). Same observer wiring.
-func (ts *ToolSet) BuildLocalForSession(sessionID string) ([]tool.BaseTool, error) {
+// a local terminal session (no SSH host behind it). Same observer wiring and
+// expert allowlist.
+func (ts *ToolSet) BuildLocalForSession(sessionID string, allowed map[string]bool) ([]tool.BaseTool, error) {
 	ss := ts.withSession(sessionID)
 	var built []tool.BaseTool
 
@@ -127,7 +146,9 @@ func (ts *ToolSet) BuildLocalForSession(sessionID string) ([]tool.BaseTool, erro
 	if err != nil {
 		return nil, fmt.Errorf("build local_exec: %w", err)
 	}
-	built = append(built, observe(t1, ss.sessionID, "local_exec", ss.observer))
+	if allowedTool(allowed, "local_exec") {
+		built = append(built, observe(t1, ss.sessionID, "local_exec", ss.observer))
+	}
 
 	t2, err := utils.InferTool(
 		"local_read_file",
@@ -137,13 +158,17 @@ func (ts *ToolSet) BuildLocalForSession(sessionID string) ([]tool.BaseTool, erro
 	if err != nil {
 		return nil, fmt.Errorf("build local_read_file: %w", err)
 	}
-	built = append(built, observe(t2, ss.sessionID, "local_read_file", ss.observer))
+	if allowedTool(allowed, "local_read_file") {
+		built = append(built, observe(t2, ss.sessionID, "local_read_file", ss.observer))
+	}
 
 	// The skill tool is host-agnostic — available on local sessions too.
-	if sk, err := ss.buildSkillTool(); err != nil {
-		return nil, err
-	} else if sk != nil {
-		built = append(built, sk)
+	if allowedTool(allowed, "skill") {
+		if sk, err := ss.buildSkillTool(); err != nil {
+			return nil, err
+		} else if sk != nil {
+			built = append(built, sk)
+		}
 	}
 
 	return built, nil
@@ -209,95 +234,101 @@ func (ss *sessionToolSet) loadSkill(ctx context.Context, a skillArgs) (string, e
 	return sk.Content, nil
 }
 
-// build constructs all 7 tools for this sessionToolSet.
-func (ss *sessionToolSet) build() ([]tool.BaseTool, error) {
-	var built []tool.BaseTool
+// build constructs all tools for this sessionToolSet as (name, tool) pairs —
+// the names drive the expert allowlist filter in BuildForSession.
+func (ss *sessionToolSet) build() ([]builtTool, error) {
+	var built []builtTool
+	var err error
+	var bt builtTool
 
 	// 1. local_exec
-	t1, err := utils.InferTool(
-		"local_exec",
+	bt, err = inferBuiltin(ss, "local_exec",
 		"Execute a shell command on the LOCAL machine and return combined stdout+stderr. Use for local diagnostics.",
-		ss.localExec,
-	)
+		ss.localExec)
 	if err != nil {
-		return nil, fmt.Errorf("build local_exec: %w", err)
+		return nil, err
 	}
-	built = append(built, observe(t1, ss.sessionID, "local_exec", ss.observer))
+	built = append(built, bt)
 
 	// 2. local_read_file
-	t2, err := utils.InferTool(
-		"local_read_file",
+	bt, err = inferBuiltin(ss, "local_read_file",
 		"Read a file from the LOCAL machine and return its contents as text.",
-		ss.localReadFile,
-	)
+		ss.localReadFile)
 	if err != nil {
-		return nil, fmt.Errorf("build local_read_file: %w", err)
+		return nil, err
 	}
-	built = append(built, observe(t2, ss.sessionID, "local_read_file", ss.observer))
+	built = append(built, bt)
 
 	// 3. ssh_exec
-	t3, err := utils.InferTool(
-		"ssh_exec",
+	bt, err = inferBuiltin(ss, "ssh_exec",
 		"Execute a shell command on the REMOTE host (the currently connected SSH session) and return combined stdout+stderr. Use for remote diagnostics like 'uptime', 'df -h', 'free -m', 'ps aux'.",
-		ss.sshExec,
-	)
+		ss.sshExec)
 	if err != nil {
-		return nil, fmt.Errorf("build ssh_exec: %w", err)
+		return nil, err
 	}
-	built = append(built, observe(t3, ss.sessionID, "ssh_exec", ss.observer))
+	built = append(built, bt)
 
 	// 4. ssh_read_file
-	t4, err := utils.InferTool(
-		"ssh_read_file",
+	bt, err = inferBuiltin(ss, "ssh_read_file",
 		"Read a file from the REMOTE host and return its contents as text.",
-		ss.sshReadFile,
-	)
+		ss.sshReadFile)
 	if err != nil {
-		return nil, fmt.Errorf("build ssh_read_file: %w", err)
+		return nil, err
 	}
-	built = append(built, observe(t4, ss.sessionID, "ssh_read_file", ss.observer))
+	built = append(built, bt)
 
 	// 5. ssh_write_file
-	t5, err := utils.InferTool(
-		"ssh_write_file",
+	bt, err = inferBuiltin(ss, "ssh_write_file",
 		"Write text content to a file on the REMOTE host. Overwrites if the file exists. Requires user approval.",
-		ss.sshWriteFile,
-	)
+		ss.sshWriteFile)
 	if err != nil {
-		return nil, fmt.Errorf("build ssh_write_file: %w", err)
+		return nil, err
 	}
-	built = append(built, observe(t5, ss.sessionID, "ssh_write_file", ss.observer))
+	built = append(built, bt)
 
 	// 6. upload
-	t6, err := utils.InferTool(
-		"upload",
+	bt, err = inferBuiltin(ss, "upload",
 		"Upload a LOCAL file to the REMOTE host. Requires user approval.",
-		ss.upload,
-	)
+		ss.upload)
 	if err != nil {
-		return nil, fmt.Errorf("build upload: %w", err)
+		return nil, err
 	}
-	built = append(built, observe(t6, ss.sessionID, "upload", ss.observer))
+	built = append(built, bt)
 
 	// 7. download
-	t7, err := utils.InferTool(
-		"download",
+	bt, err = inferBuiltin(ss, "download",
 		"Download a REMOTE file to the LOCAL machine.",
-		ss.download,
-	)
+		ss.download)
 	if err != nil {
-		return nil, fmt.Errorf("build download: %w", err)
+		return nil, err
 	}
-	built = append(built, observe(t7, ss.sessionID, "download", ss.observer))
+	built = append(built, bt)
 
 	// 8. skill (only when a skill backend is wired)
 	if sk, err := ss.buildSkillTool(); err != nil {
 		return nil, err
 	} else if sk != nil {
-		built = append(built, sk)
+		built = append(built, builtTool{name: "skill", tool: sk})
 	}
 
 	return built, nil
+}
+
+// builtTool pairs a tool with its registration name.
+type builtTool struct {
+	name string
+	tool tool.BaseTool
+}
+
+// inferBuiltin infers one tool's schema and wraps it with the observer. T is
+// inferred from the tool function's args struct — it must stay a type
+// parameter here (a plain `any` would break InferTool's inference).
+func inferBuiltin[T any](ss *sessionToolSet, name, desc string, fn func(context.Context, T) (string, error)) (builtTool, error) {
+	t, err := utils.InferTool(name, desc, fn)
+	if err != nil {
+		return builtTool{}, fmt.Errorf("build %s: %w", name, err)
+	}
+	return builtTool{name: name, tool: observe(t, ss.sessionID, name, ss.observer)}, nil
 }
 
 // build on the outer ToolSet builds tools without a session — used only to

@@ -38,6 +38,13 @@ type SkillSource interface {
 	GetSkill(name string) (domain.Skill, error)
 }
 
+// ExpertSource resolves digital-employee expert personas by id — implemented
+// by the application layer's ExpertService. May be nil: expert ids then
+// degrade to the general assistant.
+type ExpertSource interface {
+	GetExpert(id string) (domain.Expert, error)
+}
+
 // SnapshotSource collects the deterministic health-check snapshot for a
 // session's host (application layer's MonitorService). May be nil: diagnosis
 // chats then start without triage context instead of failing.
@@ -118,11 +125,13 @@ type Runtime struct {
 	agentCfg  AgentConfigSource
 	skills    SkillSource
 	snapshots SnapshotSource
+	experts   ExpertSource
 
-	mu        sync.Mutex
-	cancelFns map[string]context.CancelFunc
-	histories map[string][]*schema.Message
-	diagnosis map[string]bool // sessions currently in diagnosis mode
+	mu            sync.Mutex
+	cancelFns     map[string]context.CancelFunc
+	histories     map[string][]*schema.Message
+	activeExperts map[string]string // sessionID → expert id resolved on the last turn
+	snapshotDone  map[string]bool   // sessionID → snapshot injected for the current expert window
 }
 
 // SecretsForResolver provides remembered host secrets for credential resolution.
@@ -139,21 +148,24 @@ type AgentConfigSource func() domain.AgentConfig
 // NewRuntime wires the agent runtime. sink (may be nil) persists completed
 // turns — the application layer's ConversationService. skills (may be nil)
 // enables /skill invocation and the model-facing skill tool. snapshots (may
-// be nil) enables the diagnosis mode's health-check snapshot.
-func NewRuntime(llm LLMResolver, sshMgr *ssh.Manager, sftp SftpFileOps, gate PermissionGate, secrets SecretsForResolver, sink TurnSink, agentCfg AgentConfigSource, skills SkillSource, snapshots SnapshotSource) *Runtime {
+// be nil) disables the AutoSnapshot experts' health-check snapshot. experts
+// (may be nil) disables the digital-employee persona layer.
+func NewRuntime(llm LLMResolver, sshMgr *ssh.Manager, sftp SftpFileOps, gate PermissionGate, secrets SecretsForResolver, sink TurnSink, agentCfg AgentConfigSource, skills SkillSource, snapshots SnapshotSource, experts ExpertSource) *Runtime {
 	return &Runtime{
-		llm:       llm,
-		sshMgr:    sshMgr,
-		sftp:      sftp,
-		gate:      gate,
-		secrets:   secrets,
-		sink:      sink,
-		agentCfg:  agentCfg,
-		skills:    skills,
-		snapshots: snapshots,
-		cancelFns: make(map[string]context.CancelFunc),
-		histories: make(map[string][]*schema.Message),
-		diagnosis: make(map[string]bool),
+		llm:           llm,
+		sshMgr:        sshMgr,
+		sftp:          sftp,
+		gate:          gate,
+		secrets:       secrets,
+		sink:          sink,
+		agentCfg:      agentCfg,
+		skills:        skills,
+		snapshots:     snapshots,
+		experts:       experts,
+		cancelFns:     make(map[string]context.CancelFunc),
+		histories:     make(map[string][]*schema.Message),
+		activeExperts: make(map[string]string),
+		snapshotDone:  make(map[string]bool),
 	}
 }
 
@@ -177,53 +189,30 @@ func (r *Runtime) agentConfig() domain.AgentConfig {
 }
 
 // Chat starts a streaming agent chat for a session using the selected
-// provider + model. The session's conversation history is replayed so the
-// model keeps context across turns.
-func (r *Runtime) Chat(ctx context.Context, sessionID, providerID, model, userMessage string, events AgentEvents) error {
-	return r.runChat(ctx, sessionID, providerID, model, userMessage, userMessage, events)
+// provider + model. expertID ("" = the general assistant) selects the
+// digital-employee persona for the turn; the session's conversation history
+// is replayed so the model keeps context across turns.
+func (r *Runtime) Chat(ctx context.Context, sessionID, providerID, model, expertID, userMessage string, events AgentEvents) error {
+	return r.runChat(ctx, sessionID, providerID, model, expertID, userMessage, userMessage, events)
 }
 
-// StartDiagnosis runs a diagnosis-mode chat turn: it flips the session into
-// the diagnosis system prompt, collects the deterministic health snapshot
-// (best-effort — collection problems degrade to a note, never a failure) and
-// attaches it to the symptom as the first turn's context. The conversation
-// memory records the bare symptom so follow-ups replay compactly.
-func (r *Runtime) StartDiagnosis(ctx context.Context, sessionID, providerID, model, symptom string, events AgentEvents) error {
-	r.SetDiagnosisMode(sessionID, true)
-
-	snapshot := ""
-	if r.snapshots != nil {
-		sctx, cancel := context.WithTimeout(ctx, snapshotTimeout)
-		snap, snapErr := r.snapshots.Snapshot(sctx, sessionID)
-		cancel()
-		if snapErr != nil {
-			if events != nil {
-				// Pre-turn notice: the model message will also carry the note.
-				events.OnChunk(sessionID, fmt.Sprintf("> %s\n\n", snapshotUnavailableNote(snapErr)))
-			}
-		} else {
-			snapshot = snap
-		}
-	}
-	return r.runChat(ctx, sessionID, providerID, model, symptom, composeDiagnosisMessage(symptom, snapshot), events)
-}
-
-// SetDiagnosisMode toggles the diagnosis system-prompt template for a
-// session's turns. Cleared with the session's history (new chat).
-func (r *Runtime) SetDiagnosisMode(sessionID string, on bool) {
+// SetExpert records a session's active expert without starting a chat (used
+// on resume and on explicit switches). An AutoSnapshot expert's snapshot
+// window opens here: its next chat turn carries a fresh health snapshot.
+func (r *Runtime) SetExpert(sessionID, expertID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if on {
-		r.diagnosis[sessionID] = true
-	} else {
-		delete(r.diagnosis, sessionID)
+	if r.activeExperts[sessionID] != expertID {
+		delete(r.snapshotDone, sessionID)
 	}
+	r.activeExperts[sessionID] = expertID
 }
 
-func (r *Runtime) inDiagnosisMode(sessionID string) bool {
+// ExpertOf returns the session's currently recorded expert id ("" = none).
+func (r *Runtime) ExpertOf(sessionID string) string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.diagnosis[sessionID]
+	return r.activeExperts[sessionID]
 }
 
 // snapshotTimeout bounds the deterministic health-check round: overview and
@@ -236,11 +225,11 @@ func snapshotUnavailableNote(err error) string {
 	return fmt.Sprintf("体检快照不可用（%v），请直接通过只读命令采集所需上下文。/ Health snapshot unavailable (%v); gather context via read-only commands instead.", err, err)
 }
 
-// composeDiagnosisMessage builds the model-facing first turn: the user's
-// symptom plus the health snapshot as a structured context block.
-func composeDiagnosisMessage(symptom, snapshot string) string {
+// composeSnapshotMessage builds the model-facing first turn: the user's
+// message plus the health snapshot as a structured context block.
+func composeSnapshotMessage(user, snapshot string) string {
 	var b strings.Builder
-	b.WriteString(strings.TrimSpace(symptom))
+	b.WriteString(strings.TrimSpace(user))
 	if snapshot != "" {
 		if len(snapshot) > snapshotCharBudget {
 			snapshot = snapshot[:snapshotCharBudget] + "\n…[truncated]"
@@ -257,10 +246,58 @@ func composeDiagnosisMessage(symptom, snapshot string) string {
 // snapshotCharBudget bounds the injected snapshot (≈2k tokens).
 const snapshotCharBudget = 8 * 1024
 
+// resolveExpert returns the effective expert for this turn (nil = the general
+// assistant) and the model-facing user message. Recording the expert per
+// session also detects persona switches: whenever the expert changes — or a
+// new conversation begins — the snapshot window reopens, so an AutoSnapshot
+// expert's next turn carries a fresh health snapshot (injected into the model
+// message; a failed collection degrades to a pre-turn notice, never an error).
+func (r *Runtime) resolveExpert(ctx context.Context, sessionID, expertID, modelUser string, events AgentEvents) (*domain.Expert, string) {
+	var exp *domain.Expert
+	if expertID != "" && r.experts != nil {
+		if e, err := r.experts.GetExpert(expertID); err == nil {
+			exp = &e
+		}
+		// Unknown expert id: degrade silently to the general assistant.
+	}
+
+	r.mu.Lock()
+	if r.activeExperts[sessionID] != expertID {
+		r.activeExperts[sessionID] = expertID
+		delete(r.snapshotDone, sessionID)
+	}
+	inject := exp != nil && exp.AutoSnapshot && !r.snapshotDone[sessionID]
+	if inject {
+		r.snapshotDone[sessionID] = true
+	}
+	r.mu.Unlock()
+
+	if inject {
+		snapshot := ""
+		if r.snapshots != nil {
+			sctx, cancel := context.WithTimeout(ctx, snapshotTimeout)
+			snap, snapErr := r.snapshots.Snapshot(sctx, sessionID)
+			cancel()
+			if snapErr != nil {
+				if events != nil {
+					// Pre-turn notice: the model message will also carry the note.
+					events.OnChunk(sessionID, fmt.Sprintf("> %s\n\n", snapshotUnavailableNote(snapErr)))
+				}
+			} else {
+				snapshot = snap
+			}
+		}
+		modelUser = composeSnapshotMessage(modelUser, snapshot)
+	}
+	return exp, modelUser
+}
+
 // runChat is the shared streaming pipeline: rawUser is what the conversation
 // memory records; modelUser is what the model actually receives (context
 // expansion already applied).
-func (r *Runtime) runChat(ctx context.Context, sessionID, providerID, model, rawUser, modelUser string, events AgentEvents) error {
+func (r *Runtime) runChat(ctx context.Context, sessionID, providerID, model, expertID, rawUser, modelUser string, events AgentEvents) error {
+	exp, modelUser := r.resolveExpert(ctx, sessionID, expertID, modelUser, events)
+
 	ep, err := r.llm.ResolveLLM(providerID, model)
 	if err != nil {
 		return err
@@ -272,22 +309,40 @@ func (r *Runtime) runChat(ctx context.Context, sessionID, providerID, model, raw
 		apiKey = "local-no-key"
 	}
 
-	chatModel, err := openaimodel.NewChatModel(ctx, &openaimodel.ChatModelConfig{
+	chatModelCfg := &openaimodel.ChatModelConfig{
 		BaseURL: ep.BaseURL,
 		APIKey:  apiKey,
 		Model:   ep.Model,
-	})
+	}
+	// Per-expert sampling: a persona with a temperature preference gets it,
+	// everyone else uses the model default.
+	if exp != nil && exp.Temperature > 0 {
+		t := float32(exp.Temperature)
+		chatModelCfg.Temperature = &t
+	}
+	chatModel, err := openaimodel.NewChatModel(ctx, chatModelCfg)
 	if err != nil {
 		return fmt.Errorf("create chat model: %w", err)
 	}
 
 	credsResolver := r.buildResolver()
 	cfg := r.agentConfig()
+	if exp != nil && exp.MaxSteps > 0 {
+		cfg.MaxSteps = exp.MaxSteps
+	}
+	// The expert's tool allowlist scopes the toolset; nil/empty = all.
+	var allowed map[string]bool
+	if exp != nil && len(exp.AllowedTools) > 0 {
+		allowed = make(map[string]bool, len(exp.AllowedTools))
+		for _, name := range exp.AllowedTools {
+			allowed[name] = true
+		}
+	}
 	ts, err := tools.NewToolSet(tools.Deps{
-		SSH:               r.sshMgr,
-		SFTP:              r.sftp,
-		OutputLimitBytes:  cfg.ToolOutputLimitKB * 1024,
-		Skills:            r.skills,
+		SSH:              r.sshMgr,
+		SFTP:             r.sftp,
+		OutputLimitBytes: cfg.ToolOutputLimitKB * 1024,
+		Skills:           r.skills,
 	}, credsResolver, r.gate, eventsObserver{events})
 	if err != nil {
 		return fmt.Errorf("build toolset: %w", err)
@@ -296,9 +351,9 @@ func (r *Runtime) runChat(ctx context.Context, sessionID, providerID, model, raw
 	// them: expose only the local tools.
 	var toolList []tool.BaseTool
 	if strings.HasPrefix(sessionID, "local-") {
-		toolList, err = ts.BuildLocalForSession(sessionID)
+		toolList, err = ts.BuildLocalForSession(sessionID, allowed)
 	} else {
-		toolList, err = ts.BuildForSession(sessionID)
+		toolList, err = ts.BuildForSession(sessionID, allowed)
 	}
 	if err != nil {
 		return fmt.Errorf("build session tools: %w", err)
@@ -327,7 +382,7 @@ func (r *Runtime) runChat(ctx context.Context, sessionID, providerID, model, raw
 	// resolved (/skill → instructions, @path → file content) for the model
 	// only — the raw text is what gets recorded into conversation memory.
 	msgs := make([]*schema.Message, 0, 8)
-	msgs = append(msgs, schema.SystemMessage(r.systemPrompt(sessionID)))
+	msgs = append(msgs, schema.SystemMessage(r.systemPrompt(sessionID, exp, allowed)))
 	r.mu.Lock()
 	msgs = append(msgs, r.histories[sessionID]...)
 	r.mu.Unlock()
@@ -394,12 +449,14 @@ func (r *Runtime) Cancel(sessionID string) {
 }
 
 // ClearHistory forgets a session's conversation (frontend "clear chat") and
-// resets the diagnosis-mode prompt with it — the next conversation starts
-// from the default template.
+// reopens the current expert's snapshot window — the next AutoSnapshot turn
+// carries a fresh health snapshot. The expert selection itself is KEPT: a
+// new conversation is a new topic with the same digital employee; leaving
+// the persona is an explicit switch (badge X / selector).
 func (r *Runtime) ClearHistory(sessionID string) {
 	r.mu.Lock()
 	delete(r.histories, sessionID)
-	delete(r.diagnosis, sessionID)
+	delete(r.snapshotDone, sessionID)
 	r.mu.Unlock()
 }
 
@@ -626,30 +683,102 @@ func hybridToolCallChecker(_ context.Context, sr *schema.StreamReader[*schema.Me
 	}
 }
 
-// systemPrompt is the LLM-facing contract: tools, workflow, and approval
-// semantics (a DENIED result must change the plan, never be retried).
-// Local terminal sessions get a local-only variant, and sessions in
-// diagnosis mode get the triage template instead. The user's standing
-// instructions from global settings are appended to every variant.
-func (r *Runtime) systemPrompt(sessionID string) string {
+// ── System prompt composition ──────────────────────────────────────────
+//
+// The prompt is layered: persona (expert or built-in default) + fixed
+// contracts. The tool and permission texts are shared fragments so every
+// variant — default or expert — states exactly the same tool semantics and
+// approval rules. A persona can never override the permission contract: it
+// is composed by the runtime after the persona text, every turn.
+
+// toolDoc is one line of the tool contract: the tool names it covers (for
+// expert allowlist filtering) and its description text.
+type toolDoc struct {
+	names []string
+	text  string
+}
+
+// remoteToolDocs describes the remote-session toolset in default-prompt
+// order. Grouped lines list every tool name the line covers.
+var remoteToolDocs = []toolDoc{
+	{[]string{"ssh_exec"}, "- ssh_exec(command): run a shell command on the remote host. Returns combined stdout+stderr; a non-zero exit is reported as [exit status N] — that is diagnostic output, not a failure."},
+	{[]string{"ssh_read_file", "ssh_write_file"}, "- ssh_read_file(path) / ssh_write_file(path, content): read or overwrite a remote file over SFTP."},
+	{[]string{"upload", "download"}, "- upload(localPath, remotePath) / download(remotePath, localPath): move files between the user's machine and the host."},
+	{[]string{"local_exec", "local_read_file"}, "- local_exec(command) / local_read_file(path): run/read on the user's LOCAL machine. Prefer the remote tools unless local context is required."},
+}
+
+// localToolDocs describes the local-session toolset.
+var localToolDocs = []toolDoc{
+	{[]string{"local_exec"}, "- local_exec(command): run a shell command locally. Returns combined stdout+stderr; a non-zero exit is reported as [exit status N] — diagnostic output, not a failure."},
+	{[]string{"local_read_file"}, "- local_read_file(path): read a local file as text."},
+}
+
+// toolContract renders the "Tools:" block for a session kind, filtered by an
+// expert allowlist (nil/empty = every line). A grouped line stays when ANY of
+// its tools is allowed — the runtime never grants a filtered-out tool, this
+// only keeps the text honest about what the model can call.
+func toolContract(isLocal bool, allowed map[string]bool) string {
+	docs := remoteToolDocs
+	if isLocal {
+		docs = localToolDocs
+	}
+	lines := make([]string, 0, len(docs))
+	for _, d := range docs {
+		if len(allowed) == 0 {
+			lines = append(lines, d.text)
+			continue
+		}
+		for _, n := range d.names {
+			if allowed[n] {
+				lines = append(lines, d.text)
+				break
+			}
+		}
+	}
+	return "Tools:\n" + strings.Join(lines, "\n")
+}
+
+const (
+	remoteWorkflowText = "Workflow: start with read-only diagnostics (uptime, df -h, free -m, ps aux, journalctl …), analyze the output, " +
+		"then summarize findings in concise markdown and propose fixes."
+
+	remoteContainerText = "Container workloads: if the host runs Docker or Kubernetes, use the CLIs directly through ssh_exec " +
+		"(docker ps / logs / stats / inspect, kubectl get/describe/logs) — they are the preferred interface for " +
+		"container diagnostics. Prefer bounded output (docker logs --tail, kubectl logs --tail) to keep responses small."
+
+	localContainerText = "Container workloads: if Docker Desktop or a local engine is installed, use the docker CLI through local_exec " +
+		"(docker ps / logs / stats / inspect). Prefer bounded output (docker logs --tail) to keep responses small."
+
+	// permissionRemoteText / permissionLocalText are the fixed approval
+	// semantics — identical to what the built-in prompts always stated.
+	permissionRemoteText = "Permissions: state-changing operations (file writes, uploads, package/service mutations, container lifecycle " +
+		"control such as docker run/stop/restart, destructive commands) " +
+		"are subject to the session's approval policy — the user may be asked to approve them. " +
+		"If a tool result says the user DENIED the operation, do NOT retry it — " +
+		"explain what you were about to do and propose an alternative."
+
+	permissionLocalText = "Permissions: state-changing operations (file writes, package/service mutations, container lifecycle control " +
+		"such as docker run/stop/restart, destructive commands) are subject to the session's approval policy — " +
+		"the user may be asked to approve them. If a tool result says the user DENIED the operation, " +
+		"do NOT retry it — explain and propose an alternative."
+)
+
+// systemPrompt is the LLM-facing contract: persona + environment + tool and
+// approval semantics. exp (may be nil) selects the digital-employee persona;
+// without one the built-in operations-assistant template is used. The user's
+// standing instructions from global settings are appended to every variant.
+func (r *Runtime) systemPrompt(sessionID string, exp *domain.Expert, allowed map[string]bool) string {
 	isLocal := strings.HasPrefix(sessionID, "local-")
 	var base string
 	switch {
-	case r.inDiagnosisMode(sessionID):
-		base = r.diagnosisPrompt(sessionID, isLocal)
+	case exp != nil:
+		base = r.expertPrompt(exp, sessionID, isLocal, allowed)
 	case isLocal:
 		base = "You are an AI operations assistant working on the user's LOCAL machine (a local terminal session, no remote host).\n\n" +
-			"Tools:\n" +
-			"- local_exec(command): run a shell command locally. Returns combined stdout+stderr; a non-zero exit is reported as " +
-			"[exit status N] — diagnostic output, not a failure.\n" +
-			"- local_read_file(path): read a local file as text.\n\n" +
+			toolContract(true, nil) + "\n\n" +
 			"Workflow: start with read-only diagnostics, analyze, then summarize findings in concise markdown and propose fixes.\n\n" +
-			"Container workloads: if Docker Desktop or a local engine is installed, use the docker CLI through local_exec " +
-			"(docker ps / logs / stats / inspect). Prefer bounded output (docker logs --tail) to keep responses small.\n\n" +
-			"Permissions: state-changing operations (file writes, package/service mutations, container lifecycle control " +
-				"such as docker run/stop/restart, destructive commands) are subject to the session's approval policy — " +
-				"the user may be asked to approve them. If a tool result says the user DENIED the operation, " +
-				"do NOT retry it — explain and propose an alternative."
+			localContainerText + "\n\n" +
+			permissionLocalText
 	default:
 		host, ok := r.sshMgr.HostOfSession(sessionID)
 		name := "unknown"
@@ -658,22 +787,10 @@ func (r *Runtime) systemPrompt(sessionID string) string {
 		}
 		base = fmt.Sprintf(
 			"You are an AI operations assistant embedded in an SSH workspace, connected to host %s.\n\n"+
-				"Tools:\n"+
-				"- ssh_exec(command): run a shell command on the remote host. Returns combined stdout+stderr; "+
-				"a non-zero exit is reported as [exit status N] — that is diagnostic output, not a failure.\n"+
-				"- ssh_read_file(path) / ssh_write_file(path, content): read or overwrite a remote file over SFTP.\n"+
-				"- upload(localPath, remotePath) / download(remotePath, localPath): move files between the user's machine and the host.\n"+
-				"- local_exec(command) / local_read_file(path): run/read on the user's LOCAL machine. Prefer the remote tools unless local context is required.\n\n"+
-				"Workflow: start with read-only diagnostics (uptime, df -h, free -m, ps aux, journalctl …), analyze the output, "+
-				"then summarize findings in concise markdown and propose fixes.\n\n"+
-				"Container workloads: if the host runs Docker or Kubernetes, use the CLIs directly through ssh_exec "+
-				"(docker ps / logs / stats / inspect, kubectl get/describe/logs) — they are the preferred interface for "+
-				"container diagnostics. Prefer bounded output (docker logs --tail, kubectl logs --tail) to keep responses small.\n\n"+
-				"Permissions: state-changing operations (file writes, uploads, package/service mutations, container lifecycle "+
-				"control such as docker run/stop/restart, destructive commands) "+
-				"are subject to the session's approval policy — the user may be asked to approve them. "+
-				"If a tool result says the user DENIED the operation, do NOT retry it — "+
-				"explain what you were about to do and propose an alternative.",
+				toolContract(false, nil)+"\n\n"+
+				remoteWorkflowText+"\n\n"+
+				remoteContainerText+"\n\n"+
+				permissionRemoteText,
 			name,
 		)
 	}
@@ -683,48 +800,56 @@ func (r *Runtime) systemPrompt(sessionID string) string {
 	return base
 }
 
-// diagnosisPrompt is the triage-mode system prompt: an evidence-first method
-// built around the deterministic health snapshot and the scenario playbooks,
-// a strict conclusion format (现象/根因/证据/建议/风险), and unchanged
-// approval semantics.
-func (r *Runtime) diagnosisPrompt(sessionID string, isLocal bool) string {
+// expertPrompt composes a digital employee's prompt: identity card, the
+// persona's own instructions, the environment line, and the fixed tool and
+// permission contracts (never trust a persona to state them), plus the
+// expert's bound skills when a skill source is wired.
+func (r *Runtime) expertPrompt(e *domain.Expert, sessionID string, isLocal bool, allowed map[string]bool) string {
 	var b strings.Builder
-	if isLocal {
-		b.WriteString("You are an AI site-reliability diagnostician working on the user's LOCAL machine " +
-			"(a local terminal session, no remote host). Gather evidence with local_exec / local_read_file " +
-			"(and the docker/kubectl CLI through local_exec where installed).\n\n")
-	} else {
-		host, ok := r.sshMgr.HostOfSession(sessionID)
-		name := "unknown"
-		if ok {
-			name = fmt.Sprintf("%s@%s", host.Username, host.Host)
-		}
-		fmt.Fprintf(&b, "You are an AI site-reliability diagnostician embedded in an SSH workspace, connected to host %s. "+
-			"Gather evidence with ssh_exec / ssh_read_file (docker/kubectl CLIs through ssh_exec); "+
-			"use local_exec only for the user's local context.\n\n", name)
+	fmt.Fprintf(&b, "You are %q", e.Name)
+	if e.Role != "" {
+		fmt.Fprintf(&b, " (%s)", e.Role)
 	}
-	b.WriteString("Diagnosis method (evidence first):\n" +
-		"1. The user's message may carry a <health-snapshot> block — a deterministic read-only collection " +
-		"(CPU / memory / disk / load, top processes, listening ports, recent errors). Read it FIRST and do NOT " +
-		"re-run those checks; escalate depth only where it points.\n" +
-		"2. Match the symptom to a scenario playbook and load it with the `skill` tool (its description lists the " +
-		"available playbooks, e.g. cpu-high, disk-full, memory-oom, service-down, port-unreachable, " +
-		"container-restart-loop). Follow the playbook's decision tree; if none fits, continue with your own " +
-		"read-only investigation.\n" +
-		"3. One hypothesis at a time. Every claim needs evidence — quote the exact command and output lines that " +
-		"prove or refute it. Do not conclude from plausibility alone.\n" +
-		"4. Keep every command read-only and bounded (head / tail / --no-pager / timeout). Never loop sampling " +
-		"or re-check what the snapshot already covered.\n\n" +
-		"Output contract — end every diagnosis with a markdown summary using exactly these sections:\n" +
-		"- **现象 / Phenomenon**: what was observed\n" +
-		"- **根因 / Root cause**: the confirmed (or most-likely) cause\n" +
-		"- **证据 / Evidence**: the commands run and their decisive output lines\n" +
-		"- **建议 / Next steps**: concrete actions, each tagged [READ] / [WRITE] / [DANGEROUS]\n" +
-		"- **风险 / Risk**: impact of each action and what to watch afterwards\n\n" +
-		"Safety: read-only evidence gathering needs no approval. NEVER execute a state-changing fix (restart, kill, " +
-		"delete, config edit, package or container mutation) on your own — propose it under 建议 and wait for the " +
-		"user's explicit approval. If a tool result says the user DENIED an operation, do NOT retry it — explain " +
-		"and propose an alternative.")
+	b.WriteString(" — a digital-employee ops expert working inside the AI Remote Workspace.")
+	if d := strings.TrimSpace(e.Description); d != "" {
+		b.WriteString("\nMission: " + d)
+	}
+	if p := strings.TrimSpace(e.SystemPrompt); p != "" {
+		b.WriteString("\n\n# Persona & working method\n" + p)
+	}
+
+	b.WriteString("\n\n# Environment\n")
+	if isLocal {
+		b.WriteString("This is a LOCAL terminal session on the user's machine — no remote host is attached; " +
+			"only the local tools are available.")
+	} else if r.sshMgr == nil {
+		b.WriteString("The session is connected to a remote host over SSH; the remote tools act on it.")
+	} else if host, ok := r.sshMgr.HostOfSession(sessionID); ok {
+		fmt.Fprintf(&b, "The session is connected to host %s@%s over SSH; the remote tools act on it.",
+			host.Username, host.Host)
+	} else {
+		b.WriteString("The session is connected to a remote host over SSH; the remote tools act on it.")
+	}
+
+	b.WriteString("\n\n" + toolContract(isLocal, allowed) + "\n\n")
+	if isLocal {
+		b.WriteString(permissionLocalText)
+	} else {
+		b.WriteString(permissionRemoteText)
+	}
+
+	if r.skills != nil && len(e.SkillRefs) > 0 {
+		var lines []string
+		for _, name := range e.SkillRefs {
+			if sk, err := r.skills.GetSkill(name); err == nil {
+				lines = append(lines, fmt.Sprintf("- %s: %s", sk.Name, sk.Description))
+			}
+		}
+		if len(lines) > 0 {
+			b.WriteString("\n\n# Bound skills (load their full instructions with the `skill` tool when relevant)\n" +
+				strings.Join(lines, "\n"))
+		}
+	}
 	return b.String()
 }
 

@@ -13,6 +13,7 @@ export type SettingsCategory =
   | "appearance"
   | "language"
   | "models"
+  | "experts"
   | "agent"
   | "shortcuts"
   | "keys"

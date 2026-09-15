@@ -140,16 +140,21 @@ func main() {
 	dataDirSvc.SetOnMigrated(func(newDataDir string) {
 		skillSvc.SetDir(filepath.Join(newDataDir, "skills"))
 	})
+	// Digital employees (数字员工): the expert roster lives in SQLite with
+	// builtin personas seeded from the binary. The runtime resolves personas
+	// through the same service that backs the management UI.
+	expertRepo := sqlite.NewExpertRepo(store)
+	expertSvc := application.NewExpertService(expertRepo)
 	permGate := application.NewPermissionGate(nil)
 	// monitorSvc doubles as the diagnosis snapshot source (deterministic
-	// health-check context injected into diagnosis-mode chats).
+	// health-check context injected into the SRE diagnostician's first turn).
 	agentRuntime := agent.NewRuntime(providerSvc, connManager, sftpMgr, permGate, &secretResolver{secretSvc}, convSvc, func() domain.AgentConfig {
 		cfg, err := configSvc.GetAppConfig()
 		if err != nil {
 			return domain.AgentConfig{}
 		}
 		return cfg.Agent
-	}, skillSvc, monitorSvc)
+	}, skillSvc, monitorSvc, expertSvc)
 
 	// MCP server (Phase 6): exposes host/SSH/SFTP capabilities to external
 	// agents over streamable HTTP on 127.0.0.1. Lifecycle follows the
@@ -214,7 +219,8 @@ func main() {
 	sftpService.SetRemoteEdits(remoteEdits)
 	windowService := interfaces.NewWindowService(hostSvc)
 	providerService := interfaces.NewModelProviderService(providerSvc)
-	agentService := interfaces.NewAgentService(agentRuntime, permGate, convSvc, skillSvc)
+	expertService := interfaces.NewExpertService(expertSvc)
+	agentService := interfaces.NewAgentService(agentRuntime, permGate, convSvc, skillSvc, expertSvc)
 	mcpService := interfaces.NewMCPService(mcpServer)
 
 	// Wire the approval emitter now that AgentService exists.
@@ -235,6 +241,7 @@ func main() {
 			wailsapp.NewService(sftpService),
 			wailsapp.NewService(windowService),
 			wailsapp.NewService(providerService),
+			wailsapp.NewService(expertService),
 			wailsapp.NewService(agentService),
 			wailsapp.NewService(mcpService),
 		},

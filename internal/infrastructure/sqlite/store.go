@@ -97,5 +97,6 @@ func (s *Store) migrate() error {
 		&secretRefModel{},
 		&conversationModel{},
 		&conversationMessageModel{},
+		&expertModel{},
 	)
 }

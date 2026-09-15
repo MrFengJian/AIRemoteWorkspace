@@ -148,7 +148,7 @@ func TestCapContext(t *testing.T) {
 	}
 }
 
-// ── diagnosis mode ────────────────────────────────────────────────────────
+// ── digital-employee experts (persona layer + snapshot window) ───────────
 
 type fakeSnapshots struct{ out string }
 
@@ -156,63 +156,168 @@ func (f fakeSnapshots) Snapshot(_ context.Context, _ string) (string, error) {
 	return f.out, nil
 }
 
-func TestComposeDiagnosisMessage(t *testing.T) {
-	got := composeDiagnosisMessage("CPU 很高", "CPU: 90%")
+type fakeExperts struct{}
+
+func (fakeExperts) GetExpert(id string) (domain.Expert, error) {
+	if id == domain.ExpertIDDiagnosticsSRE {
+		return domain.Expert{
+			ID:           id,
+			Name:         "SRE 诊断专家",
+			Role:         "SRE",
+			Description:  "evidence first",
+			SystemPrompt: "You are an AI site-reliability diagnostician. 现象 / Phenomenon is part of the output contract.",
+			AutoSnapshot: true,
+			SkillRefs:    []string{"cpu-high"},
+		}, nil
+	}
+	if id == "builtin-k8s-ops" {
+		return domain.Expert{
+			ID:           id,
+			Name:         "K8s 运维专家",
+			SystemPrompt: "KUBERNETES OPERATOR PERSONA",
+			AllowedTools: []string{"ssh_exec", "skill"},
+		}, nil
+	}
+	return domain.Expert{}, fmt.Errorf("expert %q not found", id)
+}
+
+func TestComposeSnapshotMessage(t *testing.T) {
+	got := composeSnapshotMessage("CPU 很高", "CPU: 90%")
 	if !strings.HasPrefix(got, "CPU 很高") {
-		t.Fatalf("symptom must lead: %q", got)
+		t.Fatalf("user message must lead: %q", got)
 	}
 	if !strings.Contains(got, "<health-snapshot>\nCPU: 90%\n</health-snapshot>") {
 		t.Fatalf("snapshot block missing: %q", got)
 	}
 
 	// Without a snapshot the model still gets an explicit note.
-	plain := composeDiagnosisMessage("s", "")
+	plain := composeSnapshotMessage("s", "")
 	if !strings.Contains(plain, "no health snapshot available") {
 		t.Fatalf("missing-snapshot note absent: %q", plain)
 	}
 
 	// Oversized snapshots are truncated, with the marker kept.
-	huge := composeDiagnosisMessage("s", strings.Repeat("x", snapshotCharBudget+500))
+	huge := composeSnapshotMessage("s", strings.Repeat("x", snapshotCharBudget+500))
 	if len(huge) > snapshotCharBudget+200 || !strings.Contains(huge, "[truncated]") {
 		t.Fatalf("oversized snapshot not truncated (%d chars)", len(huge))
 	}
 }
 
-// SetDiagnosisMode switches the system prompt to the triage template; it is
-// keyed per session and cleared together with the history.
-func TestDiagnosisPromptSwitch(t *testing.T) {
-	r := &Runtime{diagnosis: map[string]bool{}}
+// The SRE diagnostician persona carries the triage prompt and the fixed
+// contracts; without an expert the default template is used.
+func TestExpertPromptSwitch(t *testing.T) {
+	r := &Runtime{experts: fakeExperts{}, activeExperts: map[string]string{}, snapshotDone: map[string]bool{}}
 
-	if r.inDiagnosisMode("sess-1") {
-		t.Fatal("diagnosis mode must default off")
+	if got := r.ExpertOf("local-1"); got != "" {
+		t.Fatalf("expert must default empty, got %q", got)
 	}
-	normal := r.systemPrompt("local-1")
+	normal := r.systemPrompt("local-1", nil, nil)
 	if strings.Contains(normal, "site-reliability diagnostician") {
-		t.Fatal("normal prompt leaked the diagnosis template")
+		t.Fatal("default prompt leaked a persona")
+	}
+	if !strings.Contains(normal, permissionLocalText) {
+		t.Fatal("default prompt lost the permission contract")
 	}
 
-	r.SetDiagnosisMode("local-1", true)
-	diag := r.systemPrompt("local-1")
+	exp, _ := r.resolveExpert(t.Context(), "local-1", domain.ExpertIDDiagnosticsSRE, "CPU 很高", nil)
+	if exp == nil {
+		t.Fatal("diagnosis expert not resolved")
+	}
+	diag := r.systemPrompt("local-1", exp, nil)
 	if !strings.Contains(diag, "site-reliability diagnostician") ||
-		!strings.Contains(diag, "现象 / Phenomenon") ||
-		!strings.Contains(diag, "<health-snapshot>") {
-		t.Fatalf("diagnosis prompt incomplete:\n%s", diag)
+		!strings.Contains(diag, "现象 / Phenomenon") {
+		t.Fatalf("expert persona missing from prompt:\n%s", diag)
+	}
+	// The fixed contracts must survive any persona.
+	if !strings.Contains(diag, permissionLocalText) || !strings.Contains(diag, "local_exec(command)") {
+		t.Fatalf("expert prompt lost the fixed contracts:\n%s", diag)
 	}
 
 	// Other sessions are unaffected.
-	if r.inDiagnosisMode("sess-2") {
-		t.Fatal("diagnosis mode leaked across sessions")
+	if got := r.ExpertOf("sess-2"); got != "" {
+		t.Fatalf("expert leaked across sessions: %q", got)
 	}
 
+	// New conversation (ClearHistory) KEEPS the persona.
 	r.ClearHistory("local-1")
-	if r.inDiagnosisMode("local-1") {
-		t.Fatal("clear history must reset diagnosis mode")
+	if got := r.ExpertOf("local-1"); got != domain.ExpertIDDiagnosticsSRE {
+		t.Fatalf("clear history must keep the expert, got %q", got)
+	}
+}
+
+// An AutoSnapshot expert injects the health snapshot on its activation turn
+// only; the window reopens on expert switch and on ClearHistory.
+func TestExpertSnapshotWindow(t *testing.T) {
+	r := &Runtime{
+		experts:       fakeExperts{},
+		snapshots:     fakeSnapshots{out: "CPU: 90%"},
+		activeExperts: map[string]string{},
+		snapshotDone:  map[string]bool{},
+	}
+	ctx := t.Context()
+
+	// First turn with the diagnosis expert: snapshot injected.
+	_, msg := r.resolveExpert(ctx, "s1", domain.ExpertIDDiagnosticsSRE, "CPU 很高", nil)
+	if !strings.Contains(msg, "<health-snapshot>") {
+		t.Fatalf("activation turn must inject the snapshot: %q", msg)
+	}
+
+	// Follow-up turn: no fresh snapshot.
+	_, msg = r.resolveExpert(ctx, "s1", domain.ExpertIDDiagnosticsSRE, "还是很高", nil)
+	if strings.Contains(msg, "<health-snapshot>") {
+		t.Fatalf("follow-up turn must not re-inject: %q", msg)
+	}
+
+	// Switching experts (even away and back) reopens the window.
+	r.resolveExpert(ctx, "s1", "builtin-k8s-ops", "看下节点", nil)
+	_, msg = r.resolveExpert(ctx, "s1", domain.ExpertIDDiagnosticsSRE, "继续", nil)
+	if !strings.Contains(msg, "<health-snapshot>") {
+		t.Fatalf("switch back must re-inject: %q", msg)
+	}
+
+	// ClearHistory reopens it too (new conversation = fresh triage).
+	r.ClearHistory("s1")
+	_, msg = r.resolveExpert(ctx, "s1", domain.ExpertIDDiagnosticsSRE, "新话题", nil)
+	if !strings.Contains(msg, "<health-snapshot>") {
+		t.Fatalf("new conversation must re-inject: %q", msg)
+	}
+
+	// Unknown expert ids degrade to the general assistant.
+	exp, msg := r.resolveExpert(ctx, "s2", "no-such-expert", "hello", nil)
+	if exp != nil || strings.Contains(msg, "<health-snapshot>") {
+		t.Fatalf("unknown expert must degrade silently: %v %q", exp, msg)
+	}
+}
+
+// An expert's tool allowlist scopes the prompt's tool contract and (via the
+// toolset filter) the model's actual toolset; the permission contract stays.
+func TestExpertToolAllowlist(t *testing.T) {
+	r := &Runtime{experts: fakeExperts{}, activeExperts: map[string]string{}, snapshotDone: map[string]bool{}}
+
+	allowed := map[string]bool{"ssh_exec": true, "skill": true}
+	prompt := r.systemPrompt("sess-1", &domain.Expert{Name: "K8s 运维专家", SystemPrompt: "P", AllowedTools: []string{"ssh_exec", "skill"}}, allowed)
+	if !strings.Contains(prompt, "ssh_exec(command)") {
+		t.Fatal("allowed tool missing from contract")
+	}
+	if strings.Contains(prompt, "upload(localPath") {
+		t.Fatal("filtered tool leaked into the contract")
+	}
+	if !strings.Contains(prompt, permissionRemoteText) {
+		t.Fatal("allowlisting dropped the permission contract")
+	}
+
+	// Empty allowlist = everything.
+	full := r.systemPrompt("sess-1", &domain.Expert{Name: "X"}, nil)
+	for _, want := range []string{"ssh_exec", "upload", "download"} {
+		if !strings.Contains(full, want) {
+			t.Fatalf("full contract lost %s", want)
+		}
 	}
 }
 
 // ClearHistory keeps other sessions' histories intact.
 func TestClearHistoryIsolation(t *testing.T) {
-	r := &Runtime{histories: map[string][]*schema.Message{}, diagnosis: map[string]bool{}}
+	r := &Runtime{histories: map[string][]*schema.Message{}, snapshotDone: map[string]bool{}}
 	r.recordTurn("a", "q", "ans-a")
 	r.recordTurn("b", "q", "ans-b")
 	r.ClearHistory("a")

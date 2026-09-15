@@ -26,6 +26,7 @@ import {
   BookMarked,
   Sparkles,
   RefreshCw,
+  UsersRound,
   X,
 } from "lucide-react";
 
@@ -41,6 +42,9 @@ import { ContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
 import { useAgentStore, type ChatMessage, type SessionPolicy } from "@/features/agent/store";
 import { useTerminalStore } from "@/features/terminal/terminal.store";
 import { useModelProviders } from "@/features/settings/hooks";
+import { useExperts } from "@/features/experts/hooks";
+import { ExpertAvatar, ExpertIcon, GeneralAssistantAvatar } from "@/features/experts/avatar";
+import type { ExpertDTO } from "@/features/experts/api";
 import { useHosts } from "@/features/hosts/hooks";
 import { getPaneActions } from "@/keybindings/registry";
 import { AgentMarkdown } from "@/features/agent/AgentMarkdown";
@@ -85,11 +89,11 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
     streaming,
     activeConvBySession,
     policies,
-    diagnosis,
+    expertsBySession,
     addMessage,
     setActiveConv,
     setPolicy,
-    setDiagnosis,
+    setExpert,
     appendToLast,
     setStreaming,
     setToolResult,
@@ -104,10 +108,15 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
   const [inputHistory, setInputHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState<number | null>(null);
 
-  // ── Diagnosis mode & scenario management (DIAGNOSIS_AGENT.md Phase A/B) ──
+  // ── Expert persona (数字员工) & scenario management ────────────────────
   const [diagnosisOpen, setDiagnosisOpen] = useState(false);
   const [scenariosOpen, setScenariosOpen] = useState(false);
   const [saveScenarioConv, setSaveScenarioConv] = useState<ConversationDTO | null>(null);
+
+  // Digital-employee roster (shared cache with the settings page). Only
+  // enabled experts appear in the picker.
+  const { data: allExperts } = useExperts();
+  const experts = useMemo(() => (allExperts ?? []).filter((e) => e.enabled), [allExperts]);
 
   // ── Input completion (`/` skills, `@` files & terminal ranges) ──────
   type Completion =
@@ -366,6 +375,39 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
     setPolicy(activeSessionId, policy);
   };
 
+  // Active expert for this session ("" = the general assistant). A disabled
+  // or deleted expert degrades to the general assistant in the UI too.
+  const activeExpertID = activeSessionId ? expertsBySession[activeSessionId] ?? "" : "";
+  const activeExpert = experts.find((e) => e.id === activeExpertID);
+
+  /** Switch the session's digital employee: record it (store + backend) and
+   *  apply the persona's defaults best-effort — default model (unless the
+   *  expert has none) and default approval policy. The user can still
+   *  override both via the inline selectors afterwards. */
+  const handleExpertChange = (expertID: string) => {
+    if (!activeSessionId) return;
+    setExpert(activeSessionId, expertID);
+    agentApi.setExpert(activeSessionId, expertID).catch(() => {});
+    const expert = experts.find((e) => e.id === expertID);
+    if (!expert) return;
+    if (expert.providerId && expert.model &&
+        (expert.providerId !== agentProviderId || expert.model !== agentModel)) {
+      setAgentModel(activeSessionId, expert.providerId, expert.model);
+      persistModel(expert.providerId, expert.model);
+    }
+    if (expert.policy && expert.policy !== sessionPolicy) {
+      setPolicy(activeSessionId, expert.policy as SessionPolicy);
+    }
+  };
+
+  /** Exit the current persona (badge X): back to the general assistant. */
+  const handleExitExpert = () => {
+    if (!activeSessionId) return;
+    agentApi.setExpert(activeSessionId, "").catch(() => {});
+    setExpert(activeSessionId, "");
+    toast.info(t("agent.expertExited"));
+  };
+
   // Keep the backend gate in sync with the selected policy. Idempotent, and
   // re-arms the gate after an app restart (its policy map starts empty).
   useEffect(() => {
@@ -524,6 +566,7 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
         activeSessionId,
         agentProviderId,
         agentModel,
+        activeExpertID,
         expandTerminalMentions(text.trim()),
       );
     } catch (e) {
@@ -539,19 +582,30 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
 
   const handleSend = () => send(input);
 
-  /** Start a diagnosis-mode conversation: the backend switches to the triage
-   *  prompt and auto-collects the health snapshot around the symptom. The
-   *  transcript/events pipeline is identical to a normal chat. */
+  /** Start a diagnosis conversation: select the SRE diagnostician persona
+   *  (AutoSnapshot → the backend injects a fresh health snapshot on this
+   *  first turn) and send through the regular chat pipeline. The transcript/
+   *  events flow is identical to a normal chat. */
   const sendDiagnosis = (symptom: string) => {
     if (!activeSessionId || !symptom.trim() || streaming[activeSessionId] || !modelChosen) return;
+    const diagExpert =
+      experts.find((e) => e.autoSnapshot) ??
+      ({ id: "builtin-diagnosis-sre" } as ExpertDTO);
     setInputHistory((h) => [...h.slice(-MAX_INPUT_HISTORY + 1), symptom.trim()]);
-    setDiagnosis(activeSessionId, true);
+    setExpert(activeSessionId, diagExpert.id);
+    agentApi.setExpert(activeSessionId, diagExpert.id).catch(() => {});
     addMessage(activeSessionId, { role: "user", content: symptom.trim() });
     setStreaming(activeSessionId, true);
     addMessage(activeSessionId, { role: "assistant", content: "" });
     atBottomRef.current = true;
     agentApi
-      .startDiagnosis(activeSessionId, agentProviderId, agentModel, expandTerminalMentions(symptom.trim()))
+      .startChat(
+        activeSessionId,
+        agentProviderId,
+        agentModel,
+        diagExpert.id,
+        expandTerminalMentions(symptom.trim()),
+      )
       .catch((e) => {
         setStreaming(activeSessionId, false);
         dropTrailingEmptyAssistant(activeSessionId);
@@ -596,18 +650,8 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
     setHistoryOpen(false);
   };
 
-  // Diagnosis mode is per session (mirrors the backend runtime flag); the
-  // header pill shows it and offers the way out.
-  const inDiagnosis = activeSessionId ? !!diagnosis[activeSessionId] : false;
-
-  /** Exit diagnosis mode: subsequent turns use the regular prompt; the
-   *  conversation and its history are kept. */
-  const handleExitDiagnosis = () => {
-    if (!activeSessionId) return;
-    agentApi.setDiagnosisMode(activeSessionId, false).catch(() => {});
-    setDiagnosis(activeSessionId, false);
-    toast.info(t("agent.diagnosisExited"));
-  };
+  // The active persona drives the header pill and the assistant avatar.
+  const inDiagnosis = !!activeExpert?.autoSnapshot;
 
   /** Write text to the clipboard with a quiet confirmation. */
   const copyText = async (text: string) => {
@@ -705,14 +749,10 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
   };
 
   /** Resume a persisted conversation into this session (display + memory).
-   *  Resuming also leaves diagnosis mode — the resumed conversation replays
-   *  under the regular prompt unless a new diagnosis is started. */
+   *  The conversation's expert becomes the session's active persona again
+   *  (the backend replays it too). */
   const handleResume = async (conv: ConversationDTO) => {
     if (!activeSessionId || streaming[activeSessionId]) return;
-    if (diagnosis[activeSessionId]) {
-      agentApi.setDiagnosisMode(activeSessionId, false).catch(() => {});
-      setDiagnosis(activeSessionId, false);
-    }
     try {
       const [msgs] = await Promise.all([
         agentApi.getConversationMessages(conv.id),
@@ -725,6 +765,7 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
           content: m.content,
         });
       }
+      setExpert(activeSessionId, conv.expertId ?? "");
       setActiveConv(activeSessionId, conv.id);
       atBottomRef.current = true;
       setHistoryOpen(false);
@@ -792,22 +833,33 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border bg-card px-4 py-2">
         <div className="flex min-w-0 items-center gap-2">
-          <Bot className="h-4 w-4 shrink-0 text-primary" />
-          <span className="truncate text-sm font-medium">{t("agent.title")}</span>
+          {activeExpert ? (
+            <ExpertAvatar icon={activeExpert.icon} color={activeExpert.color} className="h-4 w-4" iconClassName="h-2.5 w-2.5" />
+          ) : (
+            <GeneralAssistantAvatar className="h-4 w-4" iconClassName="h-2.5 w-2.5" />
+          )}
+          <span className="truncate text-sm font-medium">
+            {activeExpert ? activeExpert.name : t("agent.title")}
+          </span>
           {isStreaming && (
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
           )}
-          {inDiagnosis && (
+          {activeExpert && (
             <span
-              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                inDiagnosis
+                  ? "border-primary/40 bg-primary/10 text-primary"
+                  : "border-border bg-secondary/60 text-foreground",
+              )}
             >
-              <Stethoscope className="h-3 w-3" />
-              {t("agent.diagnosisMode")}
+              <ExpertIcon icon={activeExpert.icon} className="h-3 w-3" />
+              {activeExpert.role || t("agent.expertBadge")}
               <button
                 type="button"
-                onClick={handleExitDiagnosis}
-                aria-label={t("agent.exitDiagnosis")}
-                title={t("agent.exitDiagnosis")}
+                onClick={handleExitExpert}
+                aria-label={t("agent.exitExpert")}
+                title={t("agent.exitExpert")}
                 className="rounded-full p-0.5 transition-colors hover:bg-primary/20"
               >
                 <X className="h-3 w-3" />
@@ -915,6 +967,11 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
                             </p>
                             <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
                               <span className="truncate">{c.hostName}</span>·
+                              {c.expertName && (
+                                <>
+                                  <span className="truncate">{c.expertName}</span>·
+                                </>
+                              )}
                               <span className="shrink-0">{t("agent.msgCount", { count: c.messageCount })}</span>·
                               <span className="shrink-0">
                                 {c.updatedAt ? new Date(c.updatedAt).toLocaleString() : ""}
@@ -968,14 +1025,51 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
         className="relative min-h-0 flex-1 overflow-auto p-4"
       >
         {messages.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-center">
-            <div>
-              <Bot className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
-                {t("agent.emptyHint")}
-              </p>
+          activeExpert && (activeExpert.openingMessage || (activeExpert.suggestedPrompts?.length ?? 0) > 0) ? (
+            // Persona greeting: identity card + one-click starter questions.
+            <div className="flex h-full items-center justify-center">
+              <div className="max-w-md text-center">
+                <ExpertAvatar
+                  icon={activeExpert.icon}
+                  color={activeExpert.color}
+                  className="mx-auto mb-3 h-12 w-12"
+                  iconClassName="h-6 w-6"
+                />
+                <p className="text-sm font-medium text-foreground">{activeExpert.name}</p>
+                {activeExpert.role && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">{activeExpert.role}</p>
+                )}
+                {activeExpert.openingMessage && (
+                  <div className="mt-3 rounded-[var(--radius)] border border-border bg-secondary/40 px-4 py-3 text-left text-sm text-secondary-foreground">
+                    <AgentMarkdown content={activeExpert.openingMessage} canInsert={false} onInsert={() => {}} />
+                  </div>
+                )}
+                {(activeExpert.suggestedPrompts?.length ?? 0) > 0 && (
+                  <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+                    {activeExpert.suggestedPrompts!.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        onClick={() => setInput(prompt)}
+                        className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent hover:text-foreground"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex h-full items-center justify-center text-center">
+              <div>
+                <Bot className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  {t("agent.emptyHint")}
+                </p>
+              </div>
+            </div>
+          )
         ) : (
           <div className="flex flex-col gap-3">
             {messages.map((msg) => (
@@ -983,6 +1077,8 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
                 key={msg.id}
                 msg={msg}
                 canInsert={!!activeSessionId}
+                expertIcon={activeExpert?.icon}
+                expertColor={activeExpert?.color}
                 onInsert={handleInsert}
                 onRetry={handleRetry}
               />
@@ -1030,11 +1126,25 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
         )}
         {providers.length > 0 ? (
           <div className="flex items-center gap-1.5 pb-2">
-            <Cpu className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <UsersRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            {/* Digital employee picker: "" = the general assistant. */}
+            <Select
+              value={activeExpertID}
+              onChange={(e) => handleExpertChange(e.target.value)}
+              className="h-7 w-auto max-w-[22%] text-xs"
+              title={t("agent.expertTitle")}
+              aria-label={t("agent.expertTitle")}
+            >
+              <option value="">{t("agent.expertGeneral")}</option>
+              {experts.map((e) => (
+                <option key={e.id} value={e.id}>{e.name}</option>
+              ))}
+            </Select>
+            <Cpu className="ml-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <Select
               value={agentProviderId}
               onChange={(e) => handleProviderChange(e.target.value)}
-              className="h-7 w-auto max-w-[45%] text-xs"
+              className="h-7 w-auto max-w-[35%] text-xs"
               title={t("agent.provider")}
               aria-label={t("agent.provider")}
             >
@@ -1248,16 +1358,21 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
 /**
  * Memoized: during streaming only the changing message re-renders — completed
  * messages keep their identity in the store, so their markdown is not
- * re-parsed on every chunk.
+ * re-parsed on every chunk. expertIcon/expertColor are primitives (the active
+ * persona's identity) so the memo still holds during streaming.
  */
 const MessageBubble = memo(function MessageBubble({
   msg,
   canInsert,
+  expertIcon,
+  expertColor,
   onInsert,
   onRetry,
 }: {
   msg: ChatMessage;
   canInsert: boolean;
+  expertIcon?: string;
+  expertColor?: string;
   onInsert: (code: string) => void;
   onRetry: () => void;
 }) {
@@ -1301,14 +1416,9 @@ const MessageBubble = memo(function MessageBubble({
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
       {!isUser && (
-        // Agent avatar: a small gradient identity badge on the left of every
-        // assistant message (tool steps and notices keep their own visuals).
-        <div
-          aria-hidden
-          className="mr-2 mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/55 shadow-sm ring-1 ring-primary/30"
-        >
-          <Bot className="h-3.5 w-3.5 text-primary-foreground" />
-        </div>
+        // Assistant avatar: the active persona's identity badge (falls back
+        // to the general assistant look).
+        <ExpertAvatar icon={expertIcon} color={expertColor} className="mr-2 mt-0.5 h-7 w-7" />
       )}
       <div
         className={cn(

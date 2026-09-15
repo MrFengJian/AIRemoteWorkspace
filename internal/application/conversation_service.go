@@ -38,8 +38,9 @@ func NewConversationService(repo ConversationRepository, hosts HostOfSessionReso
 
 // EnsureMapping returns the session's conversation id, creating (and mapping)
 // a new persisted conversation when none is active. firstMessage seeds the
-// title.
-func (s *ConversationService) EnsureMapping(sessionID, firstMessage string) (string, error) {
+// title; expertID/expertName ("" = general assistant) are stamped on the
+// conversation so the history list can badge it and resume restores the expert.
+func (s *ConversationService) EnsureMapping(sessionID, firstMessage, expertID, expertName string) (string, error) {
 	s.mu.Lock()
 	if convID, ok := s.active[sessionID]; ok {
 		s.mu.Unlock()
@@ -49,10 +50,12 @@ func (s *ConversationService) EnsureMapping(sessionID, firstMessage string) (str
 
 	hostID, hostName := s.sessionHost(sessionID)
 	conv := domain.Conversation{
-		ID:       newConversationID(),
-		HostID:   hostID,
-		HostName: hostName,
-		Title:    truncateRunes(strings.TrimSpace(firstMessage), 60),
+		ID:         newConversationID(),
+		HostID:     hostID,
+		HostName:   hostName,
+		Title:      truncateRunes(strings.TrimSpace(firstMessage), 60),
+		ExpertID:   expertID,
+		ExpertName: expertName,
 	}
 	if err := s.repo.Create(conv); err != nil {
 		return "", fmt.Errorf("create conversation: %w", err)
@@ -119,6 +122,11 @@ func (s *ConversationService) ClearMapping(sessionID string) {
 // List returns all persisted conversations, newest first.
 func (s *ConversationService) List() ([]domain.Conversation, error) {
 	return s.repo.List()
+}
+
+// Get returns one persisted conversation by id.
+func (s *ConversationService) Get(conversationID string) (domain.Conversation, error) {
+	return s.repo.Get(conversationID)
 }
 
 // Messages returns a conversation's messages in order.

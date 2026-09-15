@@ -95,8 +95,11 @@ type conversationModel struct {
 	HostID    string `gorm:"not null;default:'';size:64;index"` // "" = local machine
 	HostName  string `gorm:"not null;default:'';size:200"`
 	Title     string `gorm:"not null;default:'';size:200"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	// Expert that authored the conversation ("" = the general assistant).
+	ExpertID   string `gorm:"not null;default:'';size:64"`
+	ExpertName string `gorm:"not null;default:'';size:200"`
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 func (conversationModel) TableName() string { return "conversations" }
@@ -111,3 +114,40 @@ type conversationMessageModel struct {
 }
 
 func (conversationMessageModel) TableName() string { return "conversation_messages" }
+
+// expertModel mirrors the experts table (domain.Expert + persistence
+// concerns). JSON columns keep the list fields; Dismissed keeps a deleted
+// builtin's row so the seeder does not resurrect it.
+type expertModel struct {
+	ID string `gorm:"primaryKey;size:64"`
+	// Builtin experts use "builtin-<id>" ids; custom experts get uuids.
+	Name     string `gorm:"not null;default:'';size:200"`
+	Role     string `gorm:"not null;default:'';size:200"`
+	Icon     string `gorm:"not null;default:'';size:50"`
+	Color    string `gorm:"not null;default:'';size:20"`
+	SortOrder int   `gorm:"not null;default:0"`
+
+	Description  string `gorm:"not null;default:'';type:text"`
+	SystemPrompt string `gorm:"not null;default:'';type:text"`
+	// JSON arrays; '' = empty.
+	AllowedTools string `gorm:"not null;default:'';type:text"`
+	SkillRefs    string `gorm:"not null;default:'';type:text"`
+	Suggested    string `gorm:"not null;default:'';type:text"` // SuggestedPrompts
+
+	ProviderID  string `gorm:"not null;default:'';size:64"`
+	Model       string `gorm:"not null;default:'';size:200"`
+	Policy      string `gorm:"not null;default:'';size:20"`
+	Temperature float64 `gorm:"not null;default:0"`
+	MaxSteps    int     `gorm:"not null;default:0"`
+	OpeningMessage string `gorm:"not null;default:'';type:text"`
+
+	AutoSnapshot bool `gorm:"not null;default:false"`
+	Builtin      bool `gorm:"not null;default:false"`
+	Enabled      bool `gorm:"not null;default:true"`
+	Dismissed    bool `gorm:"not null;default:false"`
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (expertModel) TableName() string { return "experts" }

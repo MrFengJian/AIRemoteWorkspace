@@ -32,6 +32,8 @@ type ConversationDTO struct {
 	HostID       string `json:"hostId"`
 	HostName     string `json:"hostName"`
 	Title        string `json:"title"`
+	ExpertID     string `json:"expertId,omitempty"`
+	ExpertName   string `json:"expertName,omitempty"`
 	UpdatedAt    string `json:"updatedAt"`
 	MessageCount int64  `json:"messageCount"`
 }
@@ -68,19 +70,22 @@ type ContextPathDTO struct {
 }
 
 // AgentService exposes the AI agent to the frontend. Provider/model selection
-// is per chat call; provider management lives in ModelProviderService.
+// is per chat call; provider management lives in ModelProviderService and
+// the digital-employee roster in ExpertService.
 type AgentService struct {
 	app     *wailsapp.App
 	runtime *agent.Runtime
 	gate    *appsvc.PermissionGate
 	convs   *appsvc.ConversationService
 	skills  *appsvc.SkillService
+	experts *appsvc.ExpertService
 }
 
 // NewAgentService wires the AgentService. The *Application is injected via
-// ServiceStartup. skills (may be nil) backs the input-box `/` skill picker.
-func NewAgentService(runtime *agent.Runtime, gate *appsvc.PermissionGate, convs *appsvc.ConversationService, skills *appsvc.SkillService) *AgentService {
-	return &AgentService{runtime: runtime, gate: gate, convs: convs, skills: skills}
+// ServiceStartup. skills (may be nil) backs the input-box `/` skill picker;
+// experts (may be nil) disables the digital-employee persona layer.
+func NewAgentService(runtime *agent.Runtime, gate *appsvc.PermissionGate, convs *appsvc.ConversationService, skills *appsvc.SkillService, experts *appsvc.ExpertService) *AgentService {
+	return &AgentService{runtime: runtime, gate: gate, convs: convs, skills: skills, experts: experts}
 }
 
 // ListSkills returns the metadata of every available skill (the `/` picker
@@ -166,21 +171,36 @@ func (a *AgentService) EmitApproval(req appsvc.ApprovalRequest) {
 	})
 }
 
+// expertMeta resolves an expert id to (id, name) for conversation stamping.
+// Unknown/empty ids map to ("", "") — the general assistant.
+func (a *AgentService) expertMeta(expertID string) (string, string) {
+	if expertID == "" || a.experts == nil {
+		return "", ""
+	}
+	if e, err := a.experts.GetExpert(expertID); err == nil {
+		return e.ID, e.Name
+	}
+	return "", ""
+}
+
 // StartChat kicks off a streaming agent chat against the selected provider +
-// model. Output flows via events:
+// model. expertID ("" = general assistant) selects the digital-employee
+// persona; an AutoSnapshot expert injects a fresh health snapshot on its
+// first turn. Output flows via events:
 //   agent:<sessionID>:chunk    — incremental LLM text
 //   agent:<sessionID>:toolcall — tool invocation start (id/tool/args)
 //   agent:<sessionID>:toolend  — tool invocation result (id/result)
 //   agent:<sessionID>:done     — chat completed
 //   agent:<sessionID>:error    — chat failed
-func (a *AgentService) StartChat(sessionID, providerID, model, message string) error {
+func (a *AgentService) StartChat(sessionID, providerID, model, expertID, message string) error {
 	if a.runtime == nil {
 		return fmt.Errorf("agent runtime not available")
 	}
 	// Bind the session to a persisted conversation (created on the first
 	// turn). Failure only means history isn't stored — chat continues.
 	if a.convs != nil {
-		if _, err := a.convs.EnsureMapping(sessionID, message); err != nil {
+		eid, ename := a.expertMeta(expertID)
+		if _, err := a.convs.EnsureMapping(sessionID, message, eid, ename); err != nil {
 			log.Printf("[AgentService] ensure conversation: %v", err)
 		}
 	}
@@ -189,7 +209,7 @@ func (a *AgentService) StartChat(sessionID, providerID, model, message string) e
 	// Run in the background — the stream is long-lived and event-driven.
 	go func() {
 		ctx := context.Background()
-		if err := a.runtime.Chat(ctx, sid, providerID, model, message, events); err != nil {
+		if err := a.runtime.Chat(ctx, sid, providerID, model, expertID, message, events); err != nil {
 			log.Printf("[AgentService] chat for %s ended: %v", sid, err)
 			// Surface pre-stream failures (bad provider, disabled, …) to the
 			// frontend so it doesn't wait for events that will never come.
@@ -200,38 +220,19 @@ func (a *AgentService) StartChat(sessionID, providerID, model, message string) e
 	return nil
 }
 
-// StartDiagnosis kicks off a diagnosis-mode chat: the runtime switches to the
-// triage prompt, auto-collects the deterministic health snapshot and attaches
-// it to the symptom as the first turn. Events flow exactly like StartChat.
-func (a *AgentService) StartDiagnosis(sessionID, providerID, model, symptom string) error {
+// SetExpert records a session's active expert without starting a chat (used
+// when resuming a conversation or switching the persona from the UI).
+// Unknown ids fall back to the general assistant ("").
+func (a *AgentService) SetExpert(sessionID, expertID string) error {
 	if a.runtime == nil {
 		return fmt.Errorf("agent runtime not available")
 	}
-	if a.convs != nil {
-		if _, err := a.convs.EnsureMapping(sessionID, symptom); err != nil {
-			log.Printf("[AgentService] ensure conversation: %v", err)
+	if expertID != "" && a.experts != nil {
+		if _, err := a.experts.GetExpert(expertID); err != nil {
+			expertID = ""
 		}
 	}
-	sid := sessionID
-	events := &agentEventsEmitter{app: a.app, sessionID: sid}
-	go func() {
-		ctx := context.Background()
-		if err := a.runtime.StartDiagnosis(ctx, sid, providerID, model, symptom, events); err != nil {
-			log.Printf("[AgentService] diagnosis for %s ended: %v", sid, err)
-			events.OnError(sid, err.Error())
-		}
-	}()
-	return nil
-}
-
-// SetDiagnosisMode toggles the diagnosis-mode system prompt for a session's
-// turns (the header pill's exit action). Off switches the session back to
-// the regular prompt while keeping the conversation and its history.
-func (a *AgentService) SetDiagnosisMode(sessionID string, on bool) error {
-	if a.runtime == nil {
-		return fmt.Errorf("agent runtime not available")
-	}
-	a.runtime.SetDiagnosisMode(sessionID, on)
+	a.runtime.SetExpert(sessionID, expertID)
 	return nil
 }
 
@@ -272,6 +273,8 @@ func (a *AgentService) ListConversations() ([]ConversationDTO, error) {
 			HostID:       c.HostID,
 			HostName:     c.HostName,
 			Title:        c.Title,
+			ExpertID:     c.ExpertID,
+			ExpertName:   c.ExpertName,
 			UpdatedAt:    c.UpdatedAt.Format(time.RFC3339),
 			MessageCount: int64(len(count)),
 		})
@@ -295,7 +298,8 @@ func (a *AgentService) GetConversationMessages(conversationID string) ([]Convers
 
 // ResumeConversation points a terminal session at a persisted conversation
 // and replays it into the agent's multi-turn memory, so follow-up questions
-// keep context.
+// keep context. The conversation's expert (if any) becomes the session's
+// active expert again; the frontend reads it from the conversation DTO.
 func (a *AgentService) ResumeConversation(sessionID, conversationID string) error {
 	msgs, err := a.convs.Messages(conversationID)
 	if err != nil {
@@ -310,6 +314,9 @@ func (a *AgentService) ResumeConversation(sessionID, conversationID string) erro
 		}
 	}
 	a.runtime.RestoreHistory(sessionID, hist)
+	if c, err := a.convs.Get(conversationID); err == nil {
+		a.runtime.SetExpert(sessionID, c.ExpertID)
+	}
 	a.convs.SetActive(sessionID, conversationID)
 	return nil
 }
