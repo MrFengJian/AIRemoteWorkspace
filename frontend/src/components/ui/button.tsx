@@ -45,10 +45,23 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({
+    // Default to type="button": inside a <form> the HTML default
+    // ("submit") makes every auxiliary button (添加步骤、测试连接、取消…)
+    // fire the form's onSubmit — e.g. clicking "add step" in the host form
+    // SAVED the host and closed the dialog. Real submit buttons pass an
+    // explicit type="submit".
+    type = "button",
+    className,
+    variant,
+    size,
+    asChild = false,
+    ...props
+  }, ref) => {
     const Comp = asChild ? Slot : "button";
     return (
       <Comp
+        type={type}
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
         {...props}

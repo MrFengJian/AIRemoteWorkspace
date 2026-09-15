@@ -38,10 +38,9 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-xl translate-x-[-50%] translate-y-[-50%] gap-4 border border-border bg-card p-6 shadow-lg duration-200",
-        
-        
-        
+        // max-h + scroll: tall content (host form connection tab) must never
+        // clip below the viewport — sections at the bottom stay reachable.
+        "fixed left-[50%] top-[50%] z-50 grid max-h-[88vh] w-full max-w-xl translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto border border-border bg-card p-6 shadow-lg duration-200",
         className,
       )}
       {...props}
