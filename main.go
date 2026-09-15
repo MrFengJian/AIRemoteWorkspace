@@ -26,7 +26,7 @@ import (
 // the UI and, later, the MCP system_info tool.
 const (
 	appName    = "AI Remote Workspace"
-	appVersion = "0.6.1"
+	appVersion = "0.7.0"
 	// appDirName is the single directory name used under xdg.DataHome /
 	// xdg.ConfigHome (database + skills + the data-dir pointer file).
 	appDirName = "ai-remote-workspace"
@@ -184,8 +184,18 @@ func main() {
 		log.Printf("config load for mcp startup: %v", err)
 	}
 	hostService := interfaces.NewHostService(hostSvc, tunnelMgr)
+	keyManagerSvc := application.NewKeyManagerService(dataDirSvc)
+	keyManagerService := interfaces.NewKeyManagerService(keyManagerSvc)
 	localPtyMgr := localpty.NewManager()
 	sessionLogSvc := application.NewSessionLogService(dataDirSvc)
+	// 会话日志设置开关/时间戳前缀（每次启停与写入时实时读取）。
+	sessionLogSvc.SetConfigProvider(func() (disabled, timestamps bool) {
+		cfg, err := configSvc.GetAppConfig()
+		if err != nil {
+			return false, false
+		}
+		return cfg.DisableSessionLog, cfg.SessionLogTimestamps
+	})
 	terminalService := interfaces.NewTerminalService(hostSvc, connManager, localPtyMgr, tunnelMgr, sessionLogSvc)
 
 	// Jump/proxy routes: terminal sessions, tunnels, and the SFTP dialer all
@@ -198,6 +208,10 @@ func main() {
 	monitorService := interfaces.NewMonitorService(monitorSvc)
 	dockerService := interfaces.NewDockerService(dockerSvc)
 	sftpService := interfaces.NewSftpService(sftpSvc)
+	// 远程文件"本地编辑器编辑 + 保存自动回传"：临时副本与 mtime 监视在
+	// 应用层，事件经 SftpService 的 Wails 句柄广播。
+	remoteEdits := application.NewRemoteEditService(sftpSvc)
+	sftpService.SetRemoteEdits(remoteEdits)
 	windowService := interfaces.NewWindowService(hostSvc)
 	providerService := interfaces.NewModelProviderService(providerSvc)
 	agentService := interfaces.NewAgentService(agentRuntime, permGate, convSvc, skillSvc)
@@ -213,6 +227,7 @@ func main() {
 			wailsapp.NewService(systemService),
 			wailsapp.NewService(configService),
 			wailsapp.NewService(hostService),
+			wailsapp.NewService(keyManagerService),
 			wailsapp.NewService(terminalService),
 			wailsapp.NewService(tunnelService),
 			wailsapp.NewService(monitorService),
