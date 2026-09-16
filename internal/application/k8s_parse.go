@@ -474,6 +474,25 @@ func parseK8sEvents(out string) []domain.K8sEvent {
 	return events
 }
 
+// firstPodNamespace returns the namespace of the first pod in a
+// `kubectl get pods -o json` document (the namespace-resolution lookup used
+// by the log viewer when the panel scope is "all").
+func firstPodNamespace(out string) string {
+	var list k8sListDoc
+	if json.Unmarshal(jsonDoc(out), &list) != nil {
+		return ""
+	}
+	for _, raw := range list.Items {
+		var it struct {
+			Metadata k8sObjectMeta `json:"metadata"`
+		}
+		if json.Unmarshal(raw, &it) == nil && it.Metadata.Namespace != "" {
+			return it.Metadata.Namespace
+		}
+	}
+	return ""
+}
+
 // humanizeAge renders a creation timestamp kubectl-style (35s / 5m / 3h /
 // 12d / 1y). Empty or unparseable timestamps yield "".
 func humanizeAge(timestamp string) string {

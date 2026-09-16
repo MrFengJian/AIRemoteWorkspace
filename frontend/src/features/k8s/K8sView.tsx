@@ -176,9 +176,14 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
     placeholderData: keepPreviousData,
     ...refetchOpts,
   });
+  // Logs always target the pod's OWN namespace (from its list row), never
+  // the panel scope: `kubectl logs` has no --all-namespaces, and a row picked
+  // under "all namespaces" otherwise resolves to an invalid command.
+  const logPodInfo = (podsQ.data ?? []).find((p) => p.name === logPod);
+  const logNamespace = logPodInfo?.namespace || namespace;
   const logsQ = useQuery({
-    queryKey: ["k8s-logs", embeddedSessionID, namespace, logPod, logContainer, logTail],
-    queryFn: () => k8sApi.logs(embeddedSessionID, namespace, logPod, logContainer, logTail),
+    queryKey: ["k8s-logs", embeddedSessionID, logNamespace, logPod, logContainer, logTail],
+    queryFn: () => k8sApi.logs(embeddedSessionID, logNamespace, logPod, logContainer, logTail),
     enabled: tab === "logs" && logPod !== "",
     // Logs are pull-only: no auto-refresh loop.
   });

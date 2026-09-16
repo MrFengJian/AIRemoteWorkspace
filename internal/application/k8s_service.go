@@ -60,9 +60,27 @@ func (s *K8sService) runKubectl(ctx context.Context, sessionID string, args ...s
 		if isClusterUnreachable(out) {
 			return "", ErrClusterUnreachable
 		}
-		return out, fmt.Errorf("kubectl: %w", err)
+		// The UI can only show err.Error(), which for a failed exec is just
+		// "exit status 1" — append the trimmed CLI output so kubectl's real
+		// reason (BadRequest, container not valid, pod not found…) surfaces.
+		return out, fmt.Errorf("kubectl: %w: %s", err, errHint(out))
 	}
 	return out, nil
+}
+
+// errHint condenses the CLI output into a short single-line error suffix
+// (kubectl's diagnostics usually live in the last lines).
+func errHint(out string) string {
+	hint := strings.TrimSpace(out)
+	if hint == "" {
+		return "no output"
+	}
+	hint = strings.ReplaceAll(hint, "\r", "")
+	hint = strings.Join(strings.Fields(hint), " ")
+	if len(hint) > 300 {
+		hint = hint[:300] + "…"
+	}
+	return hint
 }
 
 // isKubectlCLIMissing recognizes the "executable not found" family (same
@@ -257,12 +275,22 @@ const (
 // GetPodLogs returns the last `tail` log lines (with timestamps) of one pod,
 // optionally one container of it (required by kubectl when the pod runs
 // multiple containers — the frontend's container picker guarantees that).
+//
+// kubectl logs has no --all-namespaces flag, so an empty namespace (the
+// panel's "all" scope) resolves the pod's actual namespace first via a
+// field-selector lookup; the frontend normally sends the pod's own namespace
+// straight from its list row anyway.
 func (s *K8sService) GetPodLogs(ctx context.Context, sessionID, namespace, pod, container string, tail int) (string, error) {
 	if err := checkK8sName("pod", pod); err != nil {
 		return "", err
 	}
-	ns, err := nsArgs(namespace)
-	if err != nil {
+	if namespace == "" {
+		var err error
+		namespace, err = s.resolvePodNamespace(ctx, sessionID, pod)
+		if err != nil {
+			return "", err
+		}
+	} else if err := checkK8sName("namespace", namespace); err != nil {
 		return "", err
 	}
 	if tail < k8sLogTailMin {
@@ -271,7 +299,7 @@ func (s *K8sService) GetPodLogs(ctx context.Context, sessionID, namespace, pod, 
 	if tail > k8sLogTailMax {
 		tail = k8sLogTailMax
 	}
-	args := append([]string{"logs", pod, "--tail", fmt.Sprintf("%d", tail), "--timestamps"}, ns...)
+	args := []string{"logs", pod, "--tail", fmt.Sprintf("%d", tail), "--timestamps", "-n", namespace}
 	if container != "" {
 		if err := checkK8sName("container", container); err != nil {
 			return "", err
@@ -283,6 +311,21 @@ func (s *K8sService) GetPodLogs(ctx context.Context, sessionID, namespace, pod, 
 		return "", err
 	}
 	return capString(out, k8sLogByteCap), nil
+}
+
+// resolvePodNamespace finds the namespace of one pod by name across the
+// cluster (field-selector lookup — cheap and exact). Used when the panel's
+// namespace scope is "all" and no explicit namespace is available.
+func (s *K8sService) resolvePodNamespace(ctx context.Context, sessionID, pod string) (string, error) {
+	out, err := s.runKubectl(ctx, sessionID, "get", "pods", "--all-namespaces",
+		"--field-selector", "metadata.name="+pod, "-o", "json")
+	if err != nil {
+		return "", err
+	}
+	if ns := firstPodNamespace(out); ns != "" {
+		return ns, nil
+	}
+	return "", fmt.Errorf("kubectl: pod %q not found in cluster", pod)
 }
 
 // k8sWorkloadActions is the closed allowlist the panel may trigger —
