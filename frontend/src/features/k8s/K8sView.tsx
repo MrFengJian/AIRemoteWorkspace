@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   Copy,
@@ -125,6 +125,9 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
     queryKey: ["k8s-nodes", embeddedSessionID],
     queryFn: () => k8sApi.nodes(embeddedSessionID),
     enabled: tab === "overview",
+    // Keep the previous list visible while a refresh / namespace switch is
+    // in flight — no loading flash on cached data (docker-panel feel).
+    placeholderData: keepPreviousData,
     ...refetchOpts,
   });
   const workloadsEnabled = tab === "workloads";
@@ -132,18 +135,21 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
     queryKey: ["k8s-workloads", embeddedSessionID, "deployments", namespace],
     queryFn: () => k8sApi.workloads(embeddedSessionID, "deployments", namespace),
     enabled: workloadsEnabled,
+    placeholderData: keepPreviousData,
     ...refetchOpts,
   });
   const stsQ = useQuery({
     queryKey: ["k8s-workloads", embeddedSessionID, "statefulsets", namespace],
     queryFn: () => k8sApi.workloads(embeddedSessionID, "statefulsets", namespace),
     enabled: workloadsEnabled,
+    placeholderData: keepPreviousData,
     ...refetchOpts,
   });
   const dsQ = useQuery({
     queryKey: ["k8s-workloads", embeddedSessionID, "daemonsets", namespace],
     queryFn: () => k8sApi.workloads(embeddedSessionID, "daemonsets", namespace),
     enabled: workloadsEnabled,
+    placeholderData: keepPreviousData,
     ...refetchOpts,
   });
   // The logs tab needs the pod list for its pickers, so pods are fetched for
@@ -153,18 +159,21 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
     queryKey: ["k8s-pods", embeddedSessionID, namespace],
     queryFn: () => k8sApi.pods(embeddedSessionID, namespace),
     enabled: podsEnabled,
+    placeholderData: keepPreviousData,
     ...refetchOpts,
   });
   const servicesQ = useQuery({
     queryKey: ["k8s-services", embeddedSessionID, namespace],
     queryFn: () => k8sApi.services(embeddedSessionID, namespace),
     enabled: tab === "services",
+    placeholderData: keepPreviousData,
     ...refetchOpts,
   });
   const eventsQ = useQuery({
     queryKey: ["k8s-events", embeddedSessionID, namespace],
     queryFn: () => k8sApi.events(embeddedSessionID, namespace),
     enabled: tab === "events",
+    placeholderData: keepPreviousData,
     ...refetchOpts,
   });
   const logsQ = useQuery({
@@ -210,21 +219,25 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
 
   // When the pod list arrives and the picker selection vanished (state
   // change, removal), fall back to the first pod and its first container.
+  // Skipped while the list is a placeholder from the previous namespace —
+  // resetting against stale data would fire a doomed logs fetch.
   useEffect(() => {
+    if (podsQ.isPlaceholderData) return;
     const list = podsQ.data ?? [];
     if (list.length > 0 && !list.some((p) => p.name === logPod)) {
       setLogPod(list[0].name);
       setLogContainer(list[0].containers?.[0] ?? "");
     }
-  }, [podsQ.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [podsQ.data, podsQ.isPlaceholderData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Multi-container pods need an explicit -c; keep the picker in sync.
   const selectedPod = (podsQ.data ?? []).find((p) => p.name === logPod);
   useEffect(() => {
+    if (podsQ.isPlaceholderData) return;
     if (selectedPod && !(selectedPod.containers ?? []).includes(logContainer)) {
       setLogContainer(selectedPod.containers?.[0] ?? "");
     }
-  }, [selectedPod]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedPod, podsQ.isPlaceholderData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Lifecycle actions ─────────────────────────────────────────────
   const { askConfirm, askPrompt } = useConfirm();
@@ -419,21 +432,45 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
       {
         label: t("k8s.refresh"),
         icon: RefreshCw,
-        onClick: () => void activeRefetch(),
+        disabled: activeFetching,
+        onClick: () => refetchActive(),
       },
     ];
   }
 
-  const activeRefetch = () => {
-    void infoQ.refetch();
-    void nodesQ.refetch();
-    void deployQ.refetch();
-    void stsQ.refetch();
-    void dsQ.refetch();
-    void podsQ.refetch();
-    void servicesQ.refetch();
-    void eventsQ.refetch();
-    void logsQ.refetch();
+  // Manual refresh: only the active tab's queries (mirrors the docker panel).
+  // The refresh button spins and locks while they are in flight.
+  const activeFetching =
+    tab === "overview"
+      ? infoQ.isFetching || nodesQ.isFetching
+      : tab === "workloads"
+        ? deployQ.isFetching || stsQ.isFetching || dsQ.isFetching
+        : tab === "pods"
+          ? podsQ.isFetching
+          : tab === "logs"
+            ? podsQ.isFetching || logsQ.isFetching
+            : tab === "services"
+              ? servicesQ.isFetching
+              : eventsQ.isFetching;
+
+  const refetchActive = () => {
+    if (tab === "overview") {
+      void infoQ.refetch();
+      void nodesQ.refetch();
+    } else if (tab === "workloads") {
+      void deployQ.refetch();
+      void stsQ.refetch();
+      void dsQ.refetch();
+    } else if (tab === "pods") {
+      void podsQ.refetch();
+    } else if (tab === "services") {
+      void servicesQ.refetch();
+    } else if (tab === "events") {
+      void eventsQ.refetch();
+    } else {
+      void podsQ.refetch(); // also the logs picker's source
+      void logsQ.refetch();
+    }
   };
 
   const tabs: { id: SubTab; label: string }[] = [
@@ -499,12 +536,13 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
           )}
           <button
             type="button"
-            onClick={activeRefetch}
+            onClick={refetchActive}
+            disabled={activeFetching}
             aria-label={t("k8s.refresh")}
             title={t("k8s.refresh")}
-            className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw className={cn("h-3.5 w-3.5", activeFetching && "animate-spin")} />
           </button>
         </div>
       </div>
