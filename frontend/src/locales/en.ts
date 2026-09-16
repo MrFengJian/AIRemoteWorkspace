@@ -13,6 +13,7 @@ export const en = {
     cancel: "Cancel",
     delete: "Delete",
     edit: "Edit",
+    copy: "Copy",
     connect: "Connect",
     close: "Close",
     refresh: "Refresh",

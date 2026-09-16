@@ -13,6 +13,7 @@ export const zh = {
     cancel: "取消",
     delete: "删除",
     edit: "编辑",
+    copy: "复制",
     connect: "连接",
     close: "关闭",
     refresh: "刷新",
