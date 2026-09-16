@@ -921,7 +921,9 @@ export class K8sNamespace {
 }
 
 /**
- * K8sNode is one cluster node (`kubectl get nodes -o json`).
+ * K8sNode is one cluster node (`kubectl get nodes -o json`), enriched with
+ * live usage from `kubectl top nodes` when the cluster's metrics-server is
+ * available (usage fields stay empty otherwise — the UI degrades to a hint).
  */
 export class K8sNode {
     "name": string;
@@ -943,6 +945,22 @@ export class K8sNode {
      */
     "os": string;
     "age": string;
+
+    /**
+     * Allocatable resources from the node status (raw kubectl values, e.g.
+     * "4" cores / "15880Mi").
+     */
+    "allocatableCpu": string;
+    "allocatableMem": string;
+
+    /**
+     * Live usage (kubectl top). CPUUsed/MemUsed keep kubectl's formatted
+     * values ("1200m", "8192Mi"); percents are numbers for the usage bars.
+     */
+    "cpuUsed": string;
+    "cpuPercent": number;
+    "memUsed": string;
+    "memPercent": number;
 
     /** Creates a new K8sNode instance. */
     constructor($$source: Partial<K8sNode> = {}) {
@@ -966,6 +984,24 @@ export class K8sNode {
         }
         if (!("age" in $$source)) {
             this["age"] = "";
+        }
+        if (!("allocatableCpu" in $$source)) {
+            this["allocatableCpu"] = "";
+        }
+        if (!("allocatableMem" in $$source)) {
+            this["allocatableMem"] = "";
+        }
+        if (!("cpuUsed" in $$source)) {
+            this["cpuUsed"] = "";
+        }
+        if (!("cpuPercent" in $$source)) {
+            this["cpuPercent"] = 0;
+        }
+        if (!("memUsed" in $$source)) {
+            this["memUsed"] = "";
+        }
+        if (!("memPercent" in $$source)) {
+            this["memPercent"] = 0;
         }
 
         Object.assign(this, $$source);

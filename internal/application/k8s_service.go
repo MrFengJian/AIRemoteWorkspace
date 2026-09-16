@@ -181,13 +181,20 @@ func (s *K8sService) ListNamespaces(ctx context.Context, sessionID string) ([]do
 }
 
 // ListNodes returns the cluster nodes (read-only; scheduling-affecting
-// actions like cordon/drain are deliberately not offered here).
+// actions like cordon/drain are deliberately not offered here), enriched
+// with live CPU/memory usage from `kubectl top nodes` when the cluster's
+// metrics-server answers — a top failure (API missing, RBAC) degrades to
+// zero usage, not an error.
 func (s *K8sService) ListNodes(ctx context.Context, sessionID string) ([]domain.K8sNode, error) {
 	out, err := s.runKubectl(ctx, sessionID, "get", "nodes", "-o", "json")
 	if err != nil {
 		return nil, err
 	}
-	return parseK8sNodes(out), nil
+	nodes := parseK8sNodes(out)
+	if topOut, topErr := s.runKubectl(ctx, sessionID, "top", "nodes", "--no-headers"); topErr == nil {
+		applyK8sNodeUsage(nodes, topOut)
+	}
+	return nodes, nil
 }
 
 // k8sWorkloadKinds is the closed allowlist of listable workload kinds —

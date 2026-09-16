@@ -916,6 +916,8 @@ export const zh = {
     statefulsetsCount: "StatefulSets",
     daemonsetsCount: "DaemonSets",
     noNodes: "暂无节点数据",
+    memUsage: "内存",
+    usageUnavailable: "资源指标不可用（需要 metrics-server）",
     replicasReady: "就绪/期望副本数",
     noWorkloads: "当前范围内没有工作负载",
     noPods: "当前范围内没有 Pod",

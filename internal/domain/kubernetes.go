@@ -26,7 +26,9 @@ type K8sClusterInfo struct {
 	DaemonSets    int `json:"daemonSets"`
 }
 
-// K8sNode is one cluster node (`kubectl get nodes -o json`).
+// K8sNode is one cluster node (`kubectl get nodes -o json`), enriched with
+// live usage from `kubectl top nodes` when the cluster's metrics-server is
+// available (usage fields stay empty otherwise — the UI degrades to a hint).
 type K8sNode struct {
 	Name       string `json:"name"`
 	Status     string `json:"status"` // "Ready" | "NotReady" | "Unknown"
@@ -35,6 +37,16 @@ type K8sNode struct {
 	InternalIP string `json:"internalIp"`
 	OS         string `json:"os"` // OS image, e.g. "Ubuntu 22.04"
 	Age        string `json:"age"`
+	// Allocatable resources from the node status (raw kubectl values, e.g.
+	// "4" cores / "15880Mi").
+	AllocatableCPU string `json:"allocatableCpu"`
+	AllocatableMem string `json:"allocatableMem"`
+	// Live usage (kubectl top). CPUUsed/MemUsed keep kubectl's formatted
+	// values ("1200m", "8192Mi"); percents are numbers for the usage bars.
+	CPUUsed    string  `json:"cpuUsed"`
+	CPUPercent float64 `json:"cpuPercent"`
+	MemUsed    string  `json:"memUsed"`
+	MemPercent float64 `json:"memPercent"`
 }
 
 // K8sWorkload is one workload-controller row. Replicas/Ready/Updated/

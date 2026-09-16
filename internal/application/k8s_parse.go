@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,6 +83,7 @@ type k8sNodeItem struct {
 			Type    string `json:"type"`
 			Address string `json:"address"`
 		} `json:"addresses"`
+		Allocatable map[string]string `json:"allocatable"`
 		NodeInfo struct {
 			KubeletVersion string `json:"kubeletVersion"`
 			OSImage        string `json:"osImage"`
@@ -102,11 +104,13 @@ func parseK8sNodes(out string) []domain.K8sNode {
 			continue
 		}
 		n := domain.K8sNode{
-			Name:    it.Metadata.Name,
-			Status:  "Unknown",
-			OS:      it.Status.NodeInfo.OSImage,
-			Version: it.Status.NodeInfo.KubeletVersion,
-			Age:     humanizeAge(it.Metadata.CreationTimestamp),
+			Name:           it.Metadata.Name,
+			Status:         "Unknown",
+			OS:             it.Status.NodeInfo.OSImage,
+			Version:        it.Status.NodeInfo.KubeletVersion,
+			Age:            humanizeAge(it.Metadata.CreationTimestamp),
+			AllocatableCPU: it.Status.Allocatable["cpu"],
+			AllocatableMem: it.Status.Allocatable["memory"],
 		}
 		var roles []string
 		for label := range it.Metadata.Labels {
@@ -491,6 +495,53 @@ func firstPodNamespace(out string) string {
 		}
 	}
 	return ""
+}
+
+// applyK8sNodeUsage merges `kubectl top nodes --no-headers` output
+// (NAME CPU(cores) CPU% MEMORY(bytes) MEMORY%) into the node rows. Noise
+// lines (warnings, the header itself) are skipped; nodes without a top row
+// keep zero usage — the UI then shows a metrics-unavailable hint instead of
+// misleading zero bars.
+func applyK8sNodeUsage(nodes []domain.K8sNode, topOut string) {
+	usage := make(map[string]k8sNodeUsage)
+	for _, line := range strings.Split(topOut, "\n") {
+		f := strings.Fields(line)
+		if len(f) != 5 || f[0] == "NAME" {
+			continue
+		}
+		usage[f[0]] = k8sNodeUsage{
+			CPUUsed:    f[1],
+			CPUPercent: parsePercent(f[2]),
+			MemUsed:    f[3],
+			MemPercent: parsePercent(f[4]),
+		}
+	}
+	for i := range nodes {
+		if u, ok := usage[nodes[i].Name]; ok {
+			nodes[i].CPUUsed = u.CPUUsed
+			nodes[i].CPUPercent = u.CPUPercent
+			nodes[i].MemUsed = u.MemUsed
+			nodes[i].MemPercent = u.MemPercent
+		}
+	}
+}
+
+// k8sNodeUsage is one row of `kubectl top nodes`.
+type k8sNodeUsage struct {
+	CPUUsed    string
+	CPUPercent float64
+	MemUsed    string
+	MemPercent float64
+}
+
+// parsePercent parses "30%" (and bare numbers) into a float; junk → 0.
+func parsePercent(s string) float64 {
+	s = strings.TrimSuffix(strings.TrimSpace(s), "%")
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil || v < 0 {
+		return 0
+	}
+	return v
 }
 
 // humanizeAge renders a creation timestamp kubectl-style (35s / 5m / 3h /

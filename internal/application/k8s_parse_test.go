@@ -25,10 +25,12 @@ func TestParseK8sVersion(t *testing.T) {
 const k8sNodesFixture = `{"items":[
  {"metadata":{"name":"cp-1","creationTimestamp":"2024-01-01T00:00:00Z","labels":{"node-role.kubernetes.io/control-plane":""}},
   "status":{"conditions":[{"type":"MemoryPressure","status":"False"},{"type":"Ready","status":"True"}],
+   "allocatable":{"cpu":"4","memory":"15880Mi","pods":"110"},
    "addresses":[{"type":"Hostname","address":"cp-1"},{"type":"InternalIP","address":"10.0.0.1"}],
    "nodeInfo":{"kubeletVersion":"v1.27.3","osImage":"Ubuntu 22.04"}}},
  {"metadata":{"name":"worker-1","creationTimestamp":"2024-02-01T00:00:00Z","labels":{}},
   "status":{"conditions":[{"type":"Ready","status":"False"}],
+   "allocatable":{"cpu":"8","memory":"32640Mi"},
    "addresses":[{"type":"InternalIP","address":"10.0.0.2"}],
    "nodeInfo":{"kubeletVersion":"v1.27.3","osImage":"Ubuntu 22.04"}}}
 ]}`
@@ -47,13 +49,58 @@ func TestParseK8sNodes(t *testing.T) {
 		n.Version != "v1.27.3" || !strings.Contains(n.OS, "Ubuntu") {
 		t.Fatalf("cp-1 fields wrong: %+v", n)
 	}
-	if nodes[1].Status != "NotReady" || nodes[1].Roles != "" {
+	if n.AllocatableCPU != "4" || n.AllocatableMem != "15880Mi" {
+		t.Fatalf("allocatable wrong: %+v", n)
+	}
+	if nodes[1].Status != "NotReady" || nodes[1].Roles != "" || nodes[1].AllocatableCPU != "8" {
 		t.Fatalf("worker-1 fields wrong: %+v", nodes[1])
 	}
 
 	ready, total := parseK8sNodeCounts(k8sNodesFixture)
 	if ready != 1 || total != 2 {
 		t.Fatalf("counts wrong: %d/%d", ready, total)
+	}
+}
+
+func TestApplyK8sNodeUsage(t *testing.T) {
+	nodes := parseK8sNodes(k8sNodesFixture)
+	topOut := `W0916 warning noise line
+NAME        CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
+cp-1        1200m        30%    8192Mi          52%
+worker-1    500m         6%     4Gi             13%
+another-node 100m        1%     100Mi           1%`
+	applyK8sNodeUsage(nodes, topOut)
+
+	if nodes[0].CPUUsed != "1200m" || nodes[0].CPUPercent != 30 ||
+		nodes[0].MemUsed != "8192Mi" || nodes[0].MemPercent != 52 {
+		t.Fatalf("cp-1 usage wrong: %+v", nodes[0])
+	}
+	if nodes[1].CPUUsed != "500m" || nodes[1].CPUPercent != 6 || nodes[1].MemPercent != 13 {
+		t.Fatalf("worker-1 usage wrong: %+v", nodes[1])
+	}
+
+	// No top data (metrics-server missing) → zero usage, fields stay empty.
+	bare := parseK8sNodes(k8sNodesFixture)
+	applyK8sNodeUsage(bare, "error: Metrics API not available\n")
+	if bare[0].CPUUsed != "" || bare[0].CPUPercent != 0 {
+		t.Fatalf("bare usage should stay empty: %+v", bare[0])
+	}
+}
+
+func TestParsePercent(t *testing.T) {
+	cases := map[string]float64{
+		"30%":   30,
+		"6%":    6,
+		"12.5%": 12.5,
+		"0%":    0,
+		"45":    45,
+		"junk":  0,
+		"":      0,
+	}
+	for in, want := range cases {
+		if got := parsePercent(in); got != want {
+			t.Errorf("parsePercent(%q) = %v, want %v", in, got, want)
+		}
 	}
 }
 

@@ -928,6 +928,8 @@ export const en = {
     statefulsetsCount: "StatefulSets",
     daemonsetsCount: "DaemonSets",
     noNodes: "No node data",
+    memUsage: "Memory",
+    usageUnavailable: "Usage metrics unavailable (metrics-server required)",
     replicasReady: "Ready/desired replicas",
     noWorkloads: "No workloads in this scope",
     noPods: "No pods in this scope",

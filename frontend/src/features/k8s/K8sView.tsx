@@ -557,7 +557,12 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
         {activeError ? (
           <ErrorHint error={activeError} />
         ) : tab === "overview" ? (
-          <OverviewPane info={infoQ.data} nodes={nodesQ.data ?? []} loading={infoQ.isLoading || nodesQ.isLoading} />
+          <OverviewPane
+            info={infoQ.data}
+            nodes={nodesQ.data ?? []}
+            loading={infoQ.isLoading || nodesQ.isLoading}
+            onMenu={(x, y, node) => setMenu({ x, y, kind: "node", node })}
+          />
         ) : tab === "workloads" ? (
           <WorkloadsPane
             showNamespace={namespace === ""}
@@ -654,10 +659,12 @@ function OverviewPane({
   info,
   nodes,
   loading,
+  onMenu,
 }: {
   info: K8sClusterInfo | undefined;
   nodes: K8sNode[];
   loading: boolean;
+  onMenu: (x: number, y: number, node: K8sNode) => void;
 }) {
   const { t } = useTranslation();
   if (loading || !info) {
@@ -665,7 +672,10 @@ function OverviewPane({
   }
 
   return (
-    <div className="flex flex-col gap-2.5">
+    // @container scopes the node grid's breakpoints to THIS pane's width —
+    // viewport-based sm:/md: variants would never reflow a draggable side
+    // panel whose host window is always much wider.
+    <div className="flex flex-col gap-2.5 @container">
       <div className="grid grid-cols-2 gap-2">
         <InfoCard label={t("k8s.serverVersion")} value={info.serverVersion || "—"} footer={info.clientVersion || ""} />
         <InfoCard label={t("k8s.context")} value={info.context || "—"} mono />
@@ -683,41 +693,121 @@ function OverviewPane({
         <InfoCard label={t("k8s.daemonsetsCount")} value={String(info.daemonSets)} />
       </div>
 
-      {/* Nodes (read-only) */}
+      {/* Nodes (read-only): usage cards in a grid whose column count adapts
+          to the pane's own width via container queries. */}
       <div className="flex flex-col gap-1">
         <span className="px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
           {t("k8s.nodes")} ({nodes.length})
         </span>
-        <div className="divide-y divide-border/50 rounded-[var(--radius)] border border-border bg-card">
+        <div className="grid grid-cols-1 gap-2 @[320px]:grid-cols-2 @[480px]:grid-cols-3">
           {nodes.map((n) => (
-            <div
-              key={n.name}
-              className="flex flex-col gap-0.5 px-2 py-1.5 text-xs hover:bg-accent/40"
-              title={`${n.name} · ${n.os || ""}`}
-            >
-              <div className="flex items-center gap-1.5">
-                <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", nodeDotClass(n.status))} />
-                <span className="min-w-0 flex-1 truncate font-medium">{n.name}</span>
-                {n.roles && (
-                  <span className="shrink-0 rounded-full border border-primary/40 px-1.5 py-px text-[9px] text-primary">
-                    {n.roles}
-                  </span>
-                )}
-                <span className="shrink-0 text-[10px] text-muted-foreground">{n.age}</span>
-              </div>
-              <div className="flex items-center gap-2 pl-3 text-[10px] text-muted-foreground">
-                <span className="truncate font-mono">{n.internalIp || "—"}</span>
-                <span className="shrink-0">{n.version}</span>
-                <span className="min-w-0 flex-1 truncate text-right" title={n.os}>
-                  {n.os}
-                </span>
-              </div>
-            </div>
+            <NodeCard key={n.name} node={n} onMenu={onMenu} />
           ))}
           {nodes.length === 0 && (
-            <div className="p-4 text-center text-xs text-muted-foreground">{t("k8s.noNodes")}</div>
+            <div className="col-span-full rounded-[var(--radius)] border border-border bg-card p-4 text-center text-xs text-muted-foreground">
+              {t("k8s.noNodes")}
+            </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Node usage card ──────────────────────────────────────────────────
+
+function NodeCard({
+  node,
+  onMenu,
+}: {
+  node: K8sNode;
+  onMenu: (x: number, y: number, node: K8sNode) => void;
+}) {
+  const { t } = useTranslation();
+  const hasUsage = node.cpuUsed !== "" || node.memUsed !== "";
+  const notReady = node.status !== "Ready";
+  return (
+    <div
+      className={cn(
+        "flex cursor-default flex-col gap-1.5 rounded-[var(--radius)] border bg-card p-2 transition-colors hover:bg-accent/30",
+        notReady && "border-destructive/50",
+      )}
+      title={`${node.name} · ${node.os || ""}`}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onMenu(e.clientX, e.clientY, node);
+      }}
+    >
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", nodeDotClass(node.status))} />
+        <span className="min-w-0 flex-1 truncate text-xs font-medium" title={node.name}>
+          {node.name}
+        </span>
+        {node.roles && (
+          <span className="shrink-0 rounded-full border border-primary/40 px-1.5 py-px text-[9px] text-primary">
+            {node.roles}
+          </span>
+        )}
+      </div>
+
+      {hasUsage ? (
+        <>
+          <UsageBar label="CPU" percent={node.cpuPercent} used={node.cpuUsed} total={node.allocatableCpu} />
+          <UsageBar label={t("k8s.memUsage")} percent={node.memPercent} used={node.memUsed} total={node.allocatableMem} />
+        </>
+      ) : (
+        <p className="text-[10px] leading-relaxed text-muted-foreground">{t("k8s.usageUnavailable")}</p>
+      )}
+
+      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate font-mono" title={node.internalIp || ""}>
+          {node.internalIp || "—"}
+        </span>
+        <span className="shrink-0">{node.version}</span>
+        <span className="shrink-0">{node.age}</span>
+      </div>
+    </div>
+  );
+}
+
+/** UsageBar paints one resource's utilization (0–100+%, clamped for the
+ *  fill; amber ≥70, red ≥90 — same thresholds as the docker stats bars). */
+function UsageBar({
+  label,
+  percent,
+  used,
+  total,
+}: {
+  label: string;
+  percent: number;
+  used: string;
+  total?: string;
+}) {
+  const p = Math.max(0, Math.min(100, percent));
+  const detail = used ? (total ? `${used}/${total}` : used) : "";
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-baseline justify-between gap-1 text-[10px]">
+        <span className="shrink-0 text-muted-foreground">{label}</span>
+        <span
+          className={cn(
+            "min-w-0 truncate font-mono tabular-nums",
+            p >= 90 && "text-destructive",
+          )}
+          title={detail}
+        >
+          {percent}%{detail ? ` · ${detail}` : ""}
+        </span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn(
+            "h-full rounded-full transition-all",
+            p >= 90 ? "bg-destructive" : p >= 70 ? "bg-amber-400" : "bg-primary",
+          )}
+          style={{ width: `${p}%` }}
+        />
       </div>
     </div>
   );
