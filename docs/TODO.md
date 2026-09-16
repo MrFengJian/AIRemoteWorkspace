@@ -173,6 +173,14 @@
 - [x] 隧道面板（多规则状态、启停、复用主机编辑直达隧道配置）
 - [x] 快速命令栏（自定义脚本、多会话批量发送、批量确认）
 - [x] 撰写栏（独立于快速命令栏：即时输入批量发送到选中会话，Enter 执行 / Shift+Enter 仅输入）
+- [x] K8s 面板（v0.9，Phase 7 延后项落地，kubectl CLI 同构方案）
+  - [x] 概览：版本 / context / 节点就绪与列表 / Pod 状态汇总 / 工作负载计数
+  - [x] 工作负载：Deployment / StatefulSet / DaemonSet 列表；启停（scale 0 / 恢复副本）、滚动重启、设置副本数（DaemonSet 无 scale 仅重启）
+  - [x] Pods：状态 / 重启 / 节点 / IP；删除重建（--wait=false + danger 确认）；跳转日志
+  - [x] 日志：Pod + 多容器二级选择、tail 档位、一次性拉取 + 封顶；跟随走插入终端命令
+  - [x] Services / 事件只读列表（Warning 过滤、倒序截断）
+  - [x] 命名空间选择器；kubectl 缺失 / 集群不可达分级降级提示
+  - [x] 安全：kind/action 白名单 + 资源名 DNS-1123 校验（防 flag 注入）；danger.go 补 kubectl 变更动词分级
 
 ---
 

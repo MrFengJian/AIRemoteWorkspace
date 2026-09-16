@@ -19,6 +19,7 @@ import {
   Monitor,
   PanelLeftOpen,
   Network,
+  Ship,
   Zap,
   SquarePen,
 } from "lucide-react";
@@ -38,6 +39,7 @@ import { agentApi } from "@/features/agent/api";
 import { SftpView } from "@/features/sftp/SftpView";
 import { MonitorView } from "@/features/monitor/MonitorView";
 import { DockerView } from "@/features/docker/DockerView";
+import { K8sView } from "@/features/k8s/K8sView";
 import { TunnelPanel } from "@/features/tunnel/TunnelPanel";
 import { useOpenTerminal, useOpenLocalTerminal, useHosts } from "@/features/hosts/hooks";
 import { useHostsUIStore } from "@/features/hosts/store";
@@ -117,7 +119,7 @@ export function TerminalView() {
 
   // Right panel visibility + active tab (SFTP / Agent / Monitor / Tunnel share one panel).
   const [rightOpen, setRightOpen] = useState(false);
-  const [rightTab, setRightTab] = useState<"sftp" | "agent" | "monitor" | "docker" | "tunnel">("agent");
+  const [rightTab, setRightTab] = useState<"sftp" | "agent" | "monitor" | "docker" | "k8s" | "tunnel">("agent");
   const [copied, setCopied] = useState(false);
   // Hosts sidebar collapsed state — persisted so the preference survives
   // restarts; collapsing gives the terminal area more room.
@@ -657,6 +659,14 @@ export function TerminalView() {
         setRightOpen(true);
       }
     }),
+    "view.toggleK8s": inTerminal(() => {
+      if (!activeSession) return;
+      if (rightOpen && rightTab === "k8s") setRightOpen(false);
+      else {
+        setRightTab("k8s");
+        setRightOpen(true);
+      }
+    }),
     "view.toggleSidebar": inTerminal(() => toggleSidebar()),
     "view.toggleQuickBar": inTerminal(() => toggleQuickBar()),
     "view.toggleComposeBar": inTerminal(() => toggleComposeBar()),
@@ -973,6 +983,30 @@ export function TerminalView() {
             >
               <Container className="h-4 w-4" />
             </button>
+            {/* K8s toggle — like Docker, local sessions are allowed: the
+                panel talks to the local kubectl CLI and its kubeconfig. */}
+            <button
+              type="button"
+              disabled={!activeSession}
+              onClick={() => {
+                if (rightOpen && rightTab === "k8s") {
+                  setRightOpen(false);
+                } else {
+                  setRightTab("k8s");
+                  setRightOpen(true);
+                }
+              }}
+              title={t("k8s.title")}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
+                "disabled:pointer-events-none disabled:opacity-40",
+                rightOpen && rightTab === "k8s"
+                  ? "bg-accent text-primary"
+                  : "text-muted-foreground hover:bg-accent/50",
+              )}
+            >
+              <Ship className="h-4 w-4" />
+            </button>
             {/* Tunnel toggle — like SFTP, SSH tunnels are per host, so local
                 sessions have nothing to show. */}
             <button
@@ -1186,6 +1220,20 @@ export function TerminalView() {
               </button>
               <button
                 type="button"
+                onClick={() => setRightTab("k8s")}
+                title={t("k8s.title")}
+                aria-label={t("k8s.title")}
+                className={cn(
+                  "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
+                  rightTab === "k8s"
+                    ? "bg-accent text-primary"
+                    : "text-muted-foreground hover:bg-accent/50",
+                )}
+              >
+                <Ship className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
                 onClick={() => setRightTab("tunnel")}
                 title={t("tunnel.title")}
                 aria-label={t("tunnel.title")}
@@ -1221,6 +1269,10 @@ export function TerminalView() {
                 />
               ) : rightTab === "docker" ? (
                 <DockerView
+                  embeddedSessionID={activeSession.id}
+                />
+              ) : rightTab === "k8s" ? (
+                <K8sView
                   embeddedSessionID={activeSession.id}
                 />
               ) : rightTab === "tunnel" ? (

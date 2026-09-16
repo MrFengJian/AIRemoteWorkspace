@@ -153,10 +153,18 @@ Phase 9  数字员工              角色化运维专家（人设 + 能力 + 安
 - 危险命令分级补全：docker stop/start/restart/pause/kill 及 compose/swarm 变更类动词 → WRITE（需审批）
 - 工具输出 64KB 截断（保头保尾），防止大日志 / 大文件撑爆对话上下文
 
-### Kubernetes 面板（延后）
+### Kubernetes 面板 ✅（v0.9）
 
-- Pod / Deployment / 日志 / 事件面板（kubectl CLI 同构方案）
-- 待 Docker 面板实际使用反馈后再排期
+Docker 面板的 kubectl CLI 同构方案（SSH 会话走 exec 通道，本地终端直连本机 kubectl + kubeconfig），覆盖常规资源管理，**刻意不做 CRD / Operator 等自由资源**：
+
+- 概览：server/client 版本、当前 context、节点就绪比、Pod 状态汇总、工作负载计数、节点列表（状态 / 角色 / 版本 / IP，只读）
+- 工作负载：Deployment / StatefulSet / DaemonSet（kind 徽章、副本就绪比、镜像）；启停 = scale 0 / 恢复最近副本数，滚动重启（rollout restart），设置副本数；DaemonSet 无 scale 语义仅提供重启
+- Pods：状态（waiting reason 提升显示，如 CrashLoopBackOff）、就绪、重启次数、节点 / IP；删除重建（delete pod --wait=false + danger 确认）；多容器 Pod 日志二级容器选择
+- Services / 事件：只读列表（端口渲染 kubectl 风格；事件 Warning 过滤 + 倒序截 200 条）
+- 日志：`kubectl logs --tail N --timestamps` 一次性拉取（10–1000 行钳制、256KiB 封顶），跟随走「插入终端命令」
+- 命名空间选择器：全部命名空间 / 指定 ns，随会话保留
+- 安全细节：kind / action 封闭白名单 + 资源名 DNS-1123 校验（防 shellQuote 挡不住的 flag 注入）；kubectl 未安装 / 集群不可达分别平静降级
+- Agent 通道对齐：kubectl scale / rollout / apply 等变更动词 → WRITE，drain / taint → DANGEROUS（danger.go）
 
 ### Diagnosis Agent ✅（Phase C 远期可选）
 

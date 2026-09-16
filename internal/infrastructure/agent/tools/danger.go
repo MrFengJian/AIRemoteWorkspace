@@ -254,6 +254,9 @@ var dangerousSegmentPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\bdocker\s+(system\s+)?prune\b`),
 	regexp.MustCompile(`\bdocker\s+(rm|rmi|volume\s+rm|network\s+rm)\b`),
 	regexp.MustCompile(`\bkubectl\s+delete\b`),
+	// Node-affecting kubectl forms: draining evicts every pod on the node,
+	// taints can mass-evict via NoSchedule/NoExecute pressure.
+	regexp.MustCompile(`\bkubectl\s+(drain|taint|uncordon\s+.*--delete-emptydir-data)\b`),
 	regexp.MustCompile(`\bchmod\s+777\b`),
 	regexp.MustCompile(`\bkill\s+-9\b`),
 	regexp.MustCompile(`\binit\s+0\b`),
@@ -299,6 +302,9 @@ var writePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\bdocker\s+(stop|start|restart|pause|unpause|kill|update|rename|tag|save|load)\b`),
 	// Docker compose / swarm mutations
 	regexp.MustCompile(`\bdocker\s+(compose|stack|service|swarm|node)\s+(up|down|start|stop|restart|kill|create|build|rm|remove|scale|deploy|apply|update|leave|promote|demote)\b`),
+	// Kubernetes workload mutations (apply/patch change specs; scale and
+	// rollout change runtime topology; cordon stops scheduling).
+	regexp.MustCompile(`\bkubectl\s+(apply|patch|edit|replace|set|scale|autoscale|rollout|label|annotate|cordon|uncordon)\b`),
 	// File creation / move
 	regexp.MustCompile(`\bmkdir\b`),
 	regexp.MustCompile(`\bcp\b`),

@@ -6,6 +6,7 @@ import * as ConfigService from "./configservice.js";
 import * as DockerService from "./dockerservice.js";
 import * as ExpertService from "./expertservice.js";
 import * as HostService from "./hostservice.js";
+import * as K8sService from "./k8sservice.js";
 import * as KeyManagerService from "./keymanagerservice.js";
 import * as MCPService from "./mcpservice.js";
 import * as ModelProviderService from "./modelproviderservice.js";
@@ -21,6 +22,7 @@ export {
     DockerService,
     ExpertService,
     HostService,
+    K8sService,
     KeyManagerService,
     MCPService,
     ModelProviderService,

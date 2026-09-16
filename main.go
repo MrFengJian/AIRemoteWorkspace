@@ -113,6 +113,10 @@ func main() {
 	hostSvc := application.NewHostService(hostRepo, connManager, hostKeyRepo, secretSvc)
 	monitorSvc := application.NewMonitorService(connManager)
 	dockerSvc := application.NewDockerService(connManager)
+	// K8s panel: kubectl CLI driven over the same dual channel (SSH exec for
+	// remote sessions, local argv for local terminals) — kubectl resolves its
+	// own kubeconfig/context on the host.
+	k8sSvc := application.NewK8sService(connManager)
 	sftpSvc := application.NewSftpService(sftp.NewAppClient(sftpMgr), hostRepo, secretSvc, func() domain.TransferConfig {
 		cfg, err := configSvc.GetAppConfig()
 		if err != nil {
@@ -212,6 +216,7 @@ func main() {
 	tunnelService := interfaces.NewTunnelService(tunnelMgr, hostSvc)
 	monitorService := interfaces.NewMonitorService(monitorSvc)
 	dockerService := interfaces.NewDockerService(dockerSvc)
+	k8sService := interfaces.NewK8sService(k8sSvc)
 	sftpService := interfaces.NewSftpService(sftpSvc)
 	// 远程文件"本地编辑器编辑 + 保存自动回传"：临时副本与 mtime 监视在
 	// 应用层，事件经 SftpService 的 Wails 句柄广播。
@@ -238,6 +243,7 @@ func main() {
 			wailsapp.NewService(tunnelService),
 			wailsapp.NewService(monitorService),
 			wailsapp.NewService(dockerService),
+			wailsapp.NewService(k8sService),
 			wailsapp.NewService(sftpService),
 			wailsapp.NewService(windowService),
 			wailsapp.NewService(providerService),

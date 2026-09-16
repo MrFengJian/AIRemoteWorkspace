@@ -751,6 +751,440 @@ export class HighlightRule {
 }
 
 /**
+ * K8sClusterInfo is the panel overview: kubectl version merged with node /
+ * pod / workload counters. Best-effort fields degrade to empty / 0 when a
+ * sub-collection fails (only the version call is fatal).
+ */
+export class K8sClusterInfo {
+    "clientVersion": string;
+    "serverVersion": string;
+
+    /**
+     * Context is the kubeconfig context kubectl resolves on the host.
+     */
+    "context": string;
+    "nodesReady": number;
+    "nodesTotal": number;
+    "podsRunning": number;
+    "podsPending": number;
+    "podsSucceeded": number;
+    "podsFailed": number;
+    "podsUnknown": number;
+    "deployments": number;
+    "statefulSets": number;
+    "daemonSets": number;
+
+    /** Creates a new K8sClusterInfo instance. */
+    constructor($$source: Partial<K8sClusterInfo> = {}) {
+        if (!("clientVersion" in $$source)) {
+            this["clientVersion"] = "";
+        }
+        if (!("serverVersion" in $$source)) {
+            this["serverVersion"] = "";
+        }
+        if (!("context" in $$source)) {
+            this["context"] = "";
+        }
+        if (!("nodesReady" in $$source)) {
+            this["nodesReady"] = 0;
+        }
+        if (!("nodesTotal" in $$source)) {
+            this["nodesTotal"] = 0;
+        }
+        if (!("podsRunning" in $$source)) {
+            this["podsRunning"] = 0;
+        }
+        if (!("podsPending" in $$source)) {
+            this["podsPending"] = 0;
+        }
+        if (!("podsSucceeded" in $$source)) {
+            this["podsSucceeded"] = 0;
+        }
+        if (!("podsFailed" in $$source)) {
+            this["podsFailed"] = 0;
+        }
+        if (!("podsUnknown" in $$source)) {
+            this["podsUnknown"] = 0;
+        }
+        if (!("deployments" in $$source)) {
+            this["deployments"] = 0;
+        }
+        if (!("statefulSets" in $$source)) {
+            this["statefulSets"] = 0;
+        }
+        if (!("daemonSets" in $$source)) {
+            this["daemonSets"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new K8sClusterInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): K8sClusterInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new K8sClusterInfo($$parsedSource as Partial<K8sClusterInfo>);
+    }
+}
+
+/**
+ * K8sEvent is one cluster event, newest first.
+ */
+export class K8sEvent {
+    "namespace": string;
+
+    /**
+     * "Normal" | "Warning"
+     */
+    "type": string;
+    "reason": string;
+
+    /**
+     * "Pod/nginx-abc"
+     */
+    "object": string;
+    "message": string;
+    "count": number;
+    "lastTimestamp": string;
+    "age": string;
+
+    /** Creates a new K8sEvent instance. */
+    constructor($$source: Partial<K8sEvent> = {}) {
+        if (!("namespace" in $$source)) {
+            this["namespace"] = "";
+        }
+        if (!("type" in $$source)) {
+            this["type"] = "";
+        }
+        if (!("reason" in $$source)) {
+            this["reason"] = "";
+        }
+        if (!("object" in $$source)) {
+            this["object"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+        if (!("count" in $$source)) {
+            this["count"] = 0;
+        }
+        if (!("lastTimestamp" in $$source)) {
+            this["lastTimestamp"] = "";
+        }
+        if (!("age" in $$source)) {
+            this["age"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new K8sEvent instance from a string or object.
+     */
+    static createFrom($$source: any = {}): K8sEvent {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new K8sEvent($$parsedSource as Partial<K8sEvent>);
+    }
+}
+
+/**
+ * K8sNamespace is one namespace row for the panel's namespace picker.
+ */
+export class K8sNamespace {
+    "name": string;
+
+    /**
+     * "Active" | "Terminating"
+     */
+    "status": string;
+
+    /** Creates a new K8sNamespace instance. */
+    constructor($$source: Partial<K8sNamespace> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new K8sNamespace instance from a string or object.
+     */
+    static createFrom($$source: any = {}): K8sNamespace {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new K8sNamespace($$parsedSource as Partial<K8sNamespace>);
+    }
+}
+
+/**
+ * K8sNode is one cluster node (`kubectl get nodes -o json`).
+ */
+export class K8sNode {
+    "name": string;
+
+    /**
+     * "Ready" | "NotReady" | "Unknown"
+     */
+    "status": string;
+
+    /**
+     * comma-joined, e.g. "control-plane"
+     */
+    "roles": string;
+    "version": string;
+    "internalIp": string;
+
+    /**
+     * OS image, e.g. "Ubuntu 22.04"
+     */
+    "os": string;
+    "age": string;
+
+    /** Creates a new K8sNode instance. */
+    constructor($$source: Partial<K8sNode> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("roles" in $$source)) {
+            this["roles"] = "";
+        }
+        if (!("version" in $$source)) {
+            this["version"] = "";
+        }
+        if (!("internalIp" in $$source)) {
+            this["internalIp"] = "";
+        }
+        if (!("os" in $$source)) {
+            this["os"] = "";
+        }
+        if (!("age" in $$source)) {
+            this["age"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new K8sNode instance from a string or object.
+     */
+    static createFrom($$source: any = {}): K8sNode {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new K8sNode($$parsedSource as Partial<K8sNode>);
+    }
+}
+
+/**
+ * K8sPod is one pod row. Status prefers a concrete waiting reason (e.g.
+ * "CrashLoopBackOff", "ContainerCreating") over the bare phase, matching
+ * what `kubectl get pods` shows.
+ */
+export class K8sPod {
+    "namespace": string;
+    "name": string;
+
+    /**
+     * "Running" | "Pending" | "CrashLoopBackOff" | "Evicted" | …
+     */
+    "status": string;
+
+    /**
+     * "1/2"
+     */
+    "ready": string;
+    "restarts": number;
+    "age": string;
+    "node": string;
+    "ip": string;
+
+    /**
+     * spec.container names (log picker)
+     */
+    "containers": string[];
+
+    /** Creates a new K8sPod instance. */
+    constructor($$source: Partial<K8sPod> = {}) {
+        if (!("namespace" in $$source)) {
+            this["namespace"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("ready" in $$source)) {
+            this["ready"] = "";
+        }
+        if (!("restarts" in $$source)) {
+            this["restarts"] = 0;
+        }
+        if (!("age" in $$source)) {
+            this["age"] = "";
+        }
+        if (!("node" in $$source)) {
+            this["node"] = "";
+        }
+        if (!("ip" in $$source)) {
+            this["ip"] = "";
+        }
+        if (!("containers" in $$source)) {
+            this["containers"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new K8sPod instance from a string or object.
+     */
+    static createFrom($$source: any = {}): K8sPod {
+        const $$createField8_0 = $$createType13;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("containers" in $$parsedSource) {
+            $$parsedSource["containers"] = $$createField8_0($$parsedSource["containers"]);
+        }
+        return new K8sPod($$parsedSource as Partial<K8sPod>);
+    }
+}
+
+/**
+ * K8sServiceInfo is one service row (`kubectl get services -o json`).
+ */
+export class K8sServiceInfo {
+    "namespace": string;
+    "name": string;
+
+    /**
+     * "ClusterIP" | "NodePort" | "LoadBalancer" | "ExternalName"
+     */
+    "type": string;
+    "clusterIp": string;
+    "externalIp": string;
+
+    /**
+     * "80:30080/TCP,443/TCP"
+     */
+    "ports": string;
+    "age": string;
+    "selector": { [_ in string]?: string };
+
+    /** Creates a new K8sServiceInfo instance. */
+    constructor($$source: Partial<K8sServiceInfo> = {}) {
+        if (!("namespace" in $$source)) {
+            this["namespace"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("type" in $$source)) {
+            this["type"] = "";
+        }
+        if (!("clusterIp" in $$source)) {
+            this["clusterIp"] = "";
+        }
+        if (!("externalIp" in $$source)) {
+            this["externalIp"] = "";
+        }
+        if (!("ports" in $$source)) {
+            this["ports"] = "";
+        }
+        if (!("age" in $$source)) {
+            this["age"] = "";
+        }
+        if (!("selector" in $$source)) {
+            this["selector"] = {};
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new K8sServiceInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): K8sServiceInfo {
+        const $$createField7_0 = $$createType5;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("selector" in $$parsedSource) {
+            $$parsedSource["selector"] = $$createField7_0($$parsedSource["selector"]);
+        }
+        return new K8sServiceInfo($$parsedSource as Partial<K8sServiceInfo>);
+    }
+}
+
+/**
+ * K8sWorkload is one workload-controller row. Replicas/Ready/Updated/
+ * Available follow `kubectl get` columns; for DaemonSets, Replicas/Ready map
+ * to desired/ready scheduled counts and Updated/Available stay 0 (no scale
+ * semantics on the kind).
+ */
+export class K8sWorkload {
+    /**
+     * "Deployment" | "StatefulSet" | "DaemonSet"
+     */
+    "kind": string;
+    "namespace": string;
+    "name": string;
+    "replicas": number;
+    "ready": number;
+    "updated": number;
+    "available": number;
+    "age": string;
+    "images": string[];
+
+    /** Creates a new K8sWorkload instance. */
+    constructor($$source: Partial<K8sWorkload> = {}) {
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("namespace" in $$source)) {
+            this["namespace"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("replicas" in $$source)) {
+            this["replicas"] = 0;
+        }
+        if (!("ready" in $$source)) {
+            this["ready"] = 0;
+        }
+        if (!("updated" in $$source)) {
+            this["updated"] = 0;
+        }
+        if (!("available" in $$source)) {
+            this["available"] = 0;
+        }
+        if (!("age" in $$source)) {
+            this["age"] = "";
+        }
+        if (!("images" in $$source)) {
+            this["images"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new K8sWorkload instance from a string or object.
+     */
+    static createFrom($$source: any = {}): K8sWorkload {
+        const $$createField8_0 = $$createType13;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("images" in $$parsedSource) {
+            $$parsedSource["images"] = $$createField8_0($$parsedSource["images"]);
+        }
+        return new K8sWorkload($$parsedSource as Partial<K8sWorkload>);
+    }
+}
+
+/**
  * LLMConfig holds the non-sensitive LLM provider settings. The API Key is
  * stored in the OS vault (SecretStore), never here.
  * 
@@ -1042,8 +1476,8 @@ export class MonitorOverview {
      * Creates a new MonitorOverview instance from a string or object.
      */
     static createFrom($$source: any = {}): MonitorOverview {
-        const $$createField13_0 = $$createType14;
-        const $$createField18_0 = $$createType16;
+        const $$createField13_0 = $$createType15;
+        const $$createField18_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("disks" in $$parsedSource) {
             $$parsedSource["disks"] = $$createField13_0($$parsedSource["disks"]);
@@ -1517,7 +1951,7 @@ export class TunnelStatus {
      * Creates a new TunnelStatus instance from a string or object.
      */
     static createFrom($$source: any = {}): TunnelStatus {
-        const $$createField3_0 = $$createType17;
+        const $$createField3_0 = $$createType18;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("config" in $$parsedSource) {
             $$parsedSource["config"] = $$createField3_0($$parsedSource["config"]);
@@ -1573,8 +2007,9 @@ const $$createType9 = DockerNetworkSubnet.createFrom;
 const $$createType10 = $Create.Array($$createType9);
 const $$createType11 = DockerNetworkContainer.createFrom;
 const $$createType12 = $Create.Array($$createType11);
-const $$createType13 = MonitorDiskUsage.createFrom;
-const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = MonitorTCPState.createFrom;
-const $$createType16 = $Create.Array($$createType15);
-const $$createType17 = TunnelConfig.createFrom;
+const $$createType13 = $Create.Array($Create.Any);
+const $$createType14 = MonitorDiskUsage.createFrom;
+const $$createType15 = $Create.Array($$createType14);
+const $$createType16 = MonitorTCPState.createFrom;
+const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = TunnelConfig.createFrom;
