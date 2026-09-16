@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useTranslation } from "react-i18next";
 import {
   Copy,
+  FileCode,
   FileText,
   Play,
   RefreshCw,
@@ -25,6 +26,7 @@ import type {
 } from "@/../bindings/github.com/ai-remote/workspace/internal/domain";
 import { k8sApi, k8sErrorKind, type K8sAction } from "@/features/k8s/api";
 import { ContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
+import { ResourceYAMLDialog, type YamlTarget } from "@/features/k8s/ResourceYAMLDialog";
 import { insertToTerminal } from "@/lib/insertTerminal";
 import { toast } from "@/lib/toast";
 import { useConfirm } from "@/lib/useConfirm";
@@ -76,6 +78,8 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
   const [logPod, setLogPod] = useState("");
   const [logContainer, setLogContainer] = useState("");
   const [logTail, setLogTail] = useState(200);
+  /** YAML viewer/editor target (workload, pod, or service row). */
+  const [yamlTarget, setYamlTarget] = useState<YamlTarget | null>(null);
   /** Panel context menu target (see buildMenuItems). */
   const [menu, setMenu] = useState<
     | { x: number; y: number; kind: "workload"; workload: K8sWorkload }
@@ -327,6 +331,11 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
     setTab("logs");
   };
 
+  /** Open the YAML viewer/editor for one resource (kind: kubectl singular). */
+  const openYAML = (kind: string, namespace: string, name: string) => {
+    setYamlTarget({ kind, namespace, name });
+  };
+
   /** Context-menu items per right-click target. */
   function buildMenuItems(): MenuItem[] {
     if (!menu) return [];
@@ -351,6 +360,11 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
             }
           : { type: "separator" as const },
         { type: "separator" },
+        {
+          label: t("k8s.viewYaml"),
+          icon: FileCode,
+          onClick: () => openYAML(w.kind.toLowerCase(), w.namespace, w.name),
+        },
         {
           label: t("k8s.menuDescribe"),
           icon: TerminalSquare,
@@ -388,6 +402,11 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
           icon: TerminalSquare,
           onClick: () => insertCommand(`kubectl describe pod ${p.name} -n ${p.namespace}`),
         },
+        {
+          label: t("k8s.viewYaml"),
+          icon: FileCode,
+          onClick: () => openYAML("pod", p.namespace, p.name),
+        },
         { type: "separator" },
         {
           label: t("k8s.deletePod"),
@@ -404,6 +423,11 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
     if (menu.kind === "service") {
       const s = menu.service;
       return [
+        {
+          label: t("k8s.viewYaml"),
+          icon: FileCode,
+          onClick: () => openYAML("service", s.namespace, s.name),
+        },
         {
           label: t("k8s.menuDescribe"),
           icon: TerminalSquare,
@@ -573,6 +597,7 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
             onStop={stopWorkload}
             onStart={startWorkload}
             onRestart={restartWorkload}
+            onYaml={(w) => openYAML(w.kind.toLowerCase(), w.namespace, w.name)}
             onMenu={(x, y, workload) => setMenu({ x, y, kind: "workload", workload })}
           />
         ) : tab === "pods" ? (
@@ -584,6 +609,7 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
             actionError={deletePodMut.isError ? deletePodMut.error : null}
             onLogs={openLogs}
             onDelete={(p) => void deletePod(p)}
+            onYaml={(p) => openYAML("pod", p.namespace, p.name)}
             onMenu={(x, y, pod) => setMenu({ x, y, kind: "pod", pod })}
           />
         ) : tab === "services" ? (
@@ -591,6 +617,7 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
             showNamespace={namespace === ""}
             loading={servicesQ.isLoading}
             services={servicesQ.data ?? []}
+            onYaml={(s) => openYAML("service", s.namespace, s.name)}
             onMenu={(x, y, service) => setMenu({ x, y, kind: "service", service })}
           />
         ) : tab === "events" ? (
@@ -624,6 +651,14 @@ export function K8sView({ embeddedSessionID }: K8sViewProps) {
       {menu && (
         <ContextMenu x={menu.x} y={menu.y} items={buildMenuItems()} onClose={() => setMenu(null)} />
       )}
+
+      {/* YAML viewer / editor */}
+      <ResourceYAMLDialog
+        open={yamlTarget !== null}
+        target={yamlTarget}
+        sessionID={embeddedSessionID}
+        onClose={() => setYamlTarget(null)}
+      />
     </div>
   );
 }
@@ -869,6 +904,7 @@ function WorkloadsPane({
   onStop,
   onStart,
   onRestart,
+  onYaml,
   onMenu,
 }: {
   showNamespace: boolean;
@@ -879,6 +915,7 @@ function WorkloadsPane({
   onStop: (w: K8sWorkload) => void;
   onStart: (w: K8sWorkload) => void;
   onRestart: (w: K8sWorkload) => void;
+  onYaml: (w: K8sWorkload) => void;
   onMenu: (x: number, y: number, workload: K8sWorkload) => void;
 }) {
   const { t } = useTranslation();
@@ -960,6 +997,14 @@ function WorkloadsPane({
                 <ActionBtn w={w} action="restart" title={t("k8s.action_restart")}>
                   <RotateCw className="h-3 w-3" />
                 </ActionBtn>
+                <button
+                  type="button"
+                  onClick={() => onYaml(w)}
+                  title={t("k8s.viewYaml")}
+                  className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <FileCode className="h-3 w-3" />
+                </button>
               </div>
               <div className="flex items-center gap-2 pl-3 text-[10px] text-muted-foreground">
                 {showNamespace && <span className="shrink-0 rounded bg-muted/50 px-1 font-mono">{w.namespace}</span>}
@@ -1003,6 +1048,7 @@ function PodsPane({
   actionError,
   onLogs,
   onDelete,
+  onYaml,
   onMenu,
 }: {
   showNamespace: boolean;
@@ -1012,6 +1058,7 @@ function PodsPane({
   actionError: unknown;
   onLogs: (p: K8sPod) => void;
   onDelete: (p: K8sPod) => void;
+  onYaml: (p: K8sPod) => void;
   onMenu: (x: number, y: number, pod: K8sPod) => void;
 }) {
   const { t } = useTranslation();
@@ -1066,6 +1113,14 @@ function PodsPane({
                 )}
                 <button
                   type="button"
+                  onClick={() => onYaml(p)}
+                  title={t("k8s.viewYaml")}
+                  className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <FileCode className="h-3 w-3" />
+                </button>
+                <button
+                  type="button"
                   onClick={() => onLogs(p)}
                   title={t("k8s.viewLogs")}
                   className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -1099,11 +1154,13 @@ function ServicesPane({
   showNamespace,
   loading,
   services,
+  onYaml,
   onMenu,
 }: {
   showNamespace: boolean;
   loading: boolean;
   services: K8sServiceInfo[];
+  onYaml: (s: K8sServiceInfo) => void;
   onMenu: (x: number, y: number, service: K8sServiceInfo) => void;
 }) {
   const { t } = useTranslation();
@@ -1129,6 +1186,14 @@ function ServicesPane({
               {s.type}
             </span>
             <span className="shrink-0 text-[10px] text-muted-foreground">{s.age}</span>
+            <button
+              type="button"
+              onClick={() => onYaml(s)}
+              title={t("k8s.viewYaml")}
+              className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <FileCode className="h-3 w-3" />
+            </button>
           </div>
           <div className="flex items-center gap-2 pl-3 font-mono text-[10px] text-muted-foreground">
             <span className="shrink-0">{s.clusterIp}</span>

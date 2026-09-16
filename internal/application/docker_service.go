@@ -1,6 +1,7 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -91,7 +92,15 @@ func isDaemonDown(out string) bool {
 // runLocalArgs executes a command locally without any shell (argv only), so
 // format strings like `{{json .}}` need no platform-specific quoting.
 func runLocalArgs(ctx context.Context, name string, args ...string) (string, error) {
+	return runLocalArgsStdin(ctx, name, nil, args...)
+}
+
+// runLocalArgsStdin is runLocalArgs with data piped to the command's stdin.
+func runLocalArgsStdin(ctx context.Context, name string, stdin []byte, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	if len(stdin) > 0 {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

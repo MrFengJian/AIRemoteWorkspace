@@ -17,6 +17,14 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as domain$0 from "../domain/models.js";
 
 /**
+ * ApplyResourceYAML submits an edited manifest via `kubectl apply -f -`
+ * (stdin); identity guards ensure it lands on the object it was fetched from.
+ */
+export function ApplyResourceYAML(sessionID: string, kind: string, $namespace: string, name: string, doc: string): $CancellablePromise<string> {
+    return $Call.ByID(4197438210, sessionID, kind, $namespace, name, doc);
+}
+
+/**
  * DeletePod removes one pod (returns as soon as the deletion is accepted).
  */
 export function DeletePod(sessionID: string, $namespace: string, name: string): $CancellablePromise<string> {
@@ -38,6 +46,14 @@ export function GetClusterInfo(sessionID: string): $CancellablePromise<domain$0.
  */
 export function GetPodLogs(sessionID: string, $namespace: string, pod: string, container: string, tail: number): $CancellablePromise<string> {
     return $Call.ByID(308423827, sessionID, $namespace, pod, container, tail);
+}
+
+/**
+ * GetResourceYAML returns one resource's live manifest for the YAML viewer
+ * (deployment/statefulset/daemonset/pod/service; concrete namespace required).
+ */
+export function GetResourceYAML(sessionID: string, kind: string, $namespace: string, name: string): $CancellablePromise<string> {
+    return $Call.ByID(4152169066, sessionID, kind, $namespace, name);
 }
 
 /**

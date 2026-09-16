@@ -96,6 +96,10 @@ type ConnectionManager interface {
 	// sessionID (fresh non-interactive exec channel; the interactive PTY is
 	// untouched). Used by the agent's ssh_exec tool and the monitor collector.
 	ExecInSessionCtx(ctx context.Context, sessionID, cmd string) (string, error)
+	// ExecInSessionStdin is ExecInSessionCtx with data piped to the command's
+	// stdin (`kubectl apply -f -` and friends). Streaming — no argument-size
+	// ceiling, and the payload never lands on the remote disk.
+	ExecInSessionStdin(ctx context.Context, sessionID, cmd string, stdin []byte) (string, error)
 	// CloseAll tears down every active session (used on app shutdown).
 	CloseAll() error
 }

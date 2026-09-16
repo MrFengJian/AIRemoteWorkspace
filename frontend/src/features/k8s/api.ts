@@ -30,6 +30,17 @@ export const k8sApi = {
   ) => K8sService.WorkloadAction(sessionID, kind, namespace, name, action, replicas),
   deletePod: (sessionID: string, namespace: string, name: string) =>
     K8sService.DeletePod(sessionID, namespace, name),
+  /** Live manifest of one resource (YAML viewer). */
+  resourceYaml: (sessionID: string, kind: string, namespace: string, name: string) =>
+    K8sService.GetResourceYAML(sessionID, kind, namespace, name),
+  /** Submit an edited manifest back (`kubectl apply -f -` via stdin). */
+  applyResourceYaml: (
+    sessionID: string,
+    kind: string,
+    namespace: string,
+    name: string,
+    doc: string,
+  ) => K8sService.ApplyResourceYAML(sessionID, kind, namespace, name, doc),
 };
 
 export type K8sErrorKind = "notInstalled" | "clusterUnreachable" | "generic";

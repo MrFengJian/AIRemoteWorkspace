@@ -39,10 +39,17 @@ var (
 // runKubectl executes `kubectl <args...>` against the session's host and
 // translates common failure modes into the sentinel errors above.
 func (s *K8sService) runKubectl(ctx context.Context, sessionID string, args ...string) (string, error) {
+	return s.runKubectlStdin(ctx, sessionID, nil, args...)
+}
+
+// runKubectlStdin is runKubectl with data piped to the command's stdin
+// (`kubectl apply -f -`). Streaming — no argument-size ceiling, and the
+// payload never touches the remote disk.
+func (s *K8sService) runKubectlStdin(ctx context.Context, sessionID string, stdin []byte, args ...string) (string, error) {
 	var out string
 	var err error
 	if isLocalSessionID(sessionID) {
-		out, err = runLocalArgs(ctx, "kubectl", args...)
+		out, err = runLocalArgsStdin(ctx, "kubectl", stdin, args...)
 	} else {
 		if s.connect == nil {
 			return "", errors.New("kubectl: no connection manager")
@@ -51,8 +58,17 @@ func (s *K8sService) runKubectl(ctx context.Context, sessionID string, args ...s
 		for _, a := range args {
 			cmd += " " + shellQuote(a)
 		}
-		out, err = s.connect.ExecInSessionCtx(ctx, sessionID, cmd)
+		out, err = s.connect.ExecInSessionStdin(ctx, sessionID, cmd, stdin)
 	}
+	return classifyKubectl(out, err)
+}
+
+// classifyKubectl translates common failure modes into the sentinel errors
+// and appends the trimmed CLI output to generic failures — the UI can only
+// show err.Error(), which for a failed exec is just "exit status 1", while
+// kubectl's real reason (BadRequest, validation, not found…) lives in the
+// output.
+func classifyKubectl(out string, err error) (string, error) {
 	if err != nil {
 		if isKubectlCLIMissing(out, err) {
 			return "", ErrKubectlUnavailable
@@ -60,9 +76,6 @@ func (s *K8sService) runKubectl(ctx context.Context, sessionID string, args ...s
 		if isClusterUnreachable(out) {
 			return "", ErrClusterUnreachable
 		}
-		// The UI can only show err.Error(), which for a failed exec is just
-		// "exit status 1" — append the trimmed CLI output so kubectl's real
-		// reason (BadRequest, container not valid, pod not found…) surfaces.
 		return out, fmt.Errorf("kubectl: %w: %s", err, errHint(out))
 	}
 	return out, nil
@@ -252,6 +265,122 @@ func (s *K8sService) ListServices(ctx context.Context, sessionID, namespace stri
 
 // k8sEventLimit bounds the event list (newest kept).
 const k8sEventLimit = 200
+
+// k8sYAMLByteCap bounds the fetched / accepted YAML document (the belt-and-
+// braces ceiling; typical resources are 2–10 KiB).
+const k8sYAMLByteCap = 256 << 10
+
+// k8sYAMLKinds is the closed allowlist of resources the panel may fetch as
+// YAML or apply back — everything else (CRDs, cluster-scoped objects) is
+// deliberately out of the panel's scope.
+var k8sYAMLKinds = map[string]bool{
+	"deployment":  true,
+	"statefulset": true,
+	"daemonset":   true,
+	"pod":         true,
+	"service":     true,
+}
+
+// GetResourceYAML returns one resource's live manifest (`kubectl get <kind>
+// <name> -n <ns> -o yaml`). A concrete namespace is required — name-based
+// retrieval cannot span namespaces; the frontend always sends the list row's.
+func (s *K8sService) GetResourceYAML(ctx context.Context, sessionID, kind, namespace, name string) (string, error) {
+	if !k8sYAMLKinds[kind] {
+		return "", fmt.Errorf("kubectl: kind %q not allowed", kind)
+	}
+	if err := checkK8sName("namespace", namespace); err != nil {
+		return "", err
+	}
+	if err := checkK8sName("name", name); err != nil {
+		return "", err
+	}
+	out, err := s.runKubectl(ctx, sessionID, "get", kind, name, "-n", namespace, "-o", "yaml")
+	if err != nil {
+		return "", err
+	}
+	return capString(out, k8sYAMLByteCap), nil
+}
+
+// ApplyResourceYAML submits an edited manifest back to the cluster via
+// `kubectl apply -f -` (stdin — no temp files, no argument-size ceiling).
+// Before anything reaches the API server, the document's kind/name/namespace
+// are checked against the object it was fetched from: a mangled YAML (or an
+// edit that dropped the metadata block) is rejected instead of silently
+// creating some other object.
+func (s *K8sService) ApplyResourceYAML(ctx context.Context, sessionID, kind, namespace, name, doc string) (string, error) {
+	if !k8sYAMLKinds[kind] {
+		return "", fmt.Errorf("kubectl: kind %q not allowed", kind)
+	}
+	if err := checkK8sName("name", name); err != nil {
+		return "", err
+	}
+	if namespace != "" {
+		if err := checkK8sName("namespace", namespace); err != nil {
+			return "", err
+		}
+	}
+	trimmed := strings.TrimSpace(doc)
+	if trimmed == "" {
+		return "", errors.New("kubectl: empty yaml document")
+	}
+	if len(trimmed) > k8sYAMLByteCap {
+		return "", fmt.Errorf("kubectl: yaml document too large (%d bytes, cap %d)", len(trimmed), k8sYAMLByteCap)
+	}
+
+	docKind, docName, docNs := parseYAMLIdentity(trimmed)
+	if docKind == "" || docName == "" {
+		return "", errors.New("kubectl: 无法从 YAML 识别 kind / metadata.name——请保留顶层 kind 与 metadata 段后再应用 / cannot read kind and metadata.name from the YAML")
+	}
+	if !strings.EqualFold(docKind, kind) {
+		return "", fmt.Errorf("kubectl: YAML 的 kind 是 %s，与目标 %s 不一致 / YAML kind %s does not match target %s", docKind, kind, docKind, kind)
+	}
+	if docName != name {
+		return "", fmt.Errorf("kubectl: YAML 的 metadata.name 是 %s，与目标 %s 不一致 / YAML name %s does not match target %s", docName, name, docName, name)
+	}
+	if docNs != "" && namespace != "" && docNs != namespace {
+		return "", fmt.Errorf("kubectl: YAML 的 metadata.namespace 是 %s，与目标 %s 不一致 / YAML namespace %s does not match target %s", docNs, namespace, docNs, namespace)
+	}
+	if namespace == "" {
+		if docNs == "" {
+			return "", errors.New("kubectl: 缺少目标命名空间 / target namespace missing")
+		}
+		if err := checkK8sName("namespace", docNs); err != nil {
+			return "", err
+		}
+		namespace = docNs
+	}
+
+	args := []string{"apply", "-f", "-", "-n", namespace}
+	out, err := s.runKubectlStdin(ctx, sessionID, []byte(trimmed), args...)
+	if err != nil {
+		return "", err
+	}
+	return capString(out, k8sLogByteCap), nil
+}
+
+// YAML identity probes: top-level `kind:` and the metadata block's
+// name/namespace (exactly two-space indent — the shape `kubectl get -o yaml`
+// emits; deeper name fields in templates/labels never match).
+var (
+	yamlKindRe     = regexp.MustCompile(`(?m)^kind:[ \t]*["']?([A-Za-z0-9.]+)["']?[ \t]*$`)
+	yamlMetaNameRe = regexp.MustCompile(`(?m)^  name:[ \t]*["']?([^"'\s]+)["']?[ \t]*$`)
+	yamlMetaNsRe   = regexp.MustCompile(`(?m)^  namespace:[ \t]*["']?([^"'\s]+)["']?[ \t]*$`)
+)
+
+// parseYAMLIdentity extracts (kind, metadata.name, metadata.namespace) from
+// a manifest. namespace is "" when the document omits it.
+func parseYAMLIdentity(doc string) (kind, name, namespace string) {
+	if m := yamlKindRe.FindStringSubmatch(doc); m != nil {
+		kind = strings.ToLower(m[1])
+	}
+	if m := yamlMetaNameRe.FindStringSubmatch(doc); m != nil {
+		name = m[1]
+	}
+	if m := yamlMetaNsRe.FindStringSubmatch(doc); m != nil {
+		namespace = m[1]
+	}
+	return kind, name, namespace
+}
 
 // ListEvents returns recent events, newest first.
 func (s *K8sService) ListEvents(ctx context.Context, sessionID, namespace string) ([]domain.K8sEvent, error) {

@@ -1,6 +1,7 @@
 package ssh
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -391,11 +392,22 @@ func (m *Manager) ExecInSession(sessionID, cmd string) (string, error) {
 	return m.ExecInSessionCtx(context.Background(), sessionID, cmd)
 }
 
-// ExecInSessionCtx is ExecInSession with cancellation: when ctx is done the
+// ExecInSession is ExecInSession with cancellation: when ctx is done the
 // exec session is closed, which terminates the remote command (the same way
 // closing an interactive session does). Used so the agent's Stop button can
 // interrupt long-running remote commands.
 func (m *Manager) ExecInSessionCtx(ctx context.Context, sessionID, cmd string) (string, error) {
+	return m.execSession(ctx, sessionID, cmd, nil)
+}
+
+// ExecInSessionStdin is ExecInSessionCtx with data piped to the command's
+// stdin (kubectl apply -f - and friends). The command itself still runs
+// through the remote login shell; stdin bytes go straight to the process.
+func (m *Manager) ExecInSessionStdin(ctx context.Context, sessionID, cmd string, stdin []byte) (string, error) {
+	return m.execSession(ctx, sessionID, cmd, stdin)
+}
+
+func (m *Manager) execSession(ctx context.Context, sessionID, cmd string, stdin []byte) (string, error) {
 	ms, ok := m.session(sessionID)
 	if !ok {
 		return "", errSessionNotFound(sessionID)
@@ -405,6 +417,9 @@ func (m *Manager) ExecInSessionCtx(ctx context.Context, sessionID, cmd string) (
 		return "", fmt.Errorf("new exec session: %w", err)
 	}
 	defer sess.Close()
+	if len(stdin) > 0 {
+		sess.Stdin = bytes.NewReader(stdin)
+	}
 
 	type execResult struct {
 		out []byte

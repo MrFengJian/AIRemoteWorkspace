@@ -13,6 +13,7 @@ import (
 // exact kubectl invocation; other ConnectionManager methods are unusable stubs.
 type fakeK8sConn struct {
 	cmds   []string
+	stdins [][]byte
 	outFor func(cmd string) (string, error)
 }
 
@@ -23,8 +24,12 @@ func (f *fakeK8sConn) WriteStdin(string, []byte) error { return errors.New("not 
 func (f *fakeK8sConn) Resize(string, int, int) error   { return errors.New("not implemented") }
 func (f *fakeK8sConn) Close(string) error              { return nil }
 func (f *fakeK8sConn) DetectOS(string) (string, error) { return "", errors.New("not implemented") }
-func (f *fakeK8sConn) ExecInSessionCtx(_ context.Context, _ string, cmd string) (string, error) {
+func (f *fakeK8sConn) ExecInSessionCtx(ctx context.Context, sessionID, cmd string) (string, error) {
+	return f.ExecInSessionStdin(ctx, sessionID, cmd, nil)
+}
+func (f *fakeK8sConn) ExecInSessionStdin(_ context.Context, _ string, cmd string, stdin []byte) (string, error) {
 	f.cmds = append(f.cmds, cmd)
+	f.stdins = append(f.stdins, stdin)
 	return f.outFor(cmd)
 }
 func (f *fakeK8sConn) CloseAll() error { return nil }
@@ -113,6 +118,130 @@ func TestGetPodLogsUnknownPod(t *testing.T) {
 	_, err := s.GetPodLogs(context.Background(), "sess-1", "", "ghost", "", 100)
 	if err == nil || !strings.Contains(err.Error(), "not found in cluster") {
 		t.Fatalf("expected not-found error, got: %v", err)
+	}
+}
+
+func TestParseYAMLIdentity(t *testing.T) {
+	doc := `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "3"
+  creationTimestamp: "2024-03-01T00:00:00Z"
+  name: web
+  namespace: prod
+spec:
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: web
+      name: web-deep
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.25
+status: {}
+`
+	kind, name, ns := parseYAMLIdentity(doc)
+	if kind != "deployment" || name != "web" || ns != "prod" {
+		t.Fatalf("identity wrong: %q %q %q", kind, name, ns)
+	}
+
+	// Missing metadata block → empty identity (apply guard rejects).
+	if k, n, _ := parseYAMLIdentity("kind: Pod\nspec: {}\n"); k != "pod" || n != "" {
+		t.Fatalf("missing name should yield empty name: %q %q", k, n)
+	}
+}
+
+func TestApplyResourceYAMLGuards(t *testing.T) {
+	conn := &fakeK8sConn{
+		outFor: func(string) (string, error) { return "deployment.apps/web configured", nil },
+	}
+	s := &K8sService{connect: conn}
+	ctx := context.Background()
+
+	const goodDoc = `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: prod
+spec:
+  replicas: 2
+`
+
+	// Happy path: apply goes through stdin (`-f -`), doc untouched.
+	out, err := s.ApplyResourceYAML(ctx, "sess-1", "deployment", "prod", "web", goodDoc)
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if !strings.Contains(out, "configured") {
+		t.Fatalf("apply output wrong: %q", out)
+	}
+	cmd := conn.cmds[len(conn.cmds)-1]
+	if !strings.Contains(cmd, "'apply' '-f' '-'") || !strings.Contains(cmd, "'-n' 'prod'") {
+		t.Fatalf("apply command wrong: %q", cmd)
+	}
+	stdin := conn.stdins[len(conn.stdins)-1]
+	if string(stdin) != strings.TrimSpace(goodDoc) {
+		t.Fatalf("stdin should be the yaml doc: %q", string(stdin))
+	}
+
+	// Kind mismatch (a pod doc for a deployment target) → rejected, no call.
+	before := len(conn.cmds)
+	if _, err := s.ApplyResourceYAML(ctx, "sess-1", "pod", "prod", "web", goodDoc); err == nil || !strings.Contains(err.Error(), "kind") {
+		t.Fatalf("kind mismatch should be rejected, got %v", err)
+	}
+	// Name mismatch → rejected.
+	if _, err := s.ApplyResourceYAML(ctx, "sess-1", "deployment", "prod", "api", goodDoc); err == nil || !strings.Contains(err.Error(), "name") {
+		t.Fatalf("name mismatch should be rejected, got %v", err)
+	}
+	// Namespace mismatch → rejected.
+	if _, err := s.ApplyResourceYAML(ctx, "sess-1", "deployment", "default", "web", goodDoc); err == nil || !strings.Contains(err.Error(), "namespace") {
+		t.Fatalf("namespace mismatch should be rejected, got %v", err)
+	}
+	// Identity-less doc → rejected.
+	if _, err := s.ApplyResourceYAML(ctx, "sess-1", "deployment", "prod", "web", "replicas: 2\n"); err == nil {
+		t.Fatal("identity-less doc should be rejected")
+	}
+	// Disallowed kind → rejected even before parsing.
+	if _, err := s.ApplyResourceYAML(ctx, "sess-1", "secret", "prod", "x", goodDoc); err == nil {
+		t.Fatal("disallowed kind should be rejected")
+	}
+	// Empty doc → rejected.
+	if _, err := s.ApplyResourceYAML(ctx, "sess-1", "deployment", "prod", "web", "   \n"); err == nil {
+		t.Fatal("empty doc should be rejected")
+	}
+	if len(conn.cmds) != before {
+		t.Fatalf("rejected applies must not reach the CLI: %d extra calls", len(conn.cmds)-before)
+	}
+}
+
+func TestGetResourceYAMLCommand(t *testing.T) {
+	conn := &fakeK8sConn{
+		outFor: func(string) (string, error) {
+			return "apiVersion: v1\nkind: Service\nmetadata:\n  name: web\n", nil
+		},
+	}
+	s := &K8sService{connect: conn}
+	out, err := s.GetResourceYAML(context.Background(), "sess-1", "service", "prod", "web")
+	if err != nil {
+		t.Fatalf("GetResourceYAML: %v", err)
+	}
+	if !strings.Contains(out, "kind: Service") {
+		t.Fatalf("yaml content wrong: %q", out)
+	}
+	if cmd := conn.cmds[0]; !strings.Contains(cmd, "'get' 'service' 'web'") || !strings.Contains(cmd, "'-o' 'yaml'") {
+		t.Fatalf("get command wrong: %q", cmd)
+	}
+
+	// Namespace is mandatory (name-based retrieval cannot span namespaces).
+	if _, err := s.GetResourceYAML(context.Background(), "sess-1", "pod", "", "web"); err == nil {
+		t.Fatal("empty namespace should be rejected")
+	}
+	// Disallowed kinds (CRDs etc.) never reach the CLI.
+	if _, err := s.GetResourceYAML(context.Background(), "sess-1", "crontabs", "prod", "x"); err == nil {
+		t.Fatal("disallowed kind should be rejected")
 	}
 }
 

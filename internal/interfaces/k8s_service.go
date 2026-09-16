@@ -109,3 +109,19 @@ func (k *K8sService) DeletePod(sessionID, namespace, name string) (string, error
 	defer cancel()
 	return k.svc.DeletePod(ctx, sessionID, namespace, name)
 }
+
+// GetResourceYAML returns one resource's live manifest for the YAML viewer
+// (deployment/statefulset/daemonset/pod/service; concrete namespace required).
+func (k *K8sService) GetResourceYAML(sessionID, kind, namespace, name string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), k8sTimeout)
+	defer cancel()
+	return k.svc.GetResourceYAML(ctx, sessionID, kind, namespace, name)
+}
+
+// ApplyResourceYAML submits an edited manifest via `kubectl apply -f -`
+// (stdin); identity guards ensure it lands on the object it was fetched from.
+func (k *K8sService) ApplyResourceYAML(sessionID, kind, namespace, name, doc string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), k8sTimeout)
+	defer cancel()
+	return k.svc.ApplyResourceYAML(ctx, sessionID, kind, namespace, name, doc)
+}

@@ -179,6 +179,7 @@
   - [x] Pods：状态 / 重启 / 节点 / IP；删除重建（--wait=false + danger 确认）；跳转日志
   - [x] 日志：Pod + 多容器二级选择、tail 档位、一次性拉取 + 封顶；跟随走插入终端命令
   - [x] Services / 事件只读列表（Warning 过滤、倒序截断）
+  - [x] YAML 查看 / 编辑：工作负载 / Pod / Service 实时清单 + `kubectl apply -f -`（stdin）应用；kind/name/namespace 一致性守卫
   - [x] 命名空间选择器；kubectl 缺失 / 集群不可达分级降级提示
   - [x] 安全：kind/action 白名单 + 资源名 DNS-1123 校验（防 flag 注入）；danger.go 补 kubectl 变更动词分级
 

@@ -161,6 +161,7 @@ Docker 面板的 kubectl CLI 同构方案（SSH 会话走 exec 通道，本地�
 - 工作负载：Deployment / StatefulSet / DaemonSet（kind 徽章、副本就绪比、镜像）；启停 = scale 0 / 恢复最近副本数，滚动重启（rollout restart），设置副本数；DaemonSet 无 scale 语义仅提供重启
 - Pods：状态（waiting reason 提升显示，如 CrashLoopBackOff）、就绪、重启次数、节点 / IP；删除重建（delete pod --wait=false + danger 确认）；多容器 Pod 日志二级容器选择
 - Services / 事件：只读列表（端口渲染 kubectl 风格；事件 Warning 过滤 + 倒序截 200 条）
+- YAML 查看 / 编辑：工作负载 / Pod / Service 均可查看实时清单（`get -o yaml`）并编辑后经 `kubectl apply -f -`（stdin 流式，不经临时文件、无参数长度上限）应用回集群；后端守卫校验文档的 kind/name/namespace 与目标一致，防止改坏的 YAML 误建其他对象
 - 日志：`kubectl logs --tail N --timestamps` 一次性拉取（10–1000 行钳制、256KiB 封顶），跟随走「插入终端命令」
 - 命名空间选择器：全部命名空间 / 指定 ns，随会话保留
 - 安全细节：kind / action 封闭白名单 + 资源名 DNS-1123 校验（防 shellQuote 挡不住的 flag 注入）；kubectl 未安装 / 集群不可达分别平静降级
