@@ -37,10 +37,13 @@ type K8sNode struct {
 	InternalIP string `json:"internalIp"`
 	OS         string `json:"os"` // OS image, e.g. "Ubuntu 22.04"
 	Age        string `json:"age"`
-	// Allocatable resources from the node status (raw kubectl values, e.g.
-	// "4" cores / "15880Mi").
+	// Allocatable + capacity resources from the node status (raw kubectl
+	// values, e.g. "4" cores / "15880Mi"). Visible even without metrics.
 	AllocatableCPU string `json:"allocatableCpu"`
 	AllocatableMem string `json:"allocatableMem"`
+	CapacityCPU    string `json:"capacityCpu"`
+	CapacityMem    string `json:"capacityMem"`
+	PodCapacity    string `json:"podCapacity"` // allocatable pods
 	// Live usage (kubectl top). CPUUsed/MemUsed keep kubectl's formatted
 	// values ("1200m", "8192Mi"); percents are numbers for the usage bars.
 	CPUUsed    string  `json:"cpuUsed"`

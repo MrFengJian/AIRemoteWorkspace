@@ -947,11 +947,18 @@ export class K8sNode {
     "age": string;
 
     /**
-     * Allocatable resources from the node status (raw kubectl values, e.g.
-     * "4" cores / "15880Mi").
+     * Allocatable + capacity resources from the node status (raw kubectl
+     * values, e.g. "4" cores / "15880Mi"). Visible even without metrics.
      */
     "allocatableCpu": string;
     "allocatableMem": string;
+    "capacityCpu": string;
+    "capacityMem": string;
+
+    /**
+     * allocatable pods
+     */
+    "podCapacity": string;
 
     /**
      * Live usage (kubectl top). CPUUsed/MemUsed keep kubectl's formatted
@@ -990,6 +997,15 @@ export class K8sNode {
         }
         if (!("allocatableMem" in $$source)) {
             this["allocatableMem"] = "";
+        }
+        if (!("capacityCpu" in $$source)) {
+            this["capacityCpu"] = "";
+        }
+        if (!("capacityMem" in $$source)) {
+            this["capacityMem"] = "";
+        }
+        if (!("podCapacity" in $$source)) {
+            this["podCapacity"] = "";
         }
         if (!("cpuUsed" in $$source)) {
             this["cpuUsed"] = "";

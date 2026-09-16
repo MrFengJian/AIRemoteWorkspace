@@ -761,13 +761,23 @@ function NodeCard({
   const { t } = useTranslation();
   const hasUsage = node.cpuUsed !== "" || node.memUsed !== "";
   const notReady = node.status !== "Ready";
+  // Full identity lives in the tooltip: OS image, pod capacity and the
+  // raw capacity values (usually ≈ allocatable; shown where they differ).
+  const tooltip = [
+    node.name,
+    node.os || "",
+    `${t("k8s.pods")} ${t("k8s.capacity")} ${node.podCapacity || "—"}`,
+    `${t("k8s.capacity")}: CPU ${node.capacityCpu || "—"} · ${t("k8s.memUsage")} ${node.capacityMem || "—"}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
   return (
     <div
       className={cn(
         "flex cursor-default flex-col gap-1.5 rounded-[var(--radius)] border bg-card p-2 transition-colors hover:bg-accent/30",
         notReady && "border-destructive/50",
       )}
-      title={`${node.name} · ${node.os || ""}`}
+      title={tooltip}
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -786,13 +796,32 @@ function NodeCard({
         )}
       </div>
 
-      {hasUsage ? (
-        <>
-          <UsageBar label="CPU" percent={node.cpuPercent} used={node.cpuUsed} total={node.allocatableCpu} />
-          <UsageBar label={t("k8s.memUsage")} percent={node.memPercent} used={node.memUsed} total={node.allocatableMem} />
-        </>
-      ) : (
-        <p className="text-[10px] leading-relaxed text-muted-foreground">{t("k8s.usageUnavailable")}</p>
+      {/* Resource rows always render — with metrics they show live usage
+          bars, without them the allocatable/capacity facts from
+          `kubectl get nodes` in the same chart-shaped layout. */}
+      <ResourceRow
+        label="CPU"
+        filled={hasUsage}
+        percent={node.cpuPercent}
+        detail={
+          hasUsage
+            ? usageDetail(node.cpuUsed, node.allocatableCpu)
+            : allocDetail(t, node.allocatableCpu, node.capacityCpu)
+        }
+      />
+      <ResourceRow
+        label={t("k8s.memUsage")}
+        filled={hasUsage}
+        percent={node.memPercent}
+        detail={
+          hasUsage
+            ? usageDetail(node.memUsed, node.allocatableMem)
+            : allocDetail(t, node.allocatableMem, node.capacityMem)
+        }
+      />
+
+      {!hasUsage && (
+        <p className="text-[10px] leading-relaxed text-muted-foreground/70">{t("k8s.metricsHint")}</p>
       )}
 
       <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
@@ -806,21 +835,41 @@ function NodeCard({
   );
 }
 
-/** UsageBar paints one resource's utilization (0–100+%, clamped for the
- *  fill; amber ≥70, red ≥90 — same thresholds as the docker stats bars). */
-function UsageBar({
+/** usageDetail renders "1200m/4" for the bar row. */
+function usageDetail(used: string, allocatable?: string) {
+  return used ? (allocatable ? `${used}/${allocatable}` : used) : "";
+}
+
+/** allocDetail renders the no-metrics fallback: "可分配 4 · 容量 4". */
+function allocDetail(
+  t: (k: string) => string,
+  allocatable?: string,
+  capacity?: string,
+): string {
+  const parts: string[] = [];
+  if (allocatable) parts.push(`${t("k8s.allocatable")} ${allocatable}`);
+  if (capacity && capacity !== allocatable) parts.push(`${t("k8s.capacity")} ${capacity}`);
+  return parts.join(" · ");
+}
+
+/** ResourceRow paints one resource line: label + value over a track. With
+ *  metrics it carries a colored usage fill (amber ≥70, red ≥90 — same
+ *  thresholds as the docker stats bars); without, an empty neutral track
+ *  keeps the chart-like structure while the allocatable/capacity facts stay
+ *  visible. */
+function ResourceRow({
   label,
+  filled,
   percent,
-  used,
-  total,
+  detail,
 }: {
   label: string;
+  filled: boolean;
   percent: number;
-  used: string;
-  total?: string;
+  detail: string;
 }) {
   const p = Math.max(0, Math.min(100, percent));
-  const detail = used ? (total ? `${used}/${total}` : used) : "";
+  const value = filled ? (detail ? `${percent}% · ${detail}` : `${percent}%`) : detail || "—";
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex items-baseline justify-between gap-1 text-[10px]">
@@ -828,20 +877,21 @@ function UsageBar({
         <span
           className={cn(
             "min-w-0 truncate font-mono tabular-nums",
-            p >= 90 && "text-destructive",
+            filled && p >= 90 && "text-destructive",
           )}
           title={detail}
         >
-          {percent}%{detail ? ` · ${detail}` : ""}
+          {value}
         </span>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
         <div
           className={cn(
             "h-full rounded-full transition-all",
+            !filled && "hidden",
             p >= 90 ? "bg-destructive" : p >= 70 ? "bg-amber-400" : "bg-primary",
           )}
-          style={{ width: `${p}%` }}
+          style={{ width: filled ? `${p}%` : "0%" }}
         />
       </div>
     </div>

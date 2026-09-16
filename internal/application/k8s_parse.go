@@ -84,6 +84,7 @@ type k8sNodeItem struct {
 			Address string `json:"address"`
 		} `json:"addresses"`
 		Allocatable map[string]string `json:"allocatable"`
+		Capacity    map[string]string `json:"capacity"`
 		NodeInfo struct {
 			KubeletVersion string `json:"kubeletVersion"`
 			OSImage        string `json:"osImage"`
@@ -111,6 +112,9 @@ func parseK8sNodes(out string) []domain.K8sNode {
 			Age:            humanizeAge(it.Metadata.CreationTimestamp),
 			AllocatableCPU: it.Status.Allocatable["cpu"],
 			AllocatableMem: it.Status.Allocatable["memory"],
+			CapacityCPU:    it.Status.Capacity["cpu"],
+			CapacityMem:    it.Status.Capacity["memory"],
+			PodCapacity:    it.Status.Allocatable["pods"],
 		}
 		var roles []string
 		for label := range it.Metadata.Labels {

@@ -24,8 +24,9 @@ func TestParseK8sVersion(t *testing.T) {
 
 const k8sNodesFixture = `{"items":[
  {"metadata":{"name":"cp-1","creationTimestamp":"2024-01-01T00:00:00Z","labels":{"node-role.kubernetes.io/control-plane":""}},
-  "status":{"conditions":[{"type":"MemoryPressure","status":"False"},{"type":"Ready","status":"True"}],
-   "allocatable":{"cpu":"4","memory":"15880Mi","pods":"110"},
+	"status":{"conditions":[{"type":"MemoryPressure","status":"False"},{"type":"Ready","status":"True"}],
+	   "allocatable":{"cpu":"4","memory":"15880Mi","pods":"110"},
+	   "capacity":{"cpu":"4","memory":"16384Mi","pods":"110"},
    "addresses":[{"type":"Hostname","address":"cp-1"},{"type":"InternalIP","address":"10.0.0.1"}],
    "nodeInfo":{"kubeletVersion":"v1.27.3","osImage":"Ubuntu 22.04"}}},
  {"metadata":{"name":"worker-1","creationTimestamp":"2024-02-01T00:00:00Z","labels":{}},
@@ -51,6 +52,9 @@ func TestParseK8sNodes(t *testing.T) {
 	}
 	if n.AllocatableCPU != "4" || n.AllocatableMem != "15880Mi" {
 		t.Fatalf("allocatable wrong: %+v", n)
+	}
+	if n.CapacityCPU != "4" || n.CapacityMem != "16384Mi" || n.PodCapacity != "110" {
+		t.Fatalf("capacity wrong: %+v", n)
 	}
 	if nodes[1].Status != "NotReady" || nodes[1].Roles != "" || nodes[1].AllocatableCPU != "8" {
 		t.Fatalf("worker-1 fields wrong: %+v", nodes[1])
