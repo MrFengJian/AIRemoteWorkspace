@@ -171,7 +171,11 @@ Docker 面板的 kubectl CLI 同构方案（SSH 会话走 exec 通道，本地�
 
 按 [DIAGNOSIS_AGENT.md](./DIAGNOSIS_AGENT.md) 交付，Phase A + B 已上线：
 
-- 故障定位知识库 —— 内置 9 个 SKILL.md 诊断场景包（CPU 高 / 磁盘满 / 内存 OOM / 服务异常 / 端口不通 / 容器重启循环 / 网络延迟 / 磁盘 IO 高 / SSH 登录慢），随二进制 `go:embed` 分发，启动时落入技能目录（不覆盖用户改动；删除内置包会被记住）
+- 故障定位知识库 —— 内置 14 个 SKILL.md 诊断场景包，随二进制 `go:embed` 分发，启动时落入技能目录（不覆盖用户改动；删除内置包会被记住）：
+  - 原创 9 个：CPU 高 / 磁盘满 / 内存 OOM / 服务异常 / 端口不通 / 容器重启循环 / 网络延迟 / 磁盘 IO 高 / SSH 登录慢
+  - SkillHub 社区技能改编 4 个（均为 MIT-0 许可，可自由再分发，文件尾部保留来源标注）：`docker-essentials`（@arnarsson）、`cron-scheduling`（@gitgoodordietrying）、`linux-service-triage`（@kowl64，references 分册已内联）、`mysql-triage`（@ivangdavila/mysql，仅保留单文件速查）
+  - 原创 K8s 排障 1 个：`k8s-pod-troubleshoot`（症状驱动决策树：CrashLoopBackOff / OOMKilled / Pending / ImagePullBackOff / Terminating 不退 / Service 不通五跳验证）
+- 专家默认绑定技能 —— 6 个内置专家各自通过 `SkillRefs` 默认绑定匹配的场景包（SRE 诊断 → 五大症状包；K8s 运维/开发 → k8s-pod-troubleshoot 等；Docker → docker-essentials + container-restart-loop；Linux → 服务排障 + 定时任务速查；DBA → mysql-triage）。升级安装时种子逻辑只对仍为旧默认签名（v0.9 前）的行补齐绑定，用户自选的技能不受影响；选型过程检索了 skillhub.cn 的同类专家与技能（专家包模型与本产品 专家+SkillRefs 同构），未采用无许可信息的社区技能
 - 确定性体检快照 —— `MonitorService.Snapshot` 聚合 CPU / 内存 / 磁盘 / Top 进程 / 监听端口 / journalctl·dmesg 近期错误，诊断会话首轮自动注入，不烧 LLM 的分诊上下文
 - 诊断模式 —— 独立系统提示词模板（快照优先、场景包决策树、证据优先，结论按 现象 / 根因 / 证据 / 建议 / 风险 输出）；Agent 面板一键诊断入口，症状输入自动带快照发起会话，权限策略零新机制
 - 沉淀闭环 —— 会话历史右键「保存为场景」，LLM 一次性提炼为 SKILL.md 草稿，预览编辑后写入技能目录，下次同类症状即被命中；场景库轻 UI（列表 / 新建 / 编辑 / 删除）

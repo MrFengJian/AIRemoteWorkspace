@@ -140,7 +140,8 @@
   - [x] `ExpertService`：启动种子内置专家（编辑不覆盖、删除仅 Dismissed，语义对齐内置 SKILL.md）+ CRUD + 校验（名称必填、策略归一化、内置标志防伪造）
 - [x] 内置专家（`application/experts_builtin.go`，随应用分发）
   - [x] SRE 诊断专家（AutoSnapshot，人设迁移自原诊断模板，保留 现象/根因/证据/建议/风险 结论格式）
-  - [x] K8s 运维专家 / K8s 应用开发者 / Docker 专家（绑定 container-restart-loop）/ Linux 系统专家 / 数据库运维专家
+  - [x] K8s 运维专家 / K8s 应用开发者 / Docker 专家 / Linux 系统专家 / 数据库运维专家
+  - [x] 默认绑定技能（SkillRefs）：检索 skillhub.cn 同类专家与技能选型——SRE→五大症状包；K8s 运维→k8s-pod-troubleshoot + service-down + port-unreachable；K8s 开发→k8s-pod-troubleshoot；Docker→docker-essentials + container-restart-loop；Linux→linux-service-triage + cron-scheduling + disk-full + login-slow；DBA→mysql-triage；升级安装对旧默认签名行补齐、用户自选不动
 - [x] Agent 运行时集成（`infrastructure/agent`）
   - [x] `Chat` 增加 expertID；`diagnosis` 开关重构为 `activeExperts` 会话级专家映射；`StartDiagnosis`/`SetDiagnosisMode`/`diagnosisPrompt` 删除（人设迁入内置专家）
   - [x] SystemPrompt 分层组装：专家层 + 环境层 + 工具契约（过滤）+ 权限契约（逐字保留、人设不可覆盖）+ 绑定技能 + 全局自定义指令

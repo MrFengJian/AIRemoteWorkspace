@@ -28,10 +28,14 @@ func NewExpertService(repo ExpertRepository) *ExpertService {
 
 // seedBuiltins inserts the builtin experts that have no row yet. Existing
 // rows win as soon as they exist — user-edited builtins are never
-// overwritten, and dismissed ones stay dismissed.
+// overwritten, and dismissed ones stay dismissed. The one exception is the
+// SkillRefs upgrade below: it tops up bindings on rows that still carry the
+// pre-skillhub default signature, so upgraded installs get the new default
+// skill packs without stepping on any user customization.
 func (s *ExpertService) seedBuiltins() {
 	for _, def := range builtinExperts() {
-		if _, err := s.repo.Get(def.ID); err == nil {
+		if existing, err := s.repo.Get(def.ID); err == nil {
+			s.upgradeBuiltinSkillRefs(def, existing)
 			continue // exists (possibly user-edited/dismissed) — never overwrite
 		}
 		if err := s.repo.Save(def); err != nil {
@@ -39,6 +43,49 @@ func (s *ExpertService) seedBuiltins() {
 			_ = err
 		}
 	}
+}
+
+// legacyBuiltinSkillRefs records the default SkillRefs as shipped before the
+// skillhub-sourced packs. A stored builtin row whose SkillRefs still equals
+// this signature was never customized by the user, so it is safe to refresh
+// to the current defaults. Any other value (including a deliberate removal)
+// is left untouched.
+var legacyBuiltinSkillRefs = map[string][]string{
+	domain.ExpertIDDiagnosticsSRE: {},
+	domain.ExpertIDK8sOps:         {},
+	domain.ExpertIDK8sDeveloper:   {},
+	domain.ExpertIDDocker:         {"container-restart-loop"},
+	domain.ExpertIDLinuxSys:       {},
+	domain.ExpertIDDatabase:       {},
+}
+
+// upgradeBuiltinSkillRefs refreshes an existing builtin row's SkillRefs to
+// the current defaults when the row still carries the legacy signature.
+func (s *ExpertService) upgradeBuiltinSkillRefs(def, existing domain.Expert) {
+	legacy, ok := legacyBuiltinSkillRefs[def.ID]
+	if !ok || len(def.SkillRefs) == 0 || !equalStringSlices(existing.SkillRefs, legacy) {
+		return
+	}
+	existing.SkillRefs = def.SkillRefs
+	_ = s.repo.Save(existing)
+}
+
+// equalStringSlices compares two string sets order-insensitively.
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	count := make(map[string]int, len(a))
+	for _, v := range a {
+		count[v]++
+	}
+	for _, v := range b {
+		if count[v] == 0 {
+			return false
+		}
+		count[v]--
+	}
+	return true
 }
 
 // List returns the visible roster: every expert except dismissed builtins.

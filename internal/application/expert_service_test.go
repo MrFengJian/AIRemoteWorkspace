@@ -161,3 +161,68 @@ func TestExpertServiceDeleteCustomHardDeletes(t *testing.T) {
 		t.Fatal("custom expert should be hard-deleted")
 	}
 }
+
+// Every builtin expert's SkillRefs must resolve to an embedded builtin pack —
+// the runtime silently skips missing names, so a typo here would disable the
+// binding without any visible error.
+func TestBuiltinExpertSkillRefsExist(t *testing.T) {
+	for _, e := range builtinExperts() {
+		for _, ref := range e.SkillRefs {
+			if !builtinNames[ref] {
+				t.Errorf("expert %s references missing builtin skill %q", e.ID, ref)
+			}
+		}
+	}
+}
+
+// Upgraded installs: a builtin row still carrying the pre-skillhub default
+// SkillRefs gets topped up to the new defaults on seed.
+func TestExpertServiceUpgradesLegacySkillRefs(t *testing.T) {
+	repo := newMemExpertRepo()
+	repo.items[domain.ExpertIDDocker] = domain.Expert{
+		ID: domain.ExpertIDDocker, Name: "Docker 专家", Builtin: true, Enabled: true,
+		SkillRefs: []string{"container-restart-loop"}, // legacy default signature
+	}
+	repo.items[domain.ExpertIDK8sOps] = domain.Expert{
+		ID: domain.ExpertIDK8sOps, Name: "K8s 运维专家", Builtin: true, Enabled: true,
+		// legacy empty default
+	}
+	NewExpertService(repo)
+
+	docker, err := repo.Get(domain.ExpertIDDocker)
+	if err != nil {
+		t.Fatalf("get docker: %v", err)
+	}
+	if !equalStringSlices(docker.SkillRefs, []string{"docker-essentials", "container-restart-loop"}) {
+		t.Fatalf("docker SkillRefs not upgraded: %v", docker.SkillRefs)
+	}
+	k8s, err := repo.Get(domain.ExpertIDK8sOps)
+	if err != nil {
+		t.Fatalf("get k8s: %v", err)
+	}
+	if len(k8s.SkillRefs) == 0 {
+		t.Fatal("k8s ops SkillRefs not upgraded")
+	}
+}
+
+// A user-customized SkillRefs list never matches the legacy signature and
+// must survive seeding untouched.
+func TestExpertServiceKeepsCustomSkillRefs(t *testing.T) {
+	repo := newMemExpertRepo()
+	repo.items[domain.ExpertIDDocker] = domain.Expert{
+		ID: domain.ExpertIDDocker, Name: "我的 Docker", Builtin: true, Enabled: true,
+		SkillRefs: []string{"my-own-skill"},
+	}
+	NewExpertService(repo)
+
+	e, err := repo.Get(domain.ExpertIDDocker)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if !equalStringSlices(e.SkillRefs, []string{"my-own-skill"}) {
+		t.Fatalf("custom SkillRefs were overwritten: %v", e.SkillRefs)
+	}
+	if e.Name != "我的 Docker" {
+		t.Fatalf("user edit was overwritten: %q", e.Name)
+	}
+}

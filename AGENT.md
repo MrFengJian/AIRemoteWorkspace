@@ -1051,6 +1051,10 @@ SystemPrompt 分层组装：专家层 + 环境层 + 工具契约 + 权限契约 
 诊断模式已统一为内置 SRE 诊断专家（AutoSnapshot：选中/切换/新对话后的首回合自动注入体检快照）
 新对话保留专家选择；退出人设是显式操作（徽章 X / 选择器）
 内置专家语义与内置 SKILL.md 一致：编辑不覆盖、删除仅 Dismissed、重新保存恢复
+内置专家默认绑定技能（SkillRefs）：选型来自 skillhub.cn 同类专家/技能检索；
+4 个改编包取自 MIT-0 许可技能（docker-essentials / cron-scheduling / linux-service-triage /
+mysql-triage，文件尾部有来源标注），k8s-pod-troubleshoot 为原创；升级安装仅对仍为
+旧默认签名（expert_service.go legacyBuiltinSkillRefs）的行补齐绑定，用户自选不动
 ```
 
 落点：
