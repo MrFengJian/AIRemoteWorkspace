@@ -23,10 +23,14 @@ type Expert struct {
 	Color string `json:"color"`
 	// Description is the one-line responsibility summary shown in pickers.
 	Description string `json:"description"`
-	// SystemPrompt is the persona core: identity, expertise, working method,
-	// output contract and boundaries. The runtime layers the fixed tool and
-	// permission contracts around it.
+	// SystemPrompt is the persona core (SOUL.md): identity, expertise,
+	// working method, output contract and boundaries. The runtime layers the
+	// fixed tool and permission contracts around it.
 	SystemPrompt string `json:"systemPrompt"`
+	// Heartbeat holds operational guidelines (HEARTBEAT.md): periodic
+	// patrol/inspection routines the expert should propose on a cadence —
+	// guidance only, never self-executed loops (the approval contract wins).
+	Heartbeat string `json:"heartbeat,omitempty"`
 	// AllowedTools scopes the toolset; empty = every default tool. Unknown
 	// names are ignored at build time.
 	AllowedTools []string `json:"allowedTools,omitempty"`
@@ -69,10 +73,13 @@ type Expert struct {
 
 // Builtin expert ids (stable across versions; rows are seeded on startup).
 const (
-	ExpertIDDiagnosticsSRE = "builtin-diagnosis-sre"
-	ExpertIDK8sOps         = "builtin-k8s-ops"
-	ExpertIDK8sDeveloper   = "builtin-k8s-dev"
-	ExpertIDDocker         = "builtin-docker"
-	ExpertIDLinuxSys       = "builtin-linux-sys"
-	ExpertIDDatabase       = "builtin-dba"
+	// ExpertIDGeneralAssistant is the default expert: the refactored
+	// "general assistant" persona, always first in the roster.
+	ExpertIDGeneralAssistant = "builtin-general-assistant"
+	ExpertIDDiagnosticsSRE   = "builtin-diagnosis-sre"
+	ExpertIDK8sOps           = "builtin-k8s-ops"
+	ExpertIDK8sDeveloper     = "builtin-k8s-dev"
+	ExpertIDDocker           = "builtin-docker"
+	ExpertIDLinuxSys         = "builtin-linux-sys"
+	ExpertIDDatabase         = "builtin-dba"
 )

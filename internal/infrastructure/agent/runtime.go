@@ -31,13 +31,15 @@ import (
 )
 
 // SkillSource loads agent skills (skill directories) — implemented by the
-// application layer's SkillService. May be nil: /skill resolution and the
-// model-facing skill tool are then disabled.
-type SkillSource interface {
-	ListSkills() ([]domain.Skill, error)
-	GetSkill(name string) (domain.Skill, error)
-	// ReadSkillFile reads one bundled file of a directory-form skill pack.
-	ReadSkillFile(name, path string) (string, error)
+// application layer's SkillService, or by an expert-scoped view of it. May be
+// nil: /skill resolution and the model-facing skill tool are then disabled.
+type SkillSource = domain.SkillStore
+
+// expertSkillScoper narrows a skill source to one expert's view (private
+// packs shadowing same-name public packs). Implemented by SkillService when
+// an experts root is wired.
+type expertSkillScoper interface {
+	SkillSourceFor(expertID string) (domain.SkillStore, bool)
 }
 
 // ExpertSource resolves digital-employee expert personas by id — implemented
@@ -248,19 +250,47 @@ func composeSnapshotMessage(user, snapshot string) string {
 // snapshotCharBudget bounds the injected snapshot (≈2k tokens).
 const snapshotCharBudget = 8 * 1024
 
-// resolveExpert returns the effective expert for this turn (nil = the general
-// assistant) and the model-facing user message. Recording the expert per
+// skillStoreFor returns the skill view for this turn: an expert-scoped store
+// (private packs shadow same-name public packs) when the expert has private
+// skills, the global store otherwise.
+func (r *Runtime) skillStoreFor(exp *domain.Expert) domain.SkillStore {
+	if r.skills == nil || exp == nil {
+		return r.skills
+	}
+	if scoper, ok := r.skills.(expertSkillScoper); ok {
+		if store, scoped := scoper.SkillSourceFor(exp.ID); scoped {
+			return store
+		}
+	}
+	return r.skills
+}
+
+// resolveExpert returns the effective expert for this turn (the general
+// assistant is the default expert — an empty or unknown id resolves to it
+// when wired) and the model-facing user message. Recording the expert per
 // session also detects persona switches: whenever the expert changes — or a
 // new conversation begins — the snapshot window reopens, so an AutoSnapshot
 // expert's next turn carries a fresh health snapshot (injected into the model
 // message; a failed collection degrades to a pre-turn notice, never an error).
 func (r *Runtime) resolveExpert(ctx context.Context, sessionID, expertID, modelUser string, events AgentEvents) (*domain.Expert, string) {
 	var exp *domain.Expert
-	if expertID != "" && r.experts != nil {
-		if e, err := r.experts.GetExpert(expertID); err == nil {
-			exp = &e
+	if r.experts != nil {
+		// The general assistant is a real (default) expert now: an empty id —
+		// and an unknown one — resolve to it, so its welcome card, suggested
+		// prompts and persona apply without an explicit selection.
+		lookup := expertID
+		if lookup == "" {
+			lookup = domain.ExpertIDGeneralAssistant
 		}
-		// Unknown expert id: degrade silently to the general assistant.
+		if e, err := r.experts.GetExpert(lookup); err == nil && e.Enabled && !e.Dismissed {
+			exp = &e
+		} else {
+			// Unknown/disabled id: degrade to the default expert when it is
+			// available, no persona otherwise.
+			if e, err := r.experts.GetExpert(domain.ExpertIDGeneralAssistant); err == nil && e.Enabled && !e.Dismissed {
+				exp = &e
+			}
+		}
 	}
 
 	r.mu.Lock()
@@ -340,11 +370,14 @@ func (r *Runtime) runChat(ctx context.Context, sessionID, providerID, model, exp
 			allowed[name] = true
 		}
 	}
+	// Expert-scoped skill view: the expert's private packs shadow same-name
+	// public packs for this session's skill tool and bound-skills listing.
+	skillStore := r.skillStoreFor(exp)
 	ts, err := tools.NewToolSet(tools.Deps{
 		SSH:              r.sshMgr,
 		SFTP:             r.sftp,
 		OutputLimitBytes: cfg.ToolOutputLimitKB * 1024,
-		Skills:           r.skills,
+		Skills:           skillStore,
 	}, credsResolver, r.gate, eventsObserver{events})
 	if err != nil {
 		return fmt.Errorf("build toolset: %w", err)
@@ -383,12 +416,13 @@ func (r *Runtime) runChat(ctx context.Context, sessionID, providerID, model, exp
 	// [system] + replayed history + this turn's user message. The message is
 	// resolved (/skill → instructions, @path → file content) for the model
 	// only — the raw text is what gets recorded into conversation memory.
+	// The /skill resolution uses the same expert-scoped store as the tool.
 	msgs := make([]*schema.Message, 0, 8)
 	msgs = append(msgs, schema.SystemMessage(r.systemPrompt(sessionID, exp, allowed)))
 	r.mu.Lock()
 	msgs = append(msgs, r.histories[sessionID]...)
 	r.mu.Unlock()
-	msgs = append(msgs, schema.UserMessage(r.resolveUserMessage(sessionID, modelUser)))
+	msgs = append(msgs, schema.UserMessage(r.resolveUserMessage(sessionID, modelUser, skillStore)))
 
 	reader, err := ag.Stream(chatCtx, msgs)
 	if err != nil {
@@ -533,9 +567,10 @@ var mentionRe = regexp.MustCompile(`@[^\s]+`)
 //     (local session).
 //
 // Unresolvable mentions are left untouched so the model sees what the user
-// typed. The recorded conversation history keeps the RAW message.
-func (r *Runtime) resolveUserMessage(sessionID, text string) string {
-	if r.skills != nil && strings.HasPrefix(text, "/") {
+// typed. The recorded conversation history keeps the RAW message. The skill
+// store is the turn's expert-scoped view (private packs shadow public ones).
+func (r *Runtime) resolveUserMessage(sessionID, text string, skills domain.SkillStore) string {
+	if skills != nil && strings.HasPrefix(text, "/") {
 		rest := strings.TrimLeft(text[1:], " \t")
 		name := rest
 		remainder := ""
@@ -544,7 +579,7 @@ func (r *Runtime) resolveUserMessage(sessionID, text string) string {
 			remainder = strings.TrimLeft(rest[i:], " \t")
 		}
 		if name != "" {
-			if sk, err := r.skills.GetSkill(name); err == nil {
+			if sk, err := skills.GetSkill(name); err == nil {
 				text = strings.TrimSpace(sk.Content) + "\n\n---\n\n" + strings.TrimSpace(remainder)
 			}
 			// Unknown skill: leave the message exactly as typed.
@@ -819,6 +854,12 @@ func (r *Runtime) expertPrompt(e *domain.Expert, sessionID string, isLocal bool,
 	if p := strings.TrimSpace(e.SystemPrompt); p != "" {
 		b.WriteString("\n\n# Persona & working method\n" + p)
 	}
+	if h := strings.TrimSpace(e.Heartbeat); h != "" {
+		b.WriteString("\n\n# Heartbeat — operational guidelines\n" + h +
+			"\n\n(Heartbeat routines are proposals for the user to adopt — never run periodic loops " +
+			"or recurring checks on your own initiative; every state-changing action still follows " +
+			"the approval contract below.)")
+	}
 
 	b.WriteString("\n\n# Environment\n")
 	if isLocal {
@@ -840,10 +881,10 @@ func (r *Runtime) expertPrompt(e *domain.Expert, sessionID string, isLocal bool,
 		b.WriteString(permissionRemoteText)
 	}
 
-	if r.skills != nil && len(e.SkillRefs) > 0 {
+	if store := r.skillStoreFor(e); store != nil && len(e.SkillRefs) > 0 {
 		var lines []string
 		for _, name := range e.SkillRefs {
-			if sk, err := r.skills.GetSkill(name); err == nil {
+			if sk, err := store.GetSkill(name); err == nil {
 				lines = append(lines, fmt.Sprintf("- %s: %s", sk.Name, sk.Description))
 			}
 		}

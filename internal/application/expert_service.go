@@ -3,6 +3,7 @@ package application
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/ai-remote/workspace/internal/domain"
@@ -10,38 +11,56 @@ import (
 
 // ExpertService manages the digital-employee roster (运维专家/数字员工):
 // builtin experts seeded from the binary plus user-defined ones, with CRUD,
-// enable/disable and the builtin-dismissal lifecycle. It also feeds the agent
-// runtime as its ExpertSource (GetExpert).
+// enable/disable and the builtin-dismissal lifecycle. It also feeds the
+// agent runtime as its ExpertSource (GetExpert).
+//
+// Since the directory layout refactor each expert also materializes as a
+// directory under dir (manifest.json + SOUL.md + HEARTBEAT.md + optional
+// private skills/) — see expert_files.go. The DB row stays the roster
+// source of truth; the files are its portable mirror and are overlaid on
+// GetExpert so hand edits take effect without a UI round-trip.
 type ExpertService struct {
 	repo ExpertRepository
+	dir  string
 }
 
-// NewExpertService wires the service over the expert repository and seeds
-// every builtin expert that is missing. Seeding failures on individual
-// experts are ignored — a partially seeded roster beats a broken startup,
-// and the next start retries the missing ones.
-func NewExpertService(repo ExpertRepository) *ExpertService {
-	svc := &ExpertService{repo: repo}
+// NewExpertService wires the service over the expert repository and the
+// experts root directory, seeding every builtin expert that is missing.
+// Seeding failures on individual experts are ignored — a partially seeded
+// roster beats a broken startup, and the next start retries.
+func NewExpertService(repo ExpertRepository, dir string) *ExpertService {
+	svc := &ExpertService{repo: repo, dir: dir}
+	_ = os.MkdirAll(dir, 0o755)
 	svc.seedBuiltins()
 	return svc
 }
 
-// seedBuiltins inserts the builtin experts that have no row yet. Existing
-// rows win as soon as they exist — user-edited builtins are never
-// overwritten, and dismissed ones stay dismissed. The one exception is the
+// SetDir repoints the experts root (data-dir migration) and reseeds.
+func (s *ExpertService) SetDir(dir string) {
+	s.dir = dir
+	_ = os.MkdirAll(dir, 0o755)
+	s.seedBuiltins()
+}
+
+// seedBuiltins inserts the builtin experts that have no row yet and
+// materializes their directories. Existing rows win as soon as they exist —
+// user-edited builtins are never overwritten, and dismissed ones stay
+// dismissed — but their directory files are filled in from the row when
+// missing, so the layout materializes losslessly. The one exception is the
 // SkillRefs upgrade below: it tops up bindings on rows that still carry the
-// pre-skillhub default signature, so upgraded installs get the new default
-// skill packs without stepping on any user customization.
+// pre-skillhub default signature.
 func (s *ExpertService) seedBuiltins() {
 	for _, def := range builtinExperts() {
-		if existing, err := s.repo.Get(def.ID); err == nil {
-			s.upgradeBuiltinSkillRefs(def, existing)
-			continue // exists (possibly user-edited/dismissed) — never overwrite
+		existing, err := s.repo.Get(def.ID)
+		if err != nil {
+			s.seedEmbeddedExpertFiles(def.ID)
+			if err := s.repo.Save(def); err != nil {
+				continue // best-effort; retried on next startup
+			}
+			continue
 		}
-		if err := s.repo.Save(def); err != nil {
-			// Best-effort; retried on next startup.
-			_ = err
-		}
+		s.upgradeBuiltinSkillRefs(def, existing)
+		s.fillExpertFilesFromRow(existing)
 	}
 }
 
@@ -105,19 +124,27 @@ func (s *ExpertService) ListExperts() ([]domain.Expert, error) {
 }
 
 // GetExpert returns one expert by id, including disabled ones (a session may
-// still reference an expert that was disabled after being selected).
+// still reference an expert that was disabled after being selected). The
+// directory persona files (SOUL.md / HEARTBEAT.md) overlay the row, so
+// hand edits take effect without a UI round-trip.
 // Implements the agent runtime's ExpertSource.
 func (s *ExpertService) GetExpert(id string) (domain.Expert, error) {
 	if strings.TrimSpace(id) == "" {
 		return domain.Expert{}, errors.New("empty expert id")
 	}
-	return s.repo.Get(id)
+	e, err := s.repo.Get(id)
+	if err != nil {
+		return domain.Expert{}, err
+	}
+	s.loadExpertFiles(&e)
+	return e, nil
 }
 
 // SaveExpert creates or updates an expert. Custom experts get a generated id
 // on create; builtin experts are updated in place (the stored Builtin flag is
 // authoritative — a client cannot forge it). Name is required; unknown
-// policy values normalize to "" (follow the session's policy).
+// policy values normalize to "" (follow the session's policy). The saved
+// row is mirrored back to its directory files (write-through).
 func (s *ExpertService) SaveExpert(e domain.Expert) (domain.Expert, error) {
 	e.Name = strings.TrimSpace(e.Name)
 	if e.Name == "" {
@@ -125,6 +152,8 @@ func (s *ExpertService) SaveExpert(e domain.Expert) (domain.Expert, error) {
 	}
 	e.Role = strings.TrimSpace(e.Role)
 	e.Description = strings.TrimSpace(e.Description)
+	e.SystemPrompt = strings.TrimSpace(e.SystemPrompt)
+	e.Heartbeat = strings.TrimSpace(e.Heartbeat)
 	e.Policy = normalizeExpertPolicy(e.Policy)
 	e.SkillRefs = cleanList(e.SkillRefs)
 	e.AllowedTools = cleanList(e.AllowedTools)
@@ -154,19 +183,27 @@ func (s *ExpertService) SaveExpert(e domain.Expert) (domain.Expert, error) {
 	if err := s.repo.Save(e); err != nil {
 		return domain.Expert{}, fmt.Errorf("save expert: %w", err)
 	}
+	// Write-through the persona files; the DB row stays authoritative, so a
+	// mirror failure only costs portability, not correctness.
+	_ = s.mirrorExpertToFiles(e)
 	return e, nil
 }
 
 // DeleteExpert removes an expert. Builtins are only dismissed (their row
 // stays, hidden and never re-seeded) so the persona can be restored by
-// saving it again; custom experts are deleted outright.
+// saving it again; custom experts are deleted outright along with their
+// directory.
 func (s *ExpertService) DeleteExpert(id string) error {
 	e, err := s.repo.Get(id)
 	if err != nil {
 		return err
 	}
 	if !e.Builtin {
-		return s.repo.Delete(id)
+		if err := s.repo.Delete(id); err != nil {
+			return err
+		}
+		_ = os.RemoveAll(s.ExpertDir(id))
+		return nil
 	}
 	e.Dismissed = true
 	e.Enabled = false

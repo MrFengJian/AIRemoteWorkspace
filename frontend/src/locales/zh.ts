@@ -612,6 +612,9 @@ export const zh = {
       avatar: "头像",
       sectionPersona: "人设指令",
       promptPlaceholder: "描述这位专家的身份、专长、工作方法、输出规范与边界……",
+      heartbeat: "值守指引（HEARTBEAT.md）",
+      heartbeatPlaceholder: "周期巡检清单、例行复查节奏、升级人工的条件…（可选）",
+      heartbeatHint: "运维值守与周期性任务指引；运行时会注入为独立 Heartbeat 段落，并强制标注：例行建议须由用户采纳，禁止自行循环执行。",
       promptHint:
         "只写人设与工作方法即可：工具清单、当前主机与审批规则由系统自动附加，且不可被人设覆盖（安全边界）。",
       sectionCapabilities: "能力配置",

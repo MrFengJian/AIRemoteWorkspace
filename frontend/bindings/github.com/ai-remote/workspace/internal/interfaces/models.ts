@@ -187,6 +187,7 @@ export class ExpertDTO {
     "color": string;
     "description": string;
     "systemPrompt": string;
+    "heartbeat": string;
     "allowedTools": string[];
     "skillRefs": string[];
     "providerId": string;
@@ -223,6 +224,9 @@ export class ExpertDTO {
         }
         if (!("systemPrompt" in $$source)) {
             this["systemPrompt"] = "";
+        }
+        if (!("heartbeat" in $$source)) {
+            this["heartbeat"] = "";
         }
         if (!("allowedTools" in $$source)) {
             this["allowedTools"] = [];
@@ -271,18 +275,18 @@ export class ExpertDTO {
      * Creates a new ExpertDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): ExpertDTO {
-        const $$createField7_0 = $$createType0;
         const $$createField8_0 = $$createType0;
-        const $$createField15_0 = $$createType0;
+        const $$createField9_0 = $$createType0;
+        const $$createField16_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("allowedTools" in $$parsedSource) {
-            $$parsedSource["allowedTools"] = $$createField7_0($$parsedSource["allowedTools"]);
+            $$parsedSource["allowedTools"] = $$createField8_0($$parsedSource["allowedTools"]);
         }
         if ("skillRefs" in $$parsedSource) {
-            $$parsedSource["skillRefs"] = $$createField8_0($$parsedSource["skillRefs"]);
+            $$parsedSource["skillRefs"] = $$createField9_0($$parsedSource["skillRefs"]);
         }
         if ("suggestedPrompts" in $$parsedSource) {
-            $$parsedSource["suggestedPrompts"] = $$createField15_0($$parsedSource["suggestedPrompts"]);
+            $$parsedSource["suggestedPrompts"] = $$createField16_0($$parsedSource["suggestedPrompts"]);
         }
         return new ExpertDTO($$parsedSource as Partial<ExpertDTO>);
     }

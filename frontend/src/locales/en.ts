@@ -620,6 +620,9 @@ export const en = {
       avatar: "Avatar",
       sectionPersona: "Persona Prompt",
       promptPlaceholder: "Describe this expert's identity, expertise, working method, output contract and boundaries…",
+      heartbeat: "Heartbeat (HEARTBEAT.md)",
+      heartbeatPlaceholder: "Periodic patrol checklists, review cadence, escalation criteria… (optional)",
+      heartbeatHint: "Operational guidelines for recurring work; injected as a dedicated Heartbeat section with a hard note: routines are proposals for the user — never self-executed loops.",
       promptHint:
         "Only the persona and method: the tool list, current host and approval rules are appended by the system and cannot be overridden by the persona (safety boundary).",
       sectionCapabilities: "Capabilities",

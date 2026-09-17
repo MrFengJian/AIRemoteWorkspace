@@ -20,6 +20,7 @@ type ExpertDTO struct {
 	Color            string   `json:"color"`
 	Description      string   `json:"description"`
 	SystemPrompt     string   `json:"systemPrompt"`
+	Heartbeat        string   `json:"heartbeat"`
 	AllowedTools     []string `json:"allowedTools"`
 	SkillRefs        []string `json:"skillRefs"`
 	ProviderID       string   `json:"providerId"`
@@ -44,6 +45,7 @@ func expertToDTO(e domain.Expert) ExpertDTO {
 		Color:            e.Color,
 		Description:      e.Description,
 		SystemPrompt:     e.SystemPrompt,
+		Heartbeat:        e.Heartbeat,
 		AllowedTools:     orEmpty(e.AllowedTools),
 		SkillRefs:        orEmpty(e.SkillRefs),
 		ProviderID:       e.ProviderID,
@@ -128,6 +130,7 @@ func (s *ExpertService) SaveExpert(e ExpertDTO) (ExpertDTO, error) {
 		Color:            e.Color,
 		Description:      e.Description,
 		SystemPrompt:     e.SystemPrompt,
+		Heartbeat:        e.Heartbeat,
 		AllowedTools:     e.AllowedTools,
 		SkillRefs:        e.SkillRefs,
 		ProviderID:       e.ProviderID,

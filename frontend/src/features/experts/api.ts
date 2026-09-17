@@ -9,6 +9,9 @@ import {
 
 export type { ExpertDTO, ExpertExportResultDTO };
 
+/** The default expert (通用助手) — an empty expert id resolves to it. */
+export const GENERAL_ASSISTANT_ID = "builtin-general-assistant";
+
 export const expertsApi = {
   /** Visible roster (dismissed builtins hidden), sorted by SortOrder. */
   list: () => ExpertService.ListExperts().then((r) => r ?? []),

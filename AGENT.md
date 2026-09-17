@@ -1064,7 +1064,7 @@ TunnelManager.Ensure（按规则 reconcile：同配置去重、变更替换、�
 关键规则：
 
 ```
-SystemPrompt 分层组装：专家层 + 环境层 + 工具契约 + 权限契约 + 技能层 + 全局指令
+SystemPrompt 分层组装：专家层（SOUL + HEARTBEAT）+ 环境层 + 工具契约 + 权限契约 + 技能层 + 全局指令
 权限契约逐字固定（runtime.go），任何人设不能提权 —— 安全不变量
 诊断模式已统一为内置 SRE 诊断专家（AutoSnapshot：选中/切换/新对话后的首回合自动注入体检快照）
 新对话保留专家选择；退出人设是显式操作（徽章 X / 选择器）
@@ -1073,21 +1073,36 @@ SystemPrompt 分层组装：专家层 + 环境层 + 工具契约 + 权限契约 
 4 个改编包取自 MIT-0 许可技能（docker-essentials / cron-scheduling / linux-service-triage /
 mysql-triage，文件尾部有来源标注），k8s-pod-troubleshoot 为原创；升级安装仅对仍为
 旧默认签名（expert_service.go legacyBuiltinSkillRefs）的行补齐绑定，用户自选不动
+
+专家目录化（业界 Agent 布局）：每位专家落盘为 <数据目录>/experts/<id>/ 目录
+  manifest.json   身份卡（id/label/描述/图标/配色 + 模型/策略/温度/开场白/推荐问题/绑定）
+  SOUL.md         人设核心（读取兼容 IDENTITY.md）；HEARTBEAT.md  运维值守/周期任务指引（可选）
+  skills/         专家私有技能包：不进公共技能列表；与公共技能重名时专家会话内私有版优先（遮蔽）
+DB 行仍是花名册权威；文件为便携镜像：读取时 SOUL/HEARTBEAT 覆盖行字段（手改即时生效），
+保存时写回（write-through）；种子对已存在行仅补缺文件（行优先），对缺失行用内嵌目录创建
+通用助手（builtin-general-assistant）= 默认专家：空/未知 expertID 一律解析到它（含开场白/推荐问题）
+专家 zip 包导出/导入即该目录（manifest + SOUL + HEARTBEAT + skills/）；导入生成新自定义专家
+（builtin 不随包迁移），包内技能装入该专家私有 skills/；防 zip-slip + 体积护栏；无 v1 兼容
 ```
 
 落点：
 
 ```
-domain/expert.go                     Expert 模型 + 内置 ID 常量
-application/experts_builtin.go       6 个内置专家人设（SRE/K8s运维/K8s开发/Docker/Linux/DBA）
-application/expert_service.go        种子 + CRUD（GetExpert 兼作 runtime ExpertSource）
-application/expert_transfer.go       专家 zip 包导出/导入（信封 + 技能包 + zip-slip 防护）
-infrastructure/sqlite/expert_repo.go experts 表
-infrastructure/agent/runtime.go      activeExperts 映射、resolveExpert、expertPrompt、工具过滤
-infrastructure/agent/tools           BuildForSession(sessionID, allowed) + skill 工具 path 读附件
+domain/expert.go                     Expert 模型（含 Heartbeat）+ 内置 ID 常量（含默认专家）
+domain/skill.go                      SkillStore 接口（全局与专家作用域存储共用契约）
+internal/application/experts/        内嵌专家目录树（7 专家 manifest+SOUL+HEARTBEAT）
+application/experts_builtin.go       内嵌专家树加载器（builtinExperts 源）
+application/expert_files.go          manifest 模型 + 目录种子/读取覆盖/写回（SOUL/HEARTBEAT/manifest）
+application/expert_service.go        种子 + CRUD + GetExpert 文件覆盖（GetExpert 兼作 runtime ExpertSource）
+application/skill_scoped.go          专家作用域技能存储（私有遮蔽公共，SkillSourceFor）
+application/expert_transfer.go       专家 zip 包导出/导入（manifest 目录格式，zip-slip 防护）
+infrastructure/sqlite/expert_repo.go experts 表（含 heartbeat 列）
+infrastructure/agent/runtime.go      activeExperts、resolveExpert（默认专家）、expertPrompt、工具过滤
+infrastructure/agent/tools           BuildForSession + skill 工具（作用域存储 + path 读附件）
 interfaces/expert_service.go         Wails ExpertService（含 ExportExpert/ImportExpert）
 frontend features/experts/           api / hooks / 头像组件
 frontend settings ExpertsSection     设置 → 数字员工 管理界面（导入/导出按钮）
+frontend settings ExpertFormDialog   专家编辑（含 HEARTBEAT 文本域）
 ```
 
 ---

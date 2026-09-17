@@ -21,3 +21,14 @@ type Skill struct {
 	// re-seeded when missing unless the user deleted them (dismissed).
 	Builtin bool `json:"builtin,omitempty"`
 }
+
+// SkillStore loads agent skills — the contract shared by the global skills
+// root (SkillService) and expert-scoped views of it (an expert's private
+// skills/ directory shadowing same-name public packs). Implemented by
+// application.SkillService and application.scopedSkillStore.
+type SkillStore interface {
+	ListSkills() ([]Skill, error)
+	GetSkill(name string) (Skill, error)
+	// ReadSkillFile reads one bundled file of a directory-form skill pack.
+	ReadSkillFile(name, path string) (string, error)
+}

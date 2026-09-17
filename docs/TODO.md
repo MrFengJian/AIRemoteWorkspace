@@ -152,6 +152,17 @@
   - [x] 导入：新建自定义专家（builtin 不迁移、新 ID、强制启用），同名技能包替换；缺失 expert.json / 版本不符报错
   - [x] 安全：zip-slip 防护（`..`/绝对路径/反斜杠/盘符/非常规文件全拒绝）+ 体积护栏（包 64MiB/条目 500/单文件 8MiB/解压总量 64MiB）；往返/zip-slip/缺信封/同名替换 单测
   - [x] 前端：设置 → 数字员工 增加 导入/导出 按钮（Dialogs 选路径 + 确认弹窗 + toast）；场景库附件数徽标；i18n 双语
+- [x] 专家目录化（业界 Agent 布局，`expert_files.go` + 内嵌 `experts/` 树）
+  - [x] 目录布局：manifest.json（身份卡）+ SOUL.md（人设，读取兼容 IDENTITY.md）+ HEARTBEAT.md（值守指引，可选）+ skills/（私有技能包）
+  - [x] 内嵌 7 个专家目录随二进制分发；种子按文件粒度（已存在行仅补缺文件且行优先，缺失行用内嵌目录创建）
+  - [x] 读取覆盖：GetExpert 时 SOUL/HEARTBEAT 覆盖行字段（手改即时生效）；保存写回（write-through），Heartbeat 清空时移除文件
+  - [x] HEARTBEAT 注入为独立提示词段落 + 硬性标注（例行建议须用户采纳，禁止自行循环执行）
+- [x] 专家私有技能遮蔽（`skill_scoped.go`）
+  - [x] `SkillSourceFor(expertID)`：私有包存在时返回作用域存储（GetSkill/ReadSkillFile/`/技能` 输入/绑定清单均私有优先）
+  - [x] 私有包不进公共技能列表；无私有包的专家保持全局视图；`domain.SkillStore` 统一全局与作用域契约
+- [x] 默认专家「通用助手」（builtin-general-assistant）
+  - [x] SortOrder 最前 + 欢迎词/推荐问题；运行时空/未知/停用 expertID 解析到它；前端选择器与开场卡同步；GA 徽章不再显示退出按钮
+- [x] 专家包格式 v2：manifest.json + SOUL.md + HEARTBEAT.md + skills/（导入新建自定义专家、技能装入私有目录；无 v1 兼容）；往返/遮蔽/缺 manifest/同名替换/zip-slip 单测
 - [x] Agent 运行时集成（`infrastructure/agent`）
   - [x] `Chat` 增加 expertID；`diagnosis` 开关重构为 `activeExperts` 会话级专家映射；`StartDiagnosis`/`SetDiagnosisMode`/`diagnosisPrompt` 删除（人设迁入内置专家）
   - [x] SystemPrompt 分层组装：专家层 + 环境层 + 工具契约（过滤）+ 权限契约（逐字保留、人设不可覆盖）+ 绑定技能 + 全局自定义指令

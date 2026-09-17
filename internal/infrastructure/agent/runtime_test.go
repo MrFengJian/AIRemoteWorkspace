@@ -114,30 +114,30 @@ func TestResolveUserMessage(t *testing.T) {
 	r := &Runtime{skills: fakeSkills{}}
 
 	// Leading /name injects the skill body inline (eino inline mode).
-	got := r.resolveUserMessage("sess-1", "/deploy rollout the api")
+	got := r.resolveUserMessage("sess-1", "/deploy rollout the api", fakeSkills{})
 	if !strings.HasPrefix(got, "DEPLOY STEPS") || !strings.HasSuffix(got, "rollout the api") {
 		t.Fatalf("skill injection failed: %q", got)
 	}
 
 	// Unknown skill: text passes through untouched.
-	if got := r.resolveUserMessage("sess-1", "/nope do things"); got != "/nope do things" {
+	if got := r.resolveUserMessage("sess-1", "/nope do things", fakeSkills{}); got != "/nope do things" {
 		t.Fatalf("unknown skill mutated: %q", got)
 	}
 
 	// @path on a local session loads the file content into a <file> block.
-	got = r.resolveUserMessage("local-1", "check @"+filepath.ToSlash(notes)+" please")
+	got = r.resolveUserMessage("local-1", "check @"+filepath.ToSlash(notes)+" please", nil)
 	if !strings.Contains(got, "hello-notes") || !strings.Contains(got, `<file path=`) {
 		t.Fatalf("file mention failed: %q", got)
 	}
 
 	// Unknown path: token stays visible to the model.
-	if got := r.resolveUserMessage("local-1", "check @/no/such/file.log"); !strings.Contains(got, "@/no/such/file.log") {
+	if got := r.resolveUserMessage("local-1", "check @/no/such/file.log", nil); !strings.Contains(got, "@/no/such/file.log") {
 		t.Fatalf("unknown path mutated: %q", got)
 	}
 
 	// No skills source: /mention is plain text.
 	raw := &Runtime{}
-	if got := raw.resolveUserMessage("sess-1", "/deploy x"); got != "/deploy x" {
+	if got := raw.resolveUserMessage("sess-1", "/deploy x", nil); got != "/deploy x" {
 		t.Fatalf("nil skills mutated message: %q", got)
 	}
 }
@@ -172,6 +172,8 @@ func (fakeExperts) GetExpert(id string) (domain.Expert, error) {
 			SystemPrompt: "You are an AI site-reliability diagnostician. 现象 / Phenomenon is part of the output contract.",
 			AutoSnapshot: true,
 			SkillRefs:    []string{"cpu-high"},
+			Enabled:      true,
+			Builtin:      true,
 		}, nil
 	}
 	if id == "builtin-k8s-ops" {
@@ -180,9 +182,45 @@ func (fakeExperts) GetExpert(id string) (domain.Expert, error) {
 			Name:         "K8s 运维专家",
 			SystemPrompt: "KUBERNETES OPERATOR PERSONA",
 			AllowedTools: []string{"ssh_exec", "skill"},
+			Enabled:      true,
+			Builtin:      true,
+		}, nil
+	}
+	if id == domain.ExpertIDGeneralAssistant {
+		return domain.Expert{
+			ID:               id,
+			Name:             "通用助手",
+			SystemPrompt:     "GENERAL ASSISTANT PERSONA",
+			Heartbeat:        "ROUTINE GUIDANCE",
+			OpeningMessage:   "welcome",
+			SuggestedPrompts: []string{"hi"},
+			Enabled:          true,
+			Builtin:          true,
 		}, nil
 	}
 	return domain.Expert{}, fmt.Errorf("expert %q not found", id)
+}
+
+// An empty (or unknown) expert id resolves to the general assistant — the
+// default expert — and its heartbeat guidance joins the persona prompt.
+func TestResolveExpertDefaultsToGeneralAssistant(t *testing.T) {
+	r := &Runtime{experts: fakeExperts{}, activeExperts: map[string]string{}, snapshotDone: map[string]bool{}}
+	exp, _ := r.resolveExpert(context.Background(), "s1", "", "hello", nil)
+	if exp == nil || exp.ID != domain.ExpertIDGeneralAssistant {
+		t.Fatalf("empty expert id must resolve to the general assistant, got %+v", exp)
+	}
+	// Unknown ids degrade to the default expert as well.
+	exp, _ = r.resolveExpert(context.Background(), "s2", "builtin-nope", "hello", nil)
+	if exp == nil || exp.ID != domain.ExpertIDGeneralAssistant {
+		t.Fatalf("unknown expert id must resolve to the general assistant, got %+v", exp)
+	}
+	// The heartbeat guidance is part of the composed persona prompt.
+	prompt := r.expertPrompt(exp, "s2", false, nil)
+	if !strings.Contains(prompt, "GENERAL ASSISTANT PERSONA") ||
+		!strings.Contains(prompt, "ROUTINE GUIDANCE") ||
+		!strings.Contains(prompt, "Heartbeat") {
+		t.Fatalf("prompt missing persona or heartbeat sections:\n%s", prompt)
+	}
 }
 
 func TestComposeSnapshotMessage(t *testing.T) {
@@ -286,10 +324,11 @@ func TestExpertSnapshotWindow(t *testing.T) {
 		t.Fatalf("new conversation must re-inject: %q", msg)
 	}
 
-	// Unknown expert ids degrade to the general assistant.
+	// Unknown expert ids degrade to the default expert (the general
+	// assistant) — no persona switch to a snapshot-injecting expert.
 	exp, msg := r.resolveExpert(ctx, "s2", "no-such-expert", "hello", nil)
-	if exp != nil || strings.Contains(msg, "<health-snapshot>") {
-		t.Fatalf("unknown expert must degrade silently: %v %q", exp, msg)
+	if exp == nil || exp.ID != domain.ExpertIDGeneralAssistant || strings.Contains(msg, "<health-snapshot>") {
+		t.Fatalf("unknown expert must degrade to the general assistant: %v %q", exp, msg)
 	}
 }
 

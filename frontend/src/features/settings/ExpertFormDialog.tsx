@@ -45,6 +45,7 @@ function blankExpert(): ExpertDTO {
     color: "blue",
     description: "",
     systemPrompt: "",
+    heartbeat: "",
     allowedTools: [],
     skillRefs: [],
     providerId: "",
@@ -225,6 +226,20 @@ export function ExpertFormDialog({ open, expert, onClose, onSaved }: ExpertFormD
             />
             <p className="text-[11px] leading-relaxed text-muted-foreground">
               {t("settings.experts.promptHint")}
+            </p>
+            <Label htmlFor="expert-heartbeat" className="text-xs">
+              {t("settings.experts.heartbeat")}
+            </Label>
+            <textarea
+              id="expert-heartbeat"
+              rows={4}
+              value={form.heartbeat ?? ""}
+              onChange={(e) => patch({ heartbeat: e.target.value })}
+              placeholder={t("settings.experts.heartbeatPlaceholder")}
+              className="w-full resize-y rounded-[var(--radius)] border border-input bg-background px-3 py-2 font-mono text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              {t("settings.experts.heartbeatHint")}
             </p>
           </section>
 

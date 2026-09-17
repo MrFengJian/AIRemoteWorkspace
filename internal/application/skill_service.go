@@ -41,6 +41,10 @@ const skillFileMaxBytes = 2 << 20 // 2 MiB
 // scenario-manager UI (list / read / write / delete).
 type SkillService struct {
 	dir string
+	// expertsRoot (optional) enables expert-scoped skill views: private
+	// packs under <expertsRoot>/<expertID>/skills/ shadow same-name public
+	// packs for that expert's sessions. Wired from main.go.
+	expertsRoot string
 }
 
 // NewSkillService builds a SkillService rooted at dir, creating the directory,
@@ -66,6 +70,10 @@ func NewSkillService(dir string) *SkillService {
 // created and builtin packs are seeded if missing; an existing install's
 // files are never overwritten. The migration copies the old skills root, so
 // seeding is a no-op there in practice.
+// SetExpertsRoot wires the experts root (data-dir aware) so expert-scoped
+// skill views can resolve private packs.
+func (s *SkillService) SetExpertsRoot(dir string) { s.expertsRoot = dir }
+
 func (s *SkillService) SetDir(dir string) {
 	s.dir = dir
 	if err := os.MkdirAll(dir, 0o755); err == nil {
@@ -157,7 +165,13 @@ var builtinNames = func() map[string]bool {
 
 // ListSkills returns every skill's metadata (frontmatter; body not loaded).
 func (s *SkillService) ListSkills() ([]domain.Skill, error) {
-	entries, err := os.ReadDir(s.dir)
+	return listFromRoot(s.dir)
+}
+
+// listFromRoot lists the skill packs under one root directory (the global
+// skills root, or an expert's private skills/ directory).
+func listFromRoot(root string) ([]domain.Skill, error) {
+	entries, err := os.ReadDir(root)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return []domain.Skill{}, nil
@@ -169,7 +183,7 @@ func (s *SkillService) ListSkills() ([]domain.Skill, error) {
 		if !e.IsDir() || !skillNameRe.MatchString(e.Name()) {
 			continue
 		}
-		sk, err := parseSkillMD(filepath.Join(s.dir, e.Name(), "SKILL.md"), e.Name())
+		sk, err := parseSkillMD(filepath.Join(root, e.Name(), "SKILL.md"), e.Name())
 		if err != nil {
 			continue // unreadable/broken skill — skip, never break listing
 		}
@@ -182,16 +196,21 @@ func (s *SkillService) ListSkills() ([]domain.Skill, error) {
 
 // GetSkill returns one skill with its full markdown body.
 func (s *SkillService) GetSkill(name string) (domain.Skill, error) {
+	return getFromRoot(s.dir, name)
+}
+
+// getFromRoot loads one skill (frontmatter + body + bundled files) from a
+// root directory.
+func getFromRoot(root, name string) (domain.Skill, error) {
 	if !skillNameRe.MatchString(name) {
 		return domain.Skill{}, fmt.Errorf("invalid skill name %q", name)
 	}
-	sk, err := parseSkillMD(filepath.Join(s.dir, name, "SKILL.md"), name)
+	sk, err := parseSkillMD(filepath.Join(root, name, "SKILL.md"), name)
 	if err != nil {
 		return domain.Skill{}, fmt.Errorf("skill %q: %w", name, err)
 	}
-	sk = withFiles(sk)
 	sk.Builtin = builtinNames[name]
-	return sk, nil
+	return withFiles(sk), nil
 }
 
 // SaveSkill writes (creating or overwriting) the skill's SKILL.md. Content is
@@ -318,9 +337,15 @@ func safeSkillRelPath(p string) (string, error) {
 const skillPackMaxBytes = 32 << 20 // 32 MiB
 
 // SkillFileBytes reads one bundled file of a skill pack (path relative to the
-// skill directory, slash-separated). Used by the agent's skill tool (via
-// ReadSkillFile) and the expert export path.
+// skill directory, slash-separated) from the global skills root. Used by the
+// agent's skill tool (via ReadSkillFile) and the expert export path.
 func (s *SkillService) SkillFileBytes(name, path string) ([]byte, error) {
+	return fileFromRoot(s.dir, name, path)
+}
+
+// fileFromRoot is SkillFileBytes against an arbitrary root (package-level so
+// the expert-scoped store can reuse it for private packs).
+func fileFromRoot(root, name, path string) ([]byte, error) {
 	if !skillNameRe.MatchString(name) {
 		return nil, fmt.Errorf("invalid skill name %q", name)
 	}
@@ -328,7 +353,7 @@ func (s *SkillService) SkillFileBytes(name, path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	skillDir := filepath.Join(s.dir, name)
+	skillDir := filepath.Join(root, name)
 	target := filepath.Join(skillDir, filepath.FromSlash(rel))
 	// Containment double-check after cleaning (defence in depth — the
 	// validator above already rejects dot-dot segments).
@@ -381,6 +406,20 @@ func (s *SkillService) ReadSkillFile(name, path string) (string, error) {
 // half-overwritten pack would be worse than a replaced one. Re-saving a
 // dismissed builtin clears its dismissal (same as SaveSkill).
 func (s *SkillService) ImportSkillFiles(name string, files map[string][]byte) error {
+	if err := importSkillFilesAt(s.dir, name, files); err != nil {
+		return err
+	}
+	if set := readDismissed(s.dir); set[name] {
+		delete(set, name)
+		writeDismissed(s.dir, set)
+	}
+	return nil
+}
+
+// importSkillFilesAt is ImportSkillFiles against an arbitrary root (the
+// expert-private skills/ directory for scoped imports). Same replace
+// semantics; the dismissed bookkeeping only applies to the global root.
+func importSkillFilesAt(root, name string, files map[string][]byte) error {
 	if !skillNameRe.MatchString(name) {
 		return fmt.Errorf("invalid skill name %q", name)
 	}
@@ -403,7 +442,7 @@ func (s *SkillService) ImportSkillFiles(name string, files map[string][]byte) er
 		}
 		cleaned[rel] = raw
 	}
-	skillDir := filepath.Join(s.dir, name)
+	skillDir := filepath.Join(root, name)
 	if err := os.RemoveAll(skillDir); err != nil {
 		return fmt.Errorf("replace skill %q: %w", name, err)
 	}
@@ -418,10 +457,6 @@ func (s *SkillService) ImportSkillFiles(name string, files map[string][]byte) er
 		if err := os.WriteFile(target, raw, 0o644); err != nil {
 			return fmt.Errorf("skill %q: write %q: %w", name, rel, err)
 		}
-	}
-	if set := readDismissed(s.dir); set[name] {
-		delete(set, name)
-		writeDismissed(s.dir, set)
 	}
 	return nil
 }

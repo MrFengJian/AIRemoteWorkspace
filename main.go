@@ -140,15 +140,22 @@ func main() {
 	// `skill` tool both resolve through it.
 	skillsDir := filepath.Join(dataDir, "skills")
 	skillSvc := application.NewSkillService(skillsDir)
-	// Repoint the skills root after a successful data-dir migration.
+	// Digital employees (数字员工): the expert roster lives in SQLite with
+	// builtin personas seeded from the binary (embedded expert directories,
+	// manifest.json + SOUL.md + HEARTBEAT.md + private skills/). The runtime
+	// resolves personas through the same service that backs the management UI.
+	expertsDir := filepath.Join(dataDir, "experts")
+	expertRepo := sqlite.NewExpertRepo(store)
+	expertSvc := application.NewExpertService(expertRepo, expertsDir)
+	// The skill service needs the experts root to build expert-scoped views
+	// (an expert's private packs shadow same-name public packs).
+	skillSvc.SetExpertsRoot(expertsDir)
+	// Repoint the skills/experts roots after a successful data-dir migration.
 	dataDirSvc.SetOnMigrated(func(newDataDir string) {
 		skillSvc.SetDir(filepath.Join(newDataDir, "skills"))
+		skillSvc.SetExpertsRoot(filepath.Join(newDataDir, "experts"))
+		expertSvc.SetDir(filepath.Join(newDataDir, "experts"))
 	})
-	// Digital employees (数字员工): the expert roster lives in SQLite with
-	// builtin personas seeded from the binary. The runtime resolves personas
-	// through the same service that backs the management UI.
-	expertRepo := sqlite.NewExpertRepo(store)
-	expertSvc := application.NewExpertService(expertRepo)
 	permGate := application.NewPermissionGate(nil)
 	// monitorSvc doubles as the diagnosis snapshot source (deterministic
 	// health-check context injected into the SRE diagnostician's first turn).

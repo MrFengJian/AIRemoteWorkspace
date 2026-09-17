@@ -43,6 +43,7 @@ import { useAgentStore, type ChatMessage, type SessionPolicy } from "@/features/
 import { useTerminalStore } from "@/features/terminal/terminal.store";
 import { useModelProviders } from "@/features/settings/hooks";
 import { useExperts } from "@/features/experts/hooks";
+import { GENERAL_ASSISTANT_ID } from "@/features/experts/api";
 import { ExpertAvatar, ExpertIcon, GeneralAssistantAvatar } from "@/features/experts/avatar";
 import type { ExpertDTO } from "@/features/experts/api";
 import { useHosts } from "@/features/hosts/hooks";
@@ -375,10 +376,13 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
     setPolicy(activeSessionId, policy);
   };
 
-  // Active expert for this session ("" = the general assistant). A disabled
-  // or deleted expert degrades to the general assistant in the UI too.
+  // Active expert for this session. The general assistant is a real default
+  // expert now: an empty selection (or a disabled/deleted expert) resolves
+  // to it — same semantics as the backend's resolveExpert.
   const activeExpertID = activeSessionId ? expertsBySession[activeSessionId] ?? "" : "";
-  const activeExpert = experts.find((e) => e.id === activeExpertID);
+  const activeExpert =
+    experts.find((e) => e.id === activeExpertID) ??
+    experts.find((e) => e.id === GENERAL_ASSISTANT_ID);
 
   /** Switch the session's digital employee: record it (store + backend) and
    *  apply the persona's defaults best-effort — default model (unless the
@@ -844,7 +848,7 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
           {isStreaming && (
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
           )}
-          {activeExpert && (
+          {activeExpert && activeExpert.id !== GENERAL_ASSISTANT_ID && (
             <span
               className={cn(
                 "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",

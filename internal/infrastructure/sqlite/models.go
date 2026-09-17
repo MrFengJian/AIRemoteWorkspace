@@ -129,6 +129,7 @@ type expertModel struct {
 
 	Description  string `gorm:"not null;default:'';type:text"`
 	SystemPrompt string `gorm:"not null;default:'';type:text"`
+	Heartbeat    string `gorm:"not null;default:'';type:text"` // HEARTBEAT.md 运维值守指引
 	// JSON arrays; '' = empty.
 	AllowedTools string `gorm:"not null;default:'';type:text"`
 	SkillRefs    string `gorm:"not null;default:'';type:text"`

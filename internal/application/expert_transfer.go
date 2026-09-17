@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -14,24 +15,31 @@ import (
 )
 
 // ExpertTransferService moves expert configurations in and out of the app as
-// self-contained zip packages: the expert profile plus every bound skill pack
-// (directory-form, bundled files included). Export writes
-// `<name>.expert.zip`; import restores the expert as a NEW custom row
-// (builtin flags never travel) and installs the packaged skill packs.
+// self-contained zip packages following the expert directory layout:
+//
+//	manifest.json   identity card (+ bindings)
+//	SOUL.md         persona core (IDENTITY.md accepted on import)
+//	HEARTBEAT.md    operational guidelines (optional)
+//	skills/<pack>/  bound skill packs, bundled files included
+//
+// Import restores the expert as a NEW custom row (builtin flags never
+// travel) and installs the packaged skill packs as the expert's PRIVATE
+// skills — they shadow same-name public packs and never appear in the
+// public list.
 type ExpertTransferService struct {
 	experts *ExpertService
 	skills  *SkillService
 }
 
 // NewExpertTransferService wires the transfer service over the expert and
-// skill services (the skills root is where packaged packs are installed).
+// skill services.
 func NewExpertTransferService(experts *ExpertService, skills *SkillService) *ExpertTransferService {
 	return &ExpertTransferService{experts: experts, skills: skills}
 }
 
-// expertPackageVersion is the envelope format version of expert.json inside
-// a package. Bump when the layout changes and reject older/newer on import.
-const expertPackageVersion = 1
+// expertPackageVersion is the package format version (the manifest's format
+// field). Bump when the layout changes and reject other versions.
+const expertPackageVersion = expertManifestFormat
 
 // Zip guards: a package is a persona plus a few text/markdown packs —
 // anything beyond these caps is abuse, not content.
@@ -42,17 +50,16 @@ const (
 	zipTotalMax     = 64 << 20 // total uncompressed
 )
 
-// expertEnvelope is the expert.json payload.
-type expertEnvelope struct {
-	Version    int           `json:"version"`
-	ExportedAt time.Time     `json:"exportedAt"`
-	Expert     domain.Expert `json:"expert"`
+// zipEntry is one archive file pending write.
+type zipEntry struct {
+	name string
+	raw  []byte
 }
 
-// ExportPackage writes the expert + its bound skill packs to zipPath (".zip"
-// appended when missing). Returns the actual archive path and the names of
-// the skill packs included — refs whose packs don't exist on disk are
-// skipped silently (the runtime already degrades to "skill not found").
+// ExportPackage writes the expert directory (manifest + SOUL + HEARTBEAT +
+// bound skill packs) to zipPath (".zip" appended when missing). Returns the
+// actual archive path and the names of the skill packs included — refs whose
+// packs exist neither privately nor publicly are skipped silently.
 func (s *ExpertTransferService) ExportPackage(id, zipPath string) (string, []string, error) {
 	if s.skills == nil {
 		return "", nil, fmt.Errorf("skills not available")
@@ -71,40 +78,35 @@ func (s *ExpertTransferService) ExportPackage(id, zipPath string) (string, []str
 
 	included := make([]string, 0, len(e.SkillRefs))
 	packs := map[string]map[string][]byte{} // name -> rel path (slash) -> bytes
+	privateRoot := filepath.Join(s.experts.ExpertDir(e.ID), expertPrivateSkills)
 	for _, ref := range e.SkillRefs {
-		// Raw SKILL.md bytes (frontmatter included) — sk.Content alone would
-		// lose the name/description header.
-		skillMD, err := s.skills.SkillFileBytes(ref, "SKILL.md")
-		if err != nil {
-			continue // missing pack — the import side tolerates absent skills
+		if files, ok := exportPackFromRoot(privateRoot, ref); ok {
+			packs[ref] = files
+			included = append(included, ref)
+			continue
 		}
-		files := map[string][]byte{"SKILL.md": skillMD}
-		full := true
-		if bundled, listErr := s.skills.SkillFileList(ref); listErr == nil {
-			for _, f := range bundled {
-				raw, err := s.skills.SkillFileBytes(ref, f)
-				if err != nil {
-					full = false
-					break
-				}
-				files[f] = raw
-			}
+		if files, ok := exportPublicPack(s.skills, ref); ok {
+			packs[ref] = files
+			included = append(included, ref)
 		}
-		if !full {
-			continue // unreadable bundled file — skip the pack rather than ship it broken
-		}
-		packs[ref] = files
-		included = append(included, ref)
 	}
 	sort.Strings(included)
 
-	env, err := json.Marshal(expertEnvelope{
-		Version:    expertPackageVersion,
-		ExportedAt: time.Now(),
-		Expert:     e,
-	})
+	manifest, err := json.MarshalIndent(expertToManifest(e), "", "  ")
 	if err != nil {
 		return "", nil, err
+	}
+	entries := []zipEntry{
+		{expertManifestFile, append(manifest, '\n')},
+		{expertSoulFile, []byte(e.SystemPrompt)},
+	}
+	if strings.TrimSpace(e.Heartbeat) != "" {
+		entries = append(entries, zipEntry{expertHeartbeatFile, []byte(e.Heartbeat)})
+	}
+	for name, files := range packs {
+		for rel, raw := range files {
+			entries = append(entries, zipEntry{expertPrivateSkills + "/" + name + "/" + rel, raw})
+		}
 	}
 
 	f, err := os.Create(zipPath)
@@ -112,18 +114,11 @@ func (s *ExpertTransferService) ExportPackage(id, zipPath string) (string, []str
 		return "", nil, err
 	}
 	w := zip.NewWriter(f)
-	if err := writeZipEntry(w, "expert.json", env); err != nil {
-		_ = w.Close()
-		_ = f.Close()
-		return "", nil, err
-	}
-	for name, files := range packs {
-		for rel, raw := range files {
-			if err := writeZipEntry(w, "skills/"+name+"/"+rel, raw); err != nil {
-				_ = w.Close()
-				_ = f.Close()
-				return "", nil, err
-			}
+	for _, entry := range entries {
+		if err := writeZipEntry(w, entry.name, entry.raw); err != nil {
+			_ = w.Close()
+			_ = f.Close()
+			return "", nil, err
 		}
 	}
 	if err := w.Close(); err != nil {
@@ -131,6 +126,45 @@ func (s *ExpertTransferService) ExportPackage(id, zipPath string) (string, []str
 		return "", nil, err
 	}
 	return zipPath, included, f.Close()
+}
+
+// exportPackFromRoot collects one pack (raw SKILL.md + bundled files) from an
+// arbitrary skills root; ok is false when the pack is absent or unreadable.
+func exportPackFromRoot(root, ref string) (map[string][]byte, bool) {
+	files := map[string][]byte{}
+	skillMD, err := fileFromRoot(root, ref, "SKILL.md")
+	if err != nil {
+		return nil, false
+	}
+	files["SKILL.md"] = skillMD
+	for _, f := range listSkillFiles(filepath.Join(root, ref)) {
+		raw, err := fileFromRoot(root, ref, f)
+		if err != nil {
+			return nil, false // half-readable pack — skip rather than ship broken
+		}
+		files[f] = raw
+	}
+	return files, true
+}
+
+// exportPublicPack collects one pack from the global skills root.
+func exportPublicPack(skills *SkillService, ref string) (map[string][]byte, bool) {
+	files := map[string][]byte{}
+	skillMD, err := skills.SkillFileBytes(ref, "SKILL.md")
+	if err != nil {
+		return nil, false
+	}
+	files["SKILL.md"] = skillMD
+	if bundled, err := skills.SkillFileList(ref); err == nil {
+		for _, f := range bundled {
+			raw, err := skills.SkillFileBytes(ref, f)
+			if err != nil {
+				return nil, false
+			}
+			files[f] = raw
+		}
+	}
+	return files, true
 }
 
 // writeZipEntry adds one regular file to the archive (explicit 0644 mode, so
@@ -146,15 +180,20 @@ func writeZipEntry(w *zip.Writer, name string, raw []byte) error {
 	return err
 }
 
+// importedPackage is the normalized view of a v1 or v2 package.
+type importedPackage struct {
+	manifest  ExpertManifest
+	soul      string
+	heartbeat string
+	packs     map[string]map[string][]byte
+}
+
 // ImportPackage restores an expert package: the expert becomes a NEW custom
-// row (fresh id, builtin flag stripped) and every `skills/...` entry is
-// installed into the skills root, replacing same-name packs — import is an
-// explicit user action. Path traversal, oversized and non-regular entries are
-// rejected before anything is written.
+// row (fresh id, builtin flag stripped) and every packaged skill pack is
+// installed into the expert's PRIVATE skills/ directory (shadowing same-name
+// public packs, never polluting the public list). Path traversal, oversized
+// and non-regular entries are rejected before anything is written.
 func (s *ExpertTransferService) ImportPackage(zipPath string) (domain.Expert, error) {
-	if s.skills == nil {
-		return domain.Expert{}, fmt.Errorf("skills not available")
-	}
 	info, err := os.Stat(zipPath)
 	if err != nil {
 		return domain.Expert{}, err
@@ -171,93 +210,122 @@ func (s *ExpertTransferService) ImportPackage(zipPath string) (domain.Expert, er
 		return domain.Expert{}, fmt.Errorf("package has too many entries (%d)", len(r.File))
 	}
 
-	var envRaw []byte
-	packs := map[string]map[string][]byte{}
-	total := 0
+	pkg, err := readPackage(r)
+	if err != nil {
+		return domain.Expert{}, err
+	}
+
+	// Fresh custom identity: imports never overwrite an existing expert and
+	// the builtin flag never travels.
+	e := pkg.manifest.expert()
+	e.ID = newID()
+	e.Builtin = false
+	e.Dismissed = false
+	e.Enabled = true
+	e.SystemPrompt = pkg.soul
+	e.Heartbeat = pkg.heartbeat
+
+	// Install private packs before the row exists so its SkillRefs resolve
+	// immediately; SaveExpert then mirrors manifest/SOUL/HEARTBEAT into the
+	// same directory.
+	privateRoot := filepath.Join(s.experts.ExpertDir(e.ID), expertPrivateSkills)
+	for name, files := range pkg.packs {
+		if err := importSkillFilesAt(privateRoot, name, files); err != nil {
+			return domain.Expert{}, err
+		}
+	}
+	if _, err := s.experts.SaveExpert(e); err != nil {
+		return domain.Expert{}, fmt.Errorf("save imported expert: %w", err)
+	}
+	return e, nil
+}
+
+// readPackage scans the archive once, normalizing the manifest.json layout
+// (plus SOUL.md / HEARTBEAT.md / skills/) into an importedPackage. Packages
+// without a manifest.json are rejected — there is no legacy format.
+func readPackage(r *zip.ReadCloser) (*importedPackage, error) {
+	var (
+		manifestRaw []byte
+		pkg         = &importedPackage{packs: map[string]map[string][]byte{}}
+		total       int
+	)
 	for _, zf := range r.File {
 		if zf.Mode().IsDir() || strings.HasSuffix(zf.Name, "/") {
 			continue // real directory entries and trailing-slash markers
 		}
 		if !zf.Mode().IsRegular() {
-			return domain.Expert{}, fmt.Errorf("entry %q: not a regular file", zf.Name)
+			return nil, fmt.Errorf("entry %q: not a regular file", zf.Name)
 		}
 		name, err := sanitizeZipName(zf.Name)
 		if err != nil {
-			return domain.Expert{}, err
+			return nil, err
 		}
-		if sizeErr := func() error {
-			rc, err := zf.Open()
-			if err != nil {
-				return err
+		raw, err := readBoundedEntry(zf)
+		if err != nil {
+			return nil, err
+		}
+		total += len(raw)
+		if total > zipTotalMax {
+			return nil, fmt.Errorf("package exceeds %d bytes uncompressed", zipTotalMax)
+		}
+		switch {
+		case name == expertManifestFile:
+			manifestRaw = raw
+		case name == expertSoulFile || name == expertSoulAltFile:
+			pkg.soul = string(raw)
+		case name == expertHeartbeatFile:
+			pkg.heartbeat = string(raw)
+		case strings.HasPrefix(name, expertPrivateSkills+"/"):
+			rest := strings.TrimPrefix(name, expertPrivateSkills+"/")
+			skill, file, ok := strings.Cut(rest, "/")
+			if !ok || file == "" {
+				return nil, fmt.Errorf("entry %q: not a skill file", zf.Name)
 			}
-			defer rc.Close()
-			if int(zf.UncompressedSize64) > zipFileMaxBytes {
-				return fmt.Errorf("entry %q exceeds %d bytes", zf.Name, zipFileMaxBytes)
+			if !skillNameRe.MatchString(skill) {
+				return nil, fmt.Errorf("entry %q: invalid skill name", zf.Name)
 			}
-			raw, err := io.ReadAll(io.LimitReader(rc, zipFileMaxBytes+1))
-			if err != nil {
-				return err
+			if pkg.packs[skill] == nil {
+				pkg.packs[skill] = map[string][]byte{}
 			}
-			if len(raw) > zipFileMaxBytes {
-				return fmt.Errorf("entry %q exceeds %d bytes", zf.Name, zipFileMaxBytes)
-			}
-			total += len(raw)
-			if total > zipTotalMax {
-				return fmt.Errorf("package exceeds %d bytes uncompressed", zipTotalMax)
-			}
-			switch {
-			case name == "expert.json":
-				envRaw = raw
-			case strings.HasPrefix(name, "skills/"):
-				rest := strings.TrimPrefix(name, "skills/")
-				skill, file, ok := strings.Cut(rest, "/")
-				if !ok || file == "" {
-					return fmt.Errorf("entry %q: not a skill file", zf.Name)
-				}
-				if !skillNameRe.MatchString(skill) {
-					return fmt.Errorf("entry %q: invalid skill name", zf.Name)
-				}
-				if packs[skill] == nil {
-					packs[skill] = map[string][]byte{}
-				}
-				packs[skill][file] = raw
-			}
-			return nil
-		}(); sizeErr != nil {
-			return domain.Expert{}, sizeErr
+			pkg.packs[skill][file] = raw
 		}
 	}
-	if envRaw == nil {
-		return domain.Expert{}, fmt.Errorf("package has no expert.json")
+	if manifestRaw == nil {
+		return nil, fmt.Errorf("package has no %s", expertManifestFile)
 	}
-	var env expertEnvelope
-	if err := json.Unmarshal(envRaw, &env); err != nil {
-		return domain.Expert{}, fmt.Errorf("expert.json: %w", err)
+	if err := json.Unmarshal(manifestRaw, &pkg.manifest); err != nil {
+		return nil, fmt.Errorf("%s: %w", expertManifestFile, err)
 	}
-	if env.Version != expertPackageVersion {
-		return domain.Expert{}, fmt.Errorf("unsupported package version %d", env.Version)
+	if pkg.manifest.Format != 0 && pkg.manifest.Format != expertPackageVersion {
+		return nil, fmt.Errorf("unsupported package format %d", pkg.manifest.Format)
 	}
+	if pkg.manifest.Label == "" {
+		pkg.manifest.Label = pkg.manifest.ID
+	}
+	if pkg.soul == "" {
+		pkg.soul = pkg.manifest.expert().SystemPrompt
+	}
+	return pkg, nil
+}
 
-	// Install packs first, so the expert's SkillRefs resolve immediately
-	// after the row is created.
-	for name, files := range packs {
-		if err := s.skills.ImportSkillFiles(name, files); err != nil {
-			return domain.Expert{}, err
-		}
+// readBoundedEntry reads one archive entry with the per-file size cap.
+func readBoundedEntry(zf *zip.File) ([]byte, error) {
+	if zf.UncompressedSize64 > zipFileMaxBytes {
+		return nil, fmt.Errorf("entry %q exceeds %d bytes", zf.Name, zipFileMaxBytes)
 	}
-
-	e := env.Expert
-	e.ID = ""         // fresh custom row — never overwrite an existing expert
-	e.Builtin = false // the flag never travels; imports are always custom
-	e.Dismissed = false
-	if !e.Enabled { // exported disabled experts import re-enabled
-		e.Enabled = true
-	}
-	created, err := s.experts.SaveExpert(e)
+	rc, err := zf.Open()
 	if err != nil {
-		return domain.Expert{}, fmt.Errorf("save imported expert: %w", err)
+		return nil, err
 	}
-	return created, nil
+	defer rc.Close()
+	raw, err := io.ReadAll(io.LimitReader(rc, zipFileMaxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > zipFileMaxBytes {
+		return nil, fmt.Errorf("entry %q exceeds %d bytes", zf.Name, zipFileMaxBytes)
+	}
+	return raw, nil
 }
 
 // sanitizeZipName validates a zip entry name against zip-slip: no absolute

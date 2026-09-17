@@ -30,16 +30,10 @@ type PermissionGate interface {
 	Check(ctx context.Context, sessionID, toolName string, perm domain.Permission, argsJSON string) error
 }
 
-// SkillBackend lists and loads agent skills — SKILL.md files under the skills
-// root, mirroring eino's adk/middlewares/skill Backend contract (List/Get).
-// May be nil: the `skill` tool is then simply not offered to the model.
-type SkillBackend interface {
-	ListSkills() ([]domain.Skill, error)
-	GetSkill(name string) (domain.Skill, error)
-	// ReadSkillFile returns one bundled file of a directory-form skill pack
-	// (path relative to the skill directory, slash-separated).
-	ReadSkillFile(name, path string) (string, error)
-}
+// SkillBackend lists and loads agent skills — normally the global skills
+// root, or an expert-scoped view of it (private packs shadow same-name
+// public packs). May be nil: the `skill` tool is then simply not offered.
+type SkillBackend = domain.SkillStore
 
 // SftpFileOps is the subset of the SFTP manager the file tools need. Progress
 // callbacks exist for the UI transfer path; tools pass nil.

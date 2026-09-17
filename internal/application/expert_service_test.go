@@ -2,6 +2,8 @@ package application
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/ai-remote/workspace/internal/domain"
@@ -44,7 +46,7 @@ func (r *memExpertRepo) Delete(id string) error {
 
 func TestExpertServiceSeedsBuiltins(t *testing.T) {
 	repo := newMemExpertRepo()
-	svc := NewExpertService(repo)
+	svc := NewExpertService(repo, t.TempDir())
 
 	all, err := svc.ListExperts()
 	if err != nil {
@@ -64,6 +66,89 @@ func TestExpertServiceSeedsBuiltins(t *testing.T) {
 	if dx.SystemPrompt == "" {
 		t.Fatal("diagnosis expert has empty persona prompt")
 	}
+	if dx.Heartbeat == "" {
+		t.Fatal("diagnosis expert has no heartbeat guidance")
+	}
+}
+
+// The general assistant is the default expert: builtin, first in the roster,
+// and carrying the standard welcome card (opening message + prompts).
+func TestBuiltinGeneralAssistant(t *testing.T) {
+	defs := builtinExperts()
+	if len(defs) == 0 || defs[0].ID != domain.ExpertIDGeneralAssistant {
+		t.Fatalf("general assistant must sort first, got %v", defs[0].ID)
+	}
+	if !defs[0].Builtin || !defs[0].Enabled {
+		t.Fatal("general assistant must be an enabled builtin")
+	}
+	if defs[0].Name == "" || defs[0].OpeningMessage == "" || len(defs[0].SuggestedPrompts) == 0 {
+		t.Fatal("general assistant lacks welcome card fields")
+	}
+}
+
+// Expert directories materialize next to the DB rows, overlay hand edits on
+// read, write through on save, and disappear with a custom expert.
+func TestExpertDirectoryLifecycle(t *testing.T) {
+	repo := newMemExpertRepo()
+	dir := t.TempDir()
+	svc := NewExpertService(repo, dir)
+
+	// Builtin dirs seeded from the embedded tree.
+	soulPath := filepath.Join(dir, domain.ExpertIDK8sOps, "SOUL.md")
+	manifestPath := filepath.Join(dir, domain.ExpertIDK8sOps, "manifest.json")
+	for _, p := range []string{soulPath, manifestPath,
+		filepath.Join(dir, domain.ExpertIDK8sOps, "HEARTBEAT.md")} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("expected seeded file %s: %v", p, err)
+		}
+	}
+
+	// Hand edit wins on read: overlay SOUL.md onto the row.
+	if err := os.WriteFile(soulPath, []byte("HAND EDITED SOUL"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e, err := svc.GetExpert(domain.ExpertIDK8sOps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.SystemPrompt != "HAND EDITED SOUL" {
+		t.Fatalf("SOUL.md overlay not applied: %q", e.SystemPrompt)
+	}
+
+	// UI save writes through: the file reflects the saved row again.
+	e.SystemPrompt = "UI SAVED SOUL"
+	e.Heartbeat = "UI SAVED HEARTBEAT"
+	if _, err := svc.SaveExpert(e); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(soulPath)
+	if string(raw) != "UI SAVED SOUL" {
+		t.Fatalf("SOUL.md not written through: %q", raw)
+	}
+	raw, _ = os.ReadFile(filepath.Join(dir, domain.ExpertIDK8sOps, "HEARTBEAT.md"))
+	if string(raw) != "UI SAVED HEARTBEAT" {
+		t.Fatalf("HEARTBEAT.md not written through: %q", raw)
+	}
+	// And the next read comes back from the file.
+	e2, _ := svc.GetExpert(domain.ExpertIDK8sOps)
+	if e2.Heartbeat != "UI SAVED HEARTBEAT" {
+		t.Fatalf("heartbeat overlay broken: %q", e2.Heartbeat)
+	}
+
+	// Custom expert: dir created on save, removed on delete.
+	custom, err := svc.SaveExpert(domain.Expert{Name: "临时专家", SystemPrompt: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, custom.ID, "SOUL.md")); err != nil {
+		t.Fatalf("custom expert dir missing: %v", err)
+	}
+	if err := svc.DeleteExpert(custom.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, custom.ID)); !os.IsNotExist(err) {
+		t.Fatal("custom expert dir should be removed on delete")
+	}
 }
 
 func TestExpertServiceSeedNeverOverwritesEdits(t *testing.T) {
@@ -72,7 +157,7 @@ func TestExpertServiceSeedNeverOverwritesEdits(t *testing.T) {
 	repo.items[domain.ExpertIDDocker] = domain.Expert{
 		ID: domain.ExpertIDDocker, Name: "我的 Docker", Builtin: true, Enabled: true,
 	}
-	NewExpertService(repo)
+	NewExpertService(repo, t.TempDir())
 
 	e, err := repo.Get(domain.ExpertIDDocker)
 	if err != nil {
@@ -85,7 +170,7 @@ func TestExpertServiceSeedNeverOverwritesEdits(t *testing.T) {
 
 func TestExpertServiceDismissedBuiltinStaysDismissed(t *testing.T) {
 	repo := newMemExpertRepo()
-	svc := NewExpertService(repo)
+	svc := NewExpertService(repo, t.TempDir())
 
 	if err := svc.DeleteExpert(domain.ExpertIDK8sOps); err != nil {
 		t.Fatalf("delete builtin: %v", err)
@@ -98,7 +183,7 @@ func TestExpertServiceDismissedBuiltinStaysDismissed(t *testing.T) {
 	}
 
 	// Restart (new service, same repo) must not resurrect it.
-	NewExpertService(repo)
+	NewExpertService(repo, t.TempDir())
 	all, _ = svc.ListExperts()
 	for _, e := range all {
 		if e.ID == domain.ExpertIDK8sOps {
@@ -109,7 +194,7 @@ func TestExpertServiceDismissedBuiltinStaysDismissed(t *testing.T) {
 
 func TestExpertServiceSaveCustom(t *testing.T) {
 	repo := newMemExpertRepo()
-	svc := NewExpertService(repo)
+	svc := NewExpertService(repo, t.TempDir())
 
 	created, err := svc.SaveExpert(domain.Expert{
 		Name: "Nginx 专家", Role: "反向代理工程师", Policy: "bogus",
@@ -148,7 +233,7 @@ func TestExpertServiceSaveCustom(t *testing.T) {
 
 func TestExpertServiceDeleteCustomHardDeletes(t *testing.T) {
 	repo := newMemExpertRepo()
-	svc := NewExpertService(repo)
+	svc := NewExpertService(repo, t.TempDir())
 
 	created, err := svc.SaveExpert(domain.Expert{Name: "临时专家"})
 	if err != nil {
@@ -187,7 +272,7 @@ func TestExpertServiceUpgradesLegacySkillRefs(t *testing.T) {
 		ID: domain.ExpertIDK8sOps, Name: "K8s 运维专家", Builtin: true, Enabled: true,
 		// legacy empty default
 	}
-	NewExpertService(repo)
+	NewExpertService(repo, t.TempDir())
 
 	docker, err := repo.Get(domain.ExpertIDDocker)
 	if err != nil {
@@ -213,7 +298,7 @@ func TestExpertServiceKeepsCustomSkillRefs(t *testing.T) {
 		ID: domain.ExpertIDDocker, Name: "我的 Docker", Builtin: true, Enabled: true,
 		SkillRefs: []string{"my-own-skill"},
 	}
-	NewExpertService(repo)
+	NewExpertService(repo, t.TempDir())
 
 	e, err := repo.Get(domain.ExpertIDDocker)
 	if err != nil {
