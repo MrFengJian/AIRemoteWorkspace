@@ -147,6 +147,10 @@ func main() {
 	expertsDir := filepath.Join(dataDir, "experts")
 	expertRepo := sqlite.NewExpertRepo(store)
 	expertSvc := application.NewExpertService(expertRepo, expertsDir)
+	// Host-attached fault reports (故障报告): distilled from agent
+	// conversations, tracked as traceable incident assets on the reports page.
+	faultRepo := sqlite.NewFaultReportRepo(store)
+	faultSvc := application.NewFaultReportService(faultRepo)
 	// The skill service needs the experts root to build expert-scoped views
 	// (an expert's private packs shadow same-name public packs).
 	skillSvc.SetExpertsRoot(expertsDir)
@@ -235,6 +239,7 @@ func main() {
 	expertService := interfaces.NewExpertService(expertSvc, expertTransfer)
 	agentService := interfaces.NewAgentService(agentRuntime, permGate, convSvc, skillSvc, expertSvc)
 	mcpService := interfaces.NewMCPService(mcpServer)
+	faultReportService := interfaces.NewFaultReportService(faultSvc)
 
 	// Wire the approval emitter now that AgentService exists.
 	permGate.SetEmitter(agentService)
@@ -257,6 +262,7 @@ func main() {
 			wailsapp.NewService(providerService),
 			wailsapp.NewService(expertService),
 			wailsapp.NewService(agentService),
+			wailsapp.NewService(faultReportService),
 			wailsapp.NewService(mcpService),
 		},
 		Assets: wailsapp.AssetOptions{

@@ -104,6 +104,24 @@ type conversationModel struct {
 
 func (conversationModel) TableName() string { return "conversations" }
 
+// faultReportModel is one distilled incident report attached to a host —
+// a traceable asset for tracking recurring problems across sessions.
+type faultReportModel struct {
+	ID        string `gorm:"primaryKey;size:64"`
+	HostID    string `gorm:"not null;default:'';size:64;index"` // "" = local machine
+	HostName  string `gorm:"not null;default:'';size:200"`
+	Title     string `gorm:"not null;default:'';size:200"`
+	Severity  string `gorm:"not null;default:'warning';size:20;index"`
+	Status    string `gorm:"not null;default:'open';size:20;index"`
+	Body      string `gorm:"not null;default:'';type:text"`
+	// Source conversation (traceability back to the full transcript).
+	ConversationID string `gorm:"not null;default:'';size:64;index"`
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+func (faultReportModel) TableName() string { return "fault_reports" }
+
 // conversationMessageModel is one user/assistant message in a conversation.
 type conversationMessageModel struct {
 	ID             int64  `gorm:"primaryKey;autoIncrement"`

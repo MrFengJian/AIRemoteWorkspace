@@ -22,7 +22,7 @@ import {
   History as HistoryIcon,
   MessageSquarePlus,
   ShieldCheck,
-  Stethoscope,
+  FileWarning,
   BookMarked,
   Sparkles,
   RefreshCw,
@@ -45,11 +45,10 @@ import { useModelProviders } from "@/features/settings/hooks";
 import { useExperts } from "@/features/experts/hooks";
 import { GENERAL_ASSISTANT_ID } from "@/features/experts/api";
 import { ExpertAvatar, ExpertIcon, GeneralAssistantAvatar } from "@/features/experts/avatar";
-import type { ExpertDTO } from "@/features/experts/api";
 import { useHosts } from "@/features/hosts/hooks";
 import { getPaneActions } from "@/keybindings/registry";
 import { AgentMarkdown } from "@/features/agent/AgentMarkdown";
-import { DiagnosisDialog } from "@/features/agent/DiagnosisDialog";
+import { FaultReportDialog } from "@/features/agent/FaultReportDialog";
 import { ScenarioManagerDialog, SaveScenarioDialog } from "@/features/agent/Scenarios";
 import { HostService, TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { useUIStore } from "@/stores/ui.store";
@@ -110,7 +109,6 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
   const [historyIdx, setHistoryIdx] = useState<number | null>(null);
 
   // ── Expert persona (数字员工) & scenario management ────────────────────
-  const [diagnosisOpen, setDiagnosisOpen] = useState(false);
   const [scenariosOpen, setScenariosOpen] = useState(false);
   const [saveScenarioConv, setSaveScenarioConv] = useState<ConversationDTO | null>(null);
 
@@ -607,43 +605,18 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
 
   const handleSend = () => send(input);
 
-  /** Start a diagnosis conversation: select the SRE diagnostician persona
-   *  (AutoSnapshot → the backend injects a fresh health snapshot on this
-   *  first turn) and send through the regular chat pipeline. The transcript/
-   *  events flow is identical to a normal chat. */
-  const sendDiagnosis = (symptom: string) => {
-    if (!activeSessionId || !symptom.trim() || streaming[activeSessionId] || !modelChosen) return;
-    const diagExpert =
-      experts.find((e) => e.autoSnapshot) ??
-      ({ id: "builtin-diagnosis-sre" } as ExpertDTO);
-    setInputHistory((h) => [...h.slice(-MAX_INPUT_HISTORY + 1), symptom.trim()]);
-    setExpert(activeSessionId, diagExpert.id);
-    agentApi.setExpert(activeSessionId, diagExpert.id).catch(() => {});
-    addMessage(activeSessionId, { role: "user", content: symptom.trim() });
-    setStreaming(activeSessionId, true);
-    addMessage(activeSessionId, { role: "assistant", content: "" });
-    atBottomRef.current = true;
+  /** Fault-report dialog: fetches the session's active conversation as the
+   *  transcript source when opened (none yet → hint from the dialog). */
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportConv, setReportConv] = useState<ConversationDTO | null>(null);
+  const openReportDialog = () => {
+    if (!activeSessionId) return;
     agentApi
-      .startChat(
-        activeSessionId,
-        agentProviderId,
-        agentModel,
-        diagExpert.id,
-        expandTerminalMentions(symptom.trim()),
-      )
-      .catch((e) => {
-        setStreaming(activeSessionId, false);
-        dropTrailingEmptyAssistant(activeSessionId);
-        addMessage(activeSessionId, {
-          role: "assistant",
-          variant: "error",
-          content: `${t("agent.errorPrefix")} ${e instanceof Error ? e.message : String(e)}`,
-        });
-      });
+      .activeConversation(activeSessionId)
+      .then(setReportConv)
+      .catch(() => setReportConv(null));
+    setReportOpen(true);
   };
-
-  /** Builtin scenario packs, offered as one-click seeds in the diagnosis dialog. */
-  const builtinScenarios = (agentSkills ?? []).filter((s) => s.builtin);
 
   /** Retry: drop the trailing notice and resend the last user message. */
   const handleRetry = () => {
@@ -675,10 +648,7 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
     setHistoryOpen(false);
   };
 
-  // The active persona drives the header pill and the assistant avatar.
-  const inDiagnosis = !!activeExpert?.autoSnapshot;
 
-  /** Write text to the clipboard with a quiet confirmation. */
   const copyText = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -871,12 +841,7 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
           )}
           {activeExpert && activeExpert.id !== GENERAL_ASSISTANT_ID && (
             <span
-              className={cn(
-                "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
-                inDiagnosis
-                  ? "border-primary/40 bg-primary/10 text-primary"
-                  : "border-border bg-secondary/60 text-foreground",
-              )}
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-secondary/60 px-2 py-0.5 text-[11px] font-medium text-foreground"
             >
               <ExpertIcon icon={activeExpert.icon} className="h-3 w-3" />
               {activeExpert.role || t("agent.expertBadge")}
@@ -1244,13 +1209,13 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
         <div className="flex items-end gap-2">
           <button
             type="button"
-            onClick={() => setDiagnosisOpen(true)}
+            onClick={openReportDialog}
             disabled={!modelChosen || isStreaming}
-            aria-label={t("agent.diagnoseTitle")}
-            title={t("agent.diagnoseTitle")}
+            aria-label={t("agent.reportTitle")}
+            title={t("agent.reportTitle")}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius)] border border-border text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <Stethoscope className="h-4 w-4" />
+            <FileWarning className="h-4 w-4" />
           </button>
           <div className="relative min-h-[40px] min-w-0 flex-1 rounded-[var(--radius)] border border-input bg-background focus-within:ring-1 focus-within:ring-ring">
             {/* Highlight mirror: geometry must match the textarea exactly
@@ -1378,12 +1343,16 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
         </div>
       </div>
 
-      {/* Diagnosis entry + scenario library + save-as-scenario dialogs */}
-      <DiagnosisDialog
-        open={diagnosisOpen}
-        onOpenChange={setDiagnosisOpen}
-        builtinScenarios={builtinScenarios}
-        onStart={sendDiagnosis}
+      {/* Fault-report distillation + scenario library + save-as-scenario dialogs */}
+      <FaultReportDialog
+        open={reportOpen}
+        onOpenChange={setReportOpen}
+        conversation={reportConv}
+        providerID={agentProviderId}
+        model={agentModel}
+        onSaved={() => {
+          queryClient.invalidateQueries({ queryKey: CONVERSATIONS_KEY });
+        }}
       />
       <ScenarioManagerDialog open={scenariosOpen} onOpenChange={setScenariosOpen} />
       <SaveScenarioDialog

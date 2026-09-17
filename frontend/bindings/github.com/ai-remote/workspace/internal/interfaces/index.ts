@@ -5,6 +5,7 @@ import * as AgentService from "./agentservice.js";
 import * as ConfigService from "./configservice.js";
 import * as DockerService from "./dockerservice.js";
 import * as ExpertService from "./expertservice.js";
+import * as FaultReportService from "./faultreportservice.js";
 import * as HostService from "./hostservice.js";
 import * as K8sService from "./k8sservice.js";
 import * as KeyManagerService from "./keymanagerservice.js";
@@ -21,6 +22,7 @@ export {
     ConfigService,
     DockerService,
     ExpertService,
+    FaultReportService,
     HostService,
     K8sService,
     KeyManagerService,
@@ -42,6 +44,9 @@ export {
     DataDirInfoDTO,
     ExpertDTO,
     ExpertExportResultDTO,
+    FaultReportDTO,
+    FaultReportDraftDTO,
+    FaultReportFilterDTO,
     FileEntryDTO,
     GenerateKeyRequestDTO,
     HostDTO,

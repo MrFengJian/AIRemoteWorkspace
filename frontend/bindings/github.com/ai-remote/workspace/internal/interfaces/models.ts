@@ -332,6 +332,134 @@ export class ExpertExportResultDTO {
 }
 
 /**
+ * FaultReportDTO mirrors domain.FaultReport for the frontend: host-attached
+ * incident reports tracked on the 故障报告 page.
+ */
+export class FaultReportDTO {
+    "id": string;
+    "hostId": string;
+    "hostName": string;
+    "title": string;
+    "severity": string;
+    "status": string;
+    "body": string;
+    "conversationId"?: string;
+    "createdAt": string;
+    "updatedAt": string;
+
+    /** Creates a new FaultReportDTO instance. */
+    constructor($$source: Partial<FaultReportDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("hostId" in $$source)) {
+            this["hostId"] = "";
+        }
+        if (!("hostName" in $$source)) {
+            this["hostName"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("severity" in $$source)) {
+            this["severity"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("body" in $$source)) {
+            this["body"] = "";
+        }
+        if (!("createdAt" in $$source)) {
+            this["createdAt"] = "";
+        }
+        if (!("updatedAt" in $$source)) {
+            this["updatedAt"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FaultReportDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): FaultReportDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new FaultReportDTO($$parsedSource as Partial<FaultReportDTO>);
+    }
+}
+
+/**
+ * FaultReportDraftDTO is an LLM-distilled fault report draft (故障报告沉淀):
+ * title + severity + markdown body, previewed by the user before saving to
+ * the host-attached report list.
+ */
+export class FaultReportDraftDTO {
+    "title": string;
+    "severity": string;
+    "body": string;
+
+    /** Creates a new FaultReportDraftDTO instance. */
+    constructor($$source: Partial<FaultReportDraftDTO> = {}) {
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("severity" in $$source)) {
+            this["severity"] = "";
+        }
+        if (!("body" in $$source)) {
+            this["body"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FaultReportDraftDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): FaultReportDraftDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new FaultReportDraftDTO($$parsedSource as Partial<FaultReportDraftDTO>);
+    }
+}
+
+/**
+ * FaultReportFilterDTO narrows ListReports; empty fields = no constraint.
+ */
+export class FaultReportFilterDTO {
+    "hostId": string;
+    "severity": string;
+    "status": string;
+    "keyword": string;
+
+    /** Creates a new FaultReportFilterDTO instance. */
+    constructor($$source: Partial<FaultReportFilterDTO> = {}) {
+        if (!("hostId" in $$source)) {
+            this["hostId"] = "";
+        }
+        if (!("severity" in $$source)) {
+            this["severity"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("keyword" in $$source)) {
+            this["keyword"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FaultReportFilterDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): FaultReportFilterDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new FaultReportFilterDTO($$parsedSource as Partial<FaultReportFilterDTO>);
+    }
+}
+
+/**
  * FileEntryDTO is the frontend-facing remote filesystem entry.
  */
 export class FileEntryDTO {

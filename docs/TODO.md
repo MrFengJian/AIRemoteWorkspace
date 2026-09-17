@@ -152,6 +152,13 @@
   - [x] 导入：新建自定义专家（builtin 不迁移、新 ID、强制启用），同名技能包替换；缺失 expert.json / 版本不符报错
   - [x] 安全：zip-slip 防护（`..`/绝对路径/反斜杠/盘符/非常规文件全拒绝）+ 体积护栏（包 64MiB/条目 500/单文件 8MiB/解压总量 64MiB）；往返/zip-slip/缺信封/同名替换 单测
   - [x] 前端：设置 → 数字员工 增加 导入/导出 按钮（Dialogs 选路径 + 确认弹窗 + toast）；场景库附件数徽标；i18n 双语
+- [x] 诊断模式退役 + 故障报告追踪（`fault_report_*` + 前端 faults 页）
+  - [x] 诊断入口对话框移除（与专家选择器 + `$` 下拉完全同构）；AutoSnapshot 保留为通用专家能力；陈旧 i18n 清理
+  - [x] `$` 技能调用：输入框触发符号 / → $（无兼容层），选中 token 在输入框镜像层高亮渲染（仅匹配真实技能名）
+  - [x] `domain.FaultReport`（title/severity 三级/status 三态/body 五段 markdown/来源会话）+ sqlite `fault_reports` 表
+  - [x] `Runtime.DistillFaultReport` 提示词：只输出 JSON（标题 ≤40 字 + severity + 五段正文），证据必须来自会话真实输出、未定位如实说明、不含凭据；`ExtractFaultReportDraft` 容错解析
+  - [x] `FaultReportService` CRUD/过滤（主机/关键字/级别/状态）/生命周期（open→monitoring→resolved）+ Wails `FaultReportService` + `AgentService.DraftFaultReport`/`ActiveConversation`
+  - [x] 前端：独立「故障报告」导航页（过滤栏 + 列表 + 详情 markdown + 状态流转 + 删除）；Agent 面板 $ 图标生成对话框（草稿预览编辑后保存附着主机）
 - [x] 专家目录化（业界 Agent 布局，`expert_files.go` + 内嵌 `experts/` 树）
   - [x] 目录布局：manifest.json（身份卡）+ SOUL.md（人设，读取兼容 IDENTITY.md）+ HEARTBEAT.md（值守指引，可选）+ skills/（私有技能包）
   - [x] 内嵌 7 个专家目录随二进制分发；种子按文件粒度（已存在行仅补缺文件且行优先，缺失行用内嵌目录创建）

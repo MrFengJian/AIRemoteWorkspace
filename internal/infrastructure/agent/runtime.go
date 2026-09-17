@@ -949,8 +949,58 @@ func (r *Runtime) DistillScenario(ctx context.Context, providerID, model, transc
 	return strings.TrimSpace(resp.Content), nil
 }
 
-func (r *Runtime) buildResolver() CredsResolver {
-	return func(sessionID string) (domain.Host, domain.Credentials, error) {
+// DistillFaultReport distills a troubleshooting conversation into a
+// structured, host-attachable fault report (incident asset): the model's
+// JSON answer — title, severity, and a markdown body following the SRE
+// diagnosis output contract (现象 / 根因 / 证据 / 处置 / 预防) — returned raw;
+// application.ExtractFaultReportDraft parses it.
+// One-shot completion — no tools, non-streaming.
+func (r *Runtime) DistillFaultReport(ctx context.Context, providerID, model, transcript, hostLabel string) (string, error) {
+	ep, err := r.llm.ResolveLLM(providerID, model)
+	if err != nil {
+		return "", err
+	}
+	apiKey := ep.APIKey
+	if apiKey == "" {
+		apiKey = "local-no-key"
+	}
+	chatModel, err := openaimodel.NewChatModel(ctx, &openaimodel.ChatModelConfig{
+		BaseURL: ep.BaseURL,
+		APIKey:  apiKey,
+		Model:   ep.Model,
+	})
+	if err != nil {
+		return "", fmt.Errorf("create chat model: %w", err)
+	}
+	if len(transcript) > transcriptCharBudget {
+		// Keep the tail — root cause and fix usually live in the last turns.
+		transcript = "…[earlier turns omitted]\n" + transcript[len(transcript)-transcriptCharBudget:]
+	}
+
+	sys := "你是资深 SRE 工程师。根据这段 AI 运维助手的排障会话记录，为宿主机 " + hostLabel +
+		" 沉淀一份可回溯的故障报告资产（团队后续将在故障追踪页按主机/关键字检索它）。\n\n" +
+		"只输出一个 JSON 对象，不要任何解释或代码栅栏，格式：\n" +
+		`{"title": "≤40字，概括组件与症状，例如 Nginx 502 上游超时", "severity": "info|warning|critical", "body": "markdown 正文"}` + "\n\n" +
+		"body 必须包含以下五个小节（markdown 二级标题）：\n" +
+		"## 现象 —— 触发症状、起始时间（若可知）、影响范围；\n" +
+		"## 根因 —— 已确认的根因；未定位时如实写「未定位」并给出最可能假设与置信度；\n" +
+		"## 证据 —— 会话中真实执行过的关键命令及其决定性输出摘录（不得编造未出现过的数据）；\n" +
+		"## 处置 —— 已执行的处置与建议的后续动作，每条标注 [READ] / [WRITE] / [DANGEROUS]；\n" +
+		"## 预防 —— 监控项、告警阈值、配置加固等可落地的预防措施。\n\n" +
+		"规则：severity 按影响面定级（critical=业务中断/数据风险，warning=功能受损/资源紧张，info=轻微或已自愈）；" +
+		"绝不把密码、token、密钥写进报告；中文叙述、命令与路径保持原文；会话中没有的信息写「未提供」，不要虚构。"
+
+	resp, err := chatModel.Generate(ctx, []*schema.Message{
+		schema.SystemMessage(sys),
+		schema.UserMessage(transcript),
+	})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(resp.Content), nil
+}
+
+func (r *Runtime) buildResolver() CredsResolver {	return func(sessionID string) (domain.Host, domain.Credentials, error) {
 		host, ok := r.sshMgr.HostOfSession(sessionID)
 		if !ok {
 			return domain.Host{}, domain.Credentials{}, errors.New("session not found")

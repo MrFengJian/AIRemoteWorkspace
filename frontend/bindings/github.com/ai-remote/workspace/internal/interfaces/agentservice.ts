@@ -21,6 +21,17 @@ import * as application$0 from "../application/models.js";
 import * as $models from "./models.js";
 
 /**
+ * ActiveConversation returns the session's current persisted conversation
+ * (needed as the source transcript for report distillation). Errors when
+ * the session has no conversation yet.
+ */
+export function ActiveConversation(sessionID: string): $CancellablePromise<$models.ConversationDTO> {
+    return $Call.ByID(3240583923, sessionID).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
+/**
  * ApproveToolCall resolves a pending approval request.
  */
 export function ApproveToolCall(reqID: string, approved: boolean): $CancellablePromise<void> {
@@ -61,6 +72,19 @@ export function DeleteSkill(name: string): $CancellablePromise<void> {
 }
 
 /**
+ * DraftFaultReport distills a persisted conversation into a fault report
+ * draft (故障报告沉淀): a JSON {title, severity, body} answer from a one-shot
+ * LLM call following the SRE diagnosis report format. The draft is NOT
+ * saved — the frontend previews it and calls FaultReportService.SaveReport
+ * after the user confirms/edits (host context is attached on save).
+ */
+export function DraftFaultReport(conversationID: string, providerID: string, model: string): $CancellablePromise<$models.FaultReportDraftDTO> {
+    return $Call.ByID(1396658669, conversationID, providerID, model).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * DraftScenario distills a persisted conversation into a SKILL.md scenario
  * draft (诊断场景沉淀): the transcript is replayed to the LLM in a one-shot
  * call, and the produced frontmatter name/description are returned alongside
@@ -69,7 +93,7 @@ export function DeleteSkill(name: string): $CancellablePromise<void> {
  */
 export function DraftScenario(conversationID: string, providerID: string, model: string): $CancellablePromise<$models.ScenarioDraftDTO> {
     return $Call.ByID(2640901155, conversationID, providerID, model).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType2($result);
     });
 }
 
@@ -88,7 +112,7 @@ export function EmitApproval(req: application$0.ApprovalRequest): $CancellablePr
  */
 export function GetConversationMessages(conversationID: string): $CancellablePromise<$models.ConversationMessageDTO[]> {
     return $Call.ByID(4084462485, conversationID).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType4($result);
     });
 }
 
@@ -97,7 +121,7 @@ export function GetConversationMessages(conversationID: string): $CancellablePro
  */
 export function GetSkill(name: string): $CancellablePromise<$models.SkillDTO> {
     return $Call.ByID(1318065623, name).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -107,7 +131,7 @@ export function GetSkill(name: string): $CancellablePromise<$models.SkillDTO> {
  */
 export function ListContextPaths(sessionID: string, dir: string): $CancellablePromise<$models.ContextPathDTO[]> {
     return $Call.ByID(2029077267, sessionID, dir).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
@@ -117,7 +141,7 @@ export function ListContextPaths(sessionID: string, dir: string): $CancellablePr
  */
 export function ListConversations(): $CancellablePromise<$models.ConversationDTO[]> {
     return $Call.ByID(4124442514).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType8($result);
     });
 }
 
@@ -127,7 +151,7 @@ export function ListConversations(): $CancellablePromise<$models.ConversationDTO
  */
 export function ListSkills(): $CancellablePromise<$models.SkillDTO[]> {
     return $Call.ByID(1215304444).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType9($result);
     });
 }
 
@@ -183,12 +207,13 @@ export function StartChat(sessionID: string, providerID: string, model: string, 
 }
 
 // Private type creation functions
-const $$createType0 = $models.ScenarioDraftDTO.createFrom;
-const $$createType1 = $models.ConversationMessageDTO.createFrom;
-const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = $models.SkillDTO.createFrom;
-const $$createType4 = $models.ContextPathDTO.createFrom;
-const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = $models.ConversationDTO.createFrom;
+const $$createType0 = $models.ConversationDTO.createFrom;
+const $$createType1 = $models.FaultReportDraftDTO.createFrom;
+const $$createType2 = $models.ScenarioDraftDTO.createFrom;
+const $$createType3 = $models.ConversationMessageDTO.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = $models.SkillDTO.createFrom;
+const $$createType6 = $models.ContextPathDTO.createFrom;
 const $$createType7 = $Create.Array($$createType6);
-const $$createType8 = $Create.Array($$createType3);
+const $$createType8 = $Create.Array($$createType0);
+const $$createType9 = $Create.Array($$createType5);

@@ -64,6 +64,15 @@ type ScenarioDraftDTO struct {
 	Content     string `json:"content"`
 }
 
+// FaultReportDraftDTO is an LLM-distilled fault report draft (故障报告沉淀):
+// title + severity + markdown body, previewed by the user before saving to
+// the host-attached report list.
+type FaultReportDraftDTO struct {
+	Title    string `json:"title"`
+	Severity string `json:"severity"`
+	Body     string `json:"body"`
+}
+
 // ContextPathDTO is one entry of an @-mention directory listing.
 type ContextPathDTO struct {
 	Name  string `json:"name"`
@@ -374,6 +383,91 @@ func (a *AgentService) DraftScenario(conversationID, providerID, model string) (
 // draftTimeout bounds the one-shot distillation call — long enough for slow
 // models to write a full playbook, short enough to surface hangs.
 const draftTimeout = 120 * time.Second
+
+// transcriptOf loads a conversation's user/assistant messages as a plain
+// transcript for the one-shot distillation calls.
+func (a *AgentService) transcriptOf(conversationID string) (string, error) {
+	msgs, err := a.convs.Messages(conversationID)
+	if err != nil {
+		return "", err
+	}
+	if len(msgs) == 0 {
+		return "", fmt.Errorf("conversation has no messages")
+	}
+	var b strings.Builder
+	for _, m := range msgs {
+		role := "助手"
+		if m.Role == "user" {
+			role = "用户"
+		}
+		fmt.Fprintf(&b, "[%s]\n%s\n\n", role, m.Content)
+	}
+	return b.String(), nil
+}
+
+// ActiveConversation returns the session's current persisted conversation
+// (needed as the source transcript for report distillation). Errors when
+// the session has no conversation yet.
+func (a *AgentService) ActiveConversation(sessionID string) (ConversationDTO, error) {
+	convID, ok := a.convs.ActiveConversation(sessionID)
+	if !ok {
+		return ConversationDTO{}, fmt.Errorf("该会话还没有对话记录 / no conversation yet")
+	}
+	c, err := a.convs.Get(convID)
+	if err != nil {
+		return ConversationDTO{}, err
+	}
+	count, _ := a.convs.Messages(convID)
+	return ConversationDTO{
+		ID:           c.ID,
+		HostID:       c.HostID,
+		HostName:     c.HostName,
+		Title:        c.Title,
+		ExpertID:     c.ExpertID,
+		ExpertName:   c.ExpertName,
+		UpdatedAt:    c.UpdatedAt.Format(time.RFC3339),
+		MessageCount: int64(len(count)),
+	}, nil
+}
+
+// DraftFaultReport distills a persisted conversation into a fault report
+// draft (故障报告沉淀): a JSON {title, severity, body} answer from a one-shot
+// LLM call following the SRE diagnosis report format. The draft is NOT
+// saved — the frontend previews it and calls FaultReportService.SaveReport
+// after the user confirms/edits (host context is attached on save).
+func (a *AgentService) DraftFaultReport(conversationID, providerID, model string) (FaultReportDraftDTO, error) {
+	if a.runtime == nil {
+		return FaultReportDraftDTO{}, fmt.Errorf("agent runtime not available")
+	}
+	conv, err := a.convs.Get(conversationID)
+	if err != nil {
+		return FaultReportDraftDTO{}, err
+	}
+	transcript, err := a.transcriptOf(conversationID)
+	if err != nil {
+		return FaultReportDraftDTO{}, err
+	}
+	hostLabel := conv.HostName
+	if hostLabel == "" {
+		hostLabel = "本机"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), draftTimeout)
+	defer cancel()
+	raw, err := a.runtime.DistillFaultReport(ctx, providerID, model, transcript, hostLabel)
+	if err != nil {
+		return FaultReportDraftDTO{}, err
+	}
+	draft, err := appsvc.ExtractFaultReportDraft(raw)
+	if err != nil {
+		return FaultReportDraftDTO{}, err
+	}
+	return FaultReportDraftDTO{
+		Title:    draft.Title,
+		Severity: draft.Severity,
+		Body:     draft.Body,
+	}, nil
+}
 
 // ApproveToolCall resolves a pending approval request.
 func (a *AgentService) ApproveToolCall(reqID string, approved bool) error {

@@ -44,6 +44,11 @@ export const agentApi = {
   /** Distill a conversation into a SKILL.md draft (preview before saving). */
   draftScenario: (conversationID: string, providerID: string, model: string) =>
     AgentService.DraftScenario(conversationID, providerID, model),
+  /** The session's current persisted conversation (report source transcript). */
+  activeConversation: (sessionID: string) => AgentService.ActiveConversation(sessionID),
+  /** Distill a conversation into a fault report draft (JSON: title/severity/body). */
+  draftFaultReport: (conversationID: string, providerID: string, model: string) =>
+    AgentService.DraftFaultReport(conversationID, providerID, model),
   /** Directory listing for the @-completion popup. */
   listContextPaths: (sessionID: string, dir: string) =>
     AgentService.ListContextPaths(sessionID, dir).then((r) => r ?? []),

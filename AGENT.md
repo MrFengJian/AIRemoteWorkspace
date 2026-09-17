@@ -1066,7 +1066,8 @@ TunnelManager.Ensure（按规则 reconcile：同配置去重、变更替换、�
 ```
 SystemPrompt 分层组装：专家层（SOUL + HEARTBEAT）+ 环境层 + 工具契约 + 权限契约 + 技能层 + 全局指令
 权限契约逐字固定（runtime.go），任何人设不能提权 —— 安全不变量
-诊断模式已统一为内置 SRE 诊断专家（AutoSnapshot：选中/切换/新对话后的首回合自动注入体检快照）
+诊断入口已退役：诊断 = 切换到内置 SRE 诊断专家（AutoSnapshot：选中/切换/新对话后的首回合自动注入体检快照）；
+一键对话框与普通路径完全同构，故移除以减少复杂度
 新对话保留专家选择；退出人设是显式操作（徽章 X / 选择器）
 内置专家语义与内置 SKILL.md 一致：编辑不覆盖、删除仅 Dismissed、重新保存恢复
 内置专家默认绑定技能（SkillRefs）：选型来自 skillhub.cn 同类专家/技能检索；
@@ -1095,6 +1096,12 @@ application/experts_builtin.go       内嵌专家树加载器（builtinExperts �
 application/expert_files.go          manifest 模型 + 目录种子/读取覆盖/写回（SOUL/HEARTBEAT/manifest）
 application/expert_service.go        种子 + CRUD + GetExpert 文件覆盖（GetExpert 兼作 runtime ExpertSource）
 application/skill_scoped.go          专家作用域技能存储（私有遮蔽公共，SkillSourceFor）
+application/fault_report_service.go  故障报告 CRUD/过滤/生命周期 + LLM 草稿 JSON 解析
+domain/fault_report.go               FaultReport 模型（severity/status 规范化）
+infrastructure/sqlite/fault_report_repo.go  fault_reports 表
+interfaces/fault_report_service.go   Wails FaultReportService（List/Get/Save/SetStatus/Delete）
+frontend features/faults/            故障报告追踪页（过滤 + 详情 + 生命周期）
+frontend features/agent/FaultReportDialog.tsx  会话 → 故障报告 生成对话框
 application/expert_transfer.go       专家 zip 包导出/导入（manifest 目录格式，zip-slip 防护）
 infrastructure/sqlite/expert_repo.go experts 表（含 heartbeat 列）
 infrastructure/agent/runtime.go      activeExperts、resolveExpert（默认专家）、expertPrompt、工具过滤
