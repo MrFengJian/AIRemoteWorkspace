@@ -176,7 +176,7 @@ export class DataDirInfoDTO {
 }
 
 /**
- * ExpertDTO mirrors domain.Expert for the frontend (digital-employee roster
+ * ExpertDTO mirrors domain.Expert for the frontend (ops-expert roster
  * management and the chat-side persona pickers).
  */
 export class ExpertDTO {

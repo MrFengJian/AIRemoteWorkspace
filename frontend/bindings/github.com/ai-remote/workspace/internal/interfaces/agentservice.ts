@@ -4,7 +4,7 @@
 /**
  * AgentService exposes the AI agent to the frontend. Provider/model selection
  * is per chat call; provider management lives in ModelProviderService and
- * the digital-employee roster in ExpertService.
+ * the ops-expert roster in ExpertService.
  * @module
  */
 
@@ -193,7 +193,7 @@ export function SetSessionPolicy(sessionID: string, policy: string): $Cancellabl
 
 /**
  * StartChat kicks off a streaming agent chat against the selected provider +
- * model. expertID ("" = general assistant) selects the digital-employee
+ * model. expertID ("" = general assistant) selects the ops-expert
  * persona; an AutoSnapshot expert injects a fresh health snapshot on its
  * first turn. Output flows via events:
  *   agent:<sessionID>:chunk    — incremental LLM text
