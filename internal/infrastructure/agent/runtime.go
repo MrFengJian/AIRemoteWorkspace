@@ -560,7 +560,7 @@ var mentionRe = regexp.MustCompile(`@[^\s]+`)
 
 // resolveUserMessage expands the input-box shortcuts before the message
 // reaches the model:
-//   - a leading `/name` loads the skill's SKILL.md instructions inline
+//   - a leading `$name` loads the skill's SKILL.md instructions inline
 //     (eino skill middleware's inline mode) and prepends them to the text;
 //   - `@/some/path` tokens are replaced by <file path="…"> blocks holding
 //     the file's content, loaded over SFTP (remote session) or from disk
@@ -570,7 +570,7 @@ var mentionRe = regexp.MustCompile(`@[^\s]+`)
 // typed. The recorded conversation history keeps the RAW message. The skill
 // store is the turn's expert-scoped view (private packs shadow public ones).
 func (r *Runtime) resolveUserMessage(sessionID, text string, skills domain.SkillStore) string {
-	if skills != nil && strings.HasPrefix(text, "/") {
+	if skills != nil && strings.HasPrefix(text, "$") {
 		rest := strings.TrimLeft(text[1:], " \t")
 		name := rest
 		remainder := ""

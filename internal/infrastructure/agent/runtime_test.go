@@ -113,14 +113,14 @@ func TestResolveUserMessage(t *testing.T) {
 	}
 	r := &Runtime{skills: fakeSkills{}}
 
-	// Leading /name injects the skill body inline (eino inline mode).
-	got := r.resolveUserMessage("sess-1", "/deploy rollout the api", fakeSkills{})
+	// Leading $name injects the skill body inline (eino inline mode).
+	got := r.resolveUserMessage("sess-1", "$deploy rollout the api", fakeSkills{})
 	if !strings.HasPrefix(got, "DEPLOY STEPS") || !strings.HasSuffix(got, "rollout the api") {
 		t.Fatalf("skill injection failed: %q", got)
 	}
 
 	// Unknown skill: text passes through untouched.
-	if got := r.resolveUserMessage("sess-1", "/nope do things", fakeSkills{}); got != "/nope do things" {
+	if got := r.resolveUserMessage("sess-1", "$nope do things", fakeSkills{}); got != "$nope do things" {
 		t.Fatalf("unknown skill mutated: %q", got)
 	}
 
@@ -135,9 +135,9 @@ func TestResolveUserMessage(t *testing.T) {
 		t.Fatalf("unknown path mutated: %q", got)
 	}
 
-	// No skills source: /mention is plain text.
+	// No skills source: $mention is plain text.
 	raw := &Runtime{}
-	if got := raw.resolveUserMessage("sess-1", "/deploy x", nil); got != "/deploy x" {
+	if got := raw.resolveUserMessage("sess-1", "$deploy x", nil); got != "$deploy x" {
 		t.Fatalf("nil skills mutated message: %q", got)
 	}
 }

@@ -867,7 +867,7 @@ fork 炸弹）宁可升级、绝不放行。
 技能与上下文引用（Agent 输入框，参考 eino adk/middlewares/skill）：
 
 ```
-/name   调用技能：SKILL.md（frontmatter name/description + markdown 正文）
+$name   调用技能：SKILL.md（frontmatter name/description + markdown 正文），输入 $ 触发下拉选择
         位于 <数据目录>/skills/<name>/SKILL.md；正文 inline 注入本回合
 @path   引用文件：@/var/log/app.log → <file> 块注入内容（限额截断）
 @终端   引用终端缓冲区：@终端（100-120行），前端发送时展开为 <terminal> 块

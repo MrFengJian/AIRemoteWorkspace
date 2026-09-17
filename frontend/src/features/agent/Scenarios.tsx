@@ -118,7 +118,7 @@ export function ScenarioManagerDialog({
         {editor ? (
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
-              <span className="shrink-0 font-mono text-xs text-muted-foreground">/</span>
+              <span className="shrink-0 font-mono text-xs text-muted-foreground">$</span>
               <Input
                 value={editor.name}
                 onChange={(e) => setEditor({ ...editor, name: e.target.value })}
@@ -168,7 +168,7 @@ export function ScenarioManagerDialog({
                     <li key={s.name} className="group flex items-start gap-2 px-3 py-2">
                       <div className="min-w-0 flex-1">
                         <p className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                          <span className="font-mono">/{s.name}</span>
+                          <span className="font-mono">{"$"}{s.name}</span>
                           {s.builtin && (
                             <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
                               {t("agent.scenarioBuiltin")}
@@ -330,7 +330,7 @@ export function SaveScenarioDialog({
         ) : (
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
-              <span className="shrink-0 font-mono text-xs text-muted-foreground">/</span>
+              <span className="shrink-0 font-mono text-xs text-muted-foreground">$</span>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}

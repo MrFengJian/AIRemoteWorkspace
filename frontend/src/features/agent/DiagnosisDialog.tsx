@@ -16,7 +16,7 @@ import type { SkillDTO } from "@/features/agent/api";
 /**
  * DiagnosisDialog — the Agent panel's diagnosis entry (DIAGNOSIS_AGENT.md
  * Phase A). The user describes the symptom (optionally seeded from a builtin
- * scenario chip, which prefixes the message with `/name` so the runtime
+ * scenario chip, which prefixes the message with `$name` so the runtime
  * inlines that playbook); on start the backend auto-collects the deterministic
  * health snapshot and opens the diagnosis-mode conversation.
  */
@@ -66,7 +66,7 @@ export function DiagnosisDialog({ open, onOpenChange, builtinScenarios, onStart 
                 type="button"
                 title={s.description}
                 onClick={() => {
-                  setSymptom((cur) => (cur.trim() ? cur : `/${s.name} `));
+                  setSymptom((cur) => (cur.trim() ? cur : `$${s.name} `));
                   requestAnimationFrame(() => textareaRef.current?.focus());
                 }}
                 className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent hover:text-foreground"

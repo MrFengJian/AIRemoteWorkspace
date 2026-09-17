@@ -119,7 +119,7 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
   const { data: allExperts } = useExperts();
   const experts = useMemo(() => (allExperts ?? []).filter((e) => e.enabled), [allExperts]);
 
-  // ── Input completion (`/` skills, `@` files & terminal ranges) ──────
+  // ── Input completion (`$` skills, `@` files & terminal ranges) ──────
   type Completion =
     | { kind: "skill"; start: number; query: string }
     | { kind: "path"; start: number; dir: string; prefix: string };
@@ -130,8 +130,8 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
 
   const detectCompletion = (value: string, caret: number) => {
     const before = value.slice(0, caret);
-    // Skill: "/name" as the first token of the message.
-    const skillM = /^\s*\/([\w-]*)$/.exec(before);
+    // Skill: "$name" as the first token of the message.
+    const skillM = /^\s*\$([\w-]*)$/.exec(before);
     if (skillM) {
       setCompletion({ kind: "skill", start: caret - skillM[1].length - 1, query: skillM[1] });
       setCompletionIdx(0);
@@ -233,12 +233,33 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
   // last-used preference (and to persist changes back to it).
   const { data: hosts } = useHosts();
 
-  // Available skills for the `/` picker.
+  // Available skills for the `$` picker.
   const { data: agentSkills } = useQuery({
     queryKey: ["agent-skills"],
     queryFn: agentApi.listSkills,
     enabled: !!activeSessionId,
   });
+
+  // Highlight overlay segments: every `$name` token whose name matches a real
+  // skill is rendered with a highlight in the mirror layer behind the
+  // textarea (the textarea's own text stays the single visible text layer;
+  // the mirror only paints highlight boxes under the tokens).
+  const inputHighlightSegments = useMemo(() => {
+    const segs: { text: string; hit: boolean }[] = [];
+    if (!input) return segs;
+    const names = new Set((agentSkills ?? []).map((s) => s.name));
+    let last = 0;
+    for (const m of input.matchAll(/\$[\w-]{1,64}/g)) {
+      const token = m[0];
+      if (!names.has(token.slice(1))) continue;
+      const start = m.index ?? 0;
+      if (start > last) segs.push({ text: input.slice(last, start), hit: false });
+      segs.push({ text: token, hit: true });
+      last = start + token.length;
+    }
+    if (last < input.length) segs.push({ text: input.slice(last), hit: false });
+    return segs;
+  }, [input, agentSkills]);
 
   // @-completion: directory entries for the path currently being typed.
   const completionDir = completion?.kind === "path" ? completion.dir : null;
@@ -267,9 +288,9 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
         .filter((s) => s.name.toLowerCase().startsWith(q))
         .map((s) => ({
           key: s.name,
-          label: `/${s.name}`,
+          label: `$${s.name}`,
           desc: s.description,
-          apply: () => replaceToken(`/${s.name} `, true),
+          apply: () => replaceToken(`$${s.name} `, true),
         }));
     }
     const q = completion.prefix;
@@ -1106,7 +1127,7 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
 
       {/* Input area: inline model selector + message box */}
       <div className="relative border-t border-border bg-card px-3 py-2">
-        {/* `/` skill + `@` file/terminal completion picker */}
+        {/* `$` skill + `@` file/terminal completion picker */}
         {completion && completionItems.length > 0 && (
           <div className="absolute bottom-full left-3 right-3 z-30 mb-1 max-h-52 overflow-auto rounded-[var(--radius)] border border-border bg-popover py-1 shadow-lg">
             {completionItems.map((it, i) => (
@@ -1231,20 +1252,43 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
           >
             <Stethoscope className="h-4 w-4" />
           </button>
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            className="max-h-40 min-h-[40px] flex-1 resize-none rounded-[var(--radius)] border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            placeholder={
-              modelChosen
-                ? t("agent.placeholderConfigured")
-                : t("agent.placeholderNoModel")
-            }
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              detectCompletion(e.target.value, e.target.selectionStart ?? 0);
-            }}
+          <div className="relative min-h-[40px] min-w-0 flex-1 rounded-[var(--radius)] border border-input bg-background focus-within:ring-1 focus-within:ring-ring">
+            {/* Highlight mirror: geometry must match the textarea exactly
+                (font, padding, wrapping). Its text is fully transparent and
+                only paints the skill-token highlight behind the caret layer. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 select-none overflow-hidden whitespace-pre-wrap break-words px-3 py-2 text-sm"
+            >
+              {inputHighlightSegments.map((seg, i) =>
+                seg.hit ? (
+                  <mark
+                    key={i}
+                    className="rounded-[4px] bg-primary/20 px-0.5 text-transparent"
+                  >
+                    {seg.text}
+                  </mark>
+                ) : (
+                  <span key={i} className="text-transparent">
+                    {seg.text}
+                  </span>
+                ),
+              )}
+            </div>
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              className="relative block max-h-40 min-h-[38px] w-full resize-none border-0 bg-transparent px-3 py-2 text-sm outline-none"
+              placeholder={
+                modelChosen
+                  ? t("agent.placeholderConfigured")
+                  : t("agent.placeholderNoModel")
+              }
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                detectCompletion(e.target.value, e.target.selectionStart ?? 0);
+              }}
             aria-label={t("agent.placeholderConfigured")}
             onContextMenu={(e) => {
               e.preventDefault();
@@ -1305,6 +1349,7 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
               }
             }}
           />
+          </div>
           {isStreaming ? (
             <Button
               type="button"

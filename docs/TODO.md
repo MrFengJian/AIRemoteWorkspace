@@ -158,7 +158,7 @@
   - [x] 读取覆盖：GetExpert 时 SOUL/HEARTBEAT 覆盖行字段（手改即时生效）；保存写回（write-through），Heartbeat 清空时移除文件
   - [x] HEARTBEAT 注入为独立提示词段落 + 硬性标注（例行建议须用户采纳，禁止自行循环执行）
 - [x] 专家私有技能遮蔽（`skill_scoped.go`）
-  - [x] `SkillSourceFor(expertID)`：私有包存在时返回作用域存储（GetSkill/ReadSkillFile/`/技能` 输入/绑定清单均私有优先）
+  - [x] `SkillSourceFor(expertID)`：私有包存在时返回作用域存储（GetSkill/ReadSkillFile/`$技能` 输入/绑定清单均私有优先）
   - [x] 私有包不进公共技能列表；无私有包的专家保持全局视图；`domain.SkillStore` 统一全局与作用域契约
 - [x] 默认专家「通用助手」（builtin-general-assistant）
   - [x] SortOrder 最前 + 欢迎词/推荐问题；运行时空/未知/停用 expertID 解析到它；前端选择器与开场卡同步；GA 徽章不再显示退出按钮
