@@ -104,6 +104,18 @@ func TestBuiltinScenarioSeeding(t *testing.T) {
 		t.Fatalf("seeding overwrote the user-edited pack: %q", edited)
 	}
 
+	// Regression: ListSkills must return each skill exactly once (a stray
+	// double-append once shipped every entry twice to the expert editor).
+	seen := map[string]int{}
+	for _, s := range skills {
+		seen[s.Name]++
+	}
+	for name, n := range seen {
+		if n != 1 {
+			t.Fatalf("skill %q listed %d times", name, n)
+		}
+	}
+
 	// Directory-form packs: bundled files seed next to SKILL.md and are
 	// readable through the agent-facing path (with traversal refused).
 	if _, err := svc.GetSkill("cron-scheduling"); err != nil {

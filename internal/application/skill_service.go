@@ -173,9 +173,8 @@ func (s *SkillService) ListSkills() ([]domain.Skill, error) {
 		if err != nil {
 			continue // unreadable/broken skill — skip, never break listing
 		}
-		out = append(out, withFiles(sk))
 		sk.Builtin = builtinNames[e.Name()]
-		out = append(out, sk)
+		out = append(out, withFiles(sk))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
