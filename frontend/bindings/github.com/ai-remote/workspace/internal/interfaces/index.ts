@@ -41,6 +41,7 @@ export {
     CredentialsDTO,
     DataDirInfoDTO,
     ExpertDTO,
+    ExpertExportResultDTO,
     FileEntryDTO,
     GenerateKeyRequestDTO,
     HostDTO,

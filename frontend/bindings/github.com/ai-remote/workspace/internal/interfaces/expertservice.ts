@@ -4,6 +4,7 @@
 /**
  * ExpertService exposes the digital-employee roster (运维专家/数字员工) to
  * the frontend: the chat-side pickers read it, the settings page manages it.
+ * The transfer dependency (may be nil) backs expert package export/import.
  * @module
  */
 
@@ -24,11 +25,32 @@ export function DeleteExpert(id: string): $CancellablePromise<void> {
 }
 
 /**
+ * ExportExpert packages the expert plus its bound skill packs (bundled files
+ * included) into a zip the user can archive or share.
+ */
+export function ExportExpert(id: string, zipPath: string): $CancellablePromise<$models.ExpertExportResultDTO> {
+    return $Call.ByID(3522528793, id, zipPath).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
+/**
  * GetExpert returns one expert including its full persona prompt (editor use).
  */
 export function GetExpert(id: string): $CancellablePromise<$models.ExpertDTO> {
     return $Call.ByID(3615544669, id).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType1($result);
+    });
+}
+
+/**
+ * ImportExpert restores an expert package: the expert becomes a new custom
+ * row (fresh id, builtin flag never travels) and the packaged skill packs
+ * are installed, replacing same-name packs.
+ */
+export function ImportExpert(zipPath: string): $CancellablePromise<$models.ExpertDTO> {
+    return $Call.ByID(3828834170, zipPath).then(($result: any) => {
+        return $$createType1($result);
     });
 }
 
@@ -37,7 +59,7 @@ export function GetExpert(id: string): $CancellablePromise<$models.ExpertDTO> {
  */
 export function ListExperts(): $CancellablePromise<$models.ExpertDTO[]> {
     return $Call.ByID(1029338028).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType2($result);
     });
 }
 
@@ -47,10 +69,11 @@ export function ListExperts(): $CancellablePromise<$models.ExpertDTO[]> {
  */
 export function SaveExpert(e: $models.ExpertDTO): $CancellablePromise<$models.ExpertDTO> {
     return $Call.ByID(2156068894, e).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType1($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = $models.ExpertDTO.createFrom;
-const $$createType1 = $Create.Array($$createType0);
+const $$createType0 = $models.ExpertExportResultDTO.createFrom;
+const $$createType1 = $models.ExpertDTO.createFrom;
+const $$createType2 = $Create.Array($$createType1);

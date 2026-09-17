@@ -142,6 +142,16 @@
   - [x] SRE 诊断专家（AutoSnapshot，人设迁移自原诊断模板，保留 现象/根因/证据/建议/风险 结论格式）
   - [x] K8s 运维专家 / K8s 应用开发者 / Docker 专家 / Linux 系统专家 / 数据库运维专家
   - [x] 默认绑定技能（SkillRefs）：检索 skillhub.cn 同类专家与技能选型——SRE→五大症状包；K8s 运维→k8s-pod-troubleshoot + service-down + port-unreachable；K8s 开发→k8s-pod-troubleshoot；Docker→docker-essentials + container-restart-loop；Linux→linux-service-triage + cron-scheduling + disk-full + login-slow；DBA→mysql-triage；升级安装对旧默认签名行补齐、用户自选不动
+- [x] 技能目录形态（`application/skill_service.go`）
+  - [x] `domain.Skill.Files` 附带文件清单（相对路径、正斜杠、排序）；`ListSkills`/`GetSkill` 附带
+  - [x] 种子按文件粒度落地（WalkDir 全目录；SKILL.md 已存在不覆盖、缺失附件补齐；Dismissed 仍按名生效）
+  - [x] `ReadSkillFile`/`SkillFileBytes`（路径校验 safeSkillRelPath 拒绝 `..`/绝对路径/反斜杠 + 2MiB 上限 + 包含性复核）；`ImportSkillFiles` 整包安装（同名替换，导入显式动作）
+  - [x] `skill` 工具 `path` 参数读附件；SKILL.md 正文末尾自动附附件清单；cron-scheduling 包附带 scripts/cron-wrapper.sh 示例
+- [x] 专家 zip 包导出/导入（`application/expert_transfer.go` + Wails `ExportExpert`/`ImportExpert`）
+  - [x] 导出：expert.json（version 信封）+ skills/<name>/ 整目录（SKILL.md 原始字节含 frontmatter）；返回实际路径与包含的技能清单
+  - [x] 导入：新建自定义专家（builtin 不迁移、新 ID、强制启用），同名技能包替换；缺失 expert.json / 版本不符报错
+  - [x] 安全：zip-slip 防护（`..`/绝对路径/反斜杠/盘符/非常规文件全拒绝）+ 体积护栏（包 64MiB/条目 500/单文件 8MiB/解压总量 64MiB）；往返/zip-slip/缺信封/同名替换 单测
+  - [x] 前端：设置 → 数字员工 增加 导入/导出 按钮（Dialogs 选路径 + 确认弹窗 + toast）；场景库附件数徽标；i18n 双语
 - [x] Agent 运行时集成（`infrastructure/agent`）
   - [x] `Chat` 增加 expertID；`diagnosis` 开关重构为 `activeExperts` 会话级专家映射；`StartDiagnosis`/`SetDiagnosisMode`/`diagnosisPrompt` 删除（人设迁入内置专家）
   - [x] SystemPrompt 分层组装：专家层 + 环境层 + 工具契约（过滤）+ 权限契约（逐字保留、人设不可覆盖）+ 绑定技能 + 全局自定义指令

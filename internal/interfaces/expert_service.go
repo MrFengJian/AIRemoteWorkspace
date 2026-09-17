@@ -69,13 +69,15 @@ func orEmpty(s []string) []string {
 
 // ExpertService exposes the digital-employee roster (运维专家/数字员工) to
 // the frontend: the chat-side pickers read it, the settings page manages it.
+// The transfer dependency (may be nil) backs expert package export/import.
 type ExpertService struct {
-	experts *appsvc.ExpertService
+	experts  *appsvc.ExpertService
+	transfer *appsvc.ExpertTransferService
 }
 
 // NewExpertService wires the Wails ExpertService.
-func NewExpertService(experts *appsvc.ExpertService) *ExpertService {
-	return &ExpertService{experts: experts}
+func NewExpertService(experts *appsvc.ExpertService, transfer *appsvc.ExpertTransferService) *ExpertService {
+	return &ExpertService{experts: experts, transfer: transfer}
 }
 
 func (s *ExpertService) ServiceName() string { return "ExpertService" }
@@ -152,4 +154,39 @@ func (s *ExpertService) DeleteExpert(id string) error {
 		return fmt.Errorf("experts not available")
 	}
 	return s.experts.DeleteExpert(id)
+}
+
+// ExpertExportResultDTO reports what an export wrote.
+type ExpertExportResultDTO struct {
+	// Path is the zip file actually written (".zip" appended when missing).
+	Path string `json:"path"`
+	// Skills lists the bound skill packs included in the package.
+	Skills []string `json:"skills"`
+}
+
+// ExportExpert packages the expert plus its bound skill packs (bundled files
+// included) into a zip the user can archive or share.
+func (s *ExpertService) ExportExpert(id, zipPath string) (ExpertExportResultDTO, error) {
+	if s.transfer == nil {
+		return ExpertExportResultDTO{}, fmt.Errorf("expert transfer not available")
+	}
+	path, skills, err := s.transfer.ExportPackage(id, zipPath)
+	if err != nil {
+		return ExpertExportResultDTO{}, err
+	}
+	return ExpertExportResultDTO{Path: path, Skills: skills}, nil
+}
+
+// ImportExpert restores an expert package: the expert becomes a new custom
+// row (fresh id, builtin flag never travels) and the packaged skill packs
+// are installed, replacing same-name packs.
+func (s *ExpertService) ImportExpert(zipPath string) (ExpertDTO, error) {
+	if s.transfer == nil {
+		return ExpertDTO{}, fmt.Errorf("expert transfer not available")
+	}
+	e, err := s.transfer.ImportPackage(zipPath)
+	if err != nil {
+		return ExpertDTO{}, err
+	}
+	return expertToDTO(e), nil
 }

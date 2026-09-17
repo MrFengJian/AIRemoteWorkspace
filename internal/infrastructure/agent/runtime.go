@@ -30,12 +30,14 @@ import (
 	"github.com/ai-remote/workspace/internal/infrastructure/ssh"
 )
 
-// SkillSource loads agent skills (SKILL.md files) — implemented by the
+// SkillSource loads agent skills (skill directories) — implemented by the
 // application layer's SkillService. May be nil: /skill resolution and the
 // model-facing skill tool are then disabled.
 type SkillSource interface {
 	ListSkills() ([]domain.Skill, error)
 	GetSkill(name string) (domain.Skill, error)
+	// ReadSkillFile reads one bundled file of a directory-form skill pack.
+	ReadSkillFile(name, path string) (string, error)
 }
 
 // ExpertSource resolves digital-employee expert personas by id — implemented

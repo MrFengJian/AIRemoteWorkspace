@@ -174,6 +174,11 @@ export function ScenarioManagerDialog({
                               {t("agent.scenarioBuiltin")}
                             </Badge>
                           )}
+                          {!!s.files?.length && (
+                            <Badge variant="outline" className="px-1.5 py-0 text-[10px]" title={s.files.join("\n")}>
+                              {t("agent.scenarioFiles", { count: s.files.length })}
+                            </Badge>
+                          )}
                         </p>
                         <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">
                           {s.description}

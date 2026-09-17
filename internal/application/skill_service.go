@@ -14,10 +14,11 @@ import (
 	"github.com/ai-remote/workspace/internal/domain"
 )
 
-// builtinSkills holds the embedded diagnosis scenario packs (SKILL.md per
-// directory). They ship inside the binary and are seeded into the skills
-// root on startup — user-edited copies are never overwritten, and skills the
-// user deliberately deleted stay deleted (dismissed list, see seedBuiltins).
+// builtinSkills holds the embedded scenario packs (a directory per skill:
+// SKILL.md plus optional bundled scripts/references). They ship inside the
+// binary and are seeded into the skills root on startup — user-edited files
+// are never overwritten, and skills the user deliberately deleted stay
+// deleted (dismissed list, see seedBuiltins).
 //
 //go:embed all:skills
 var builtinSkills embed.FS
@@ -26,6 +27,11 @@ var builtinSkills embed.FS
 // manager, so a restart does not resurrect them. Lives inside the skills root
 // and starts with a dot, so it never matches the skill-name pattern.
 const dismissedFile = ".dismissed-builtins"
+
+// skillFileMaxBytes bounds a single bundled skill file read (the agent-facing
+// ReadSkillFile): scripts and reference docs are small; anything larger is
+// data, not instructions.
+const skillFileMaxBytes = 2 << 20 // 2 MiB
 
 // SkillService loads agent skills from the skills directory, following the
 // eino adk/middlewares/skill convention: one subdirectory per skill, each
@@ -67,34 +73,41 @@ func (s *SkillService) SetDir(dir string) {
 	}
 }
 
-// seedBuiltins writes every embedded scenario pack that is missing on disk.
-// Failures on individual packs are ignored — the directory copy wins as soon
-// as the user edits it, and a partially seeded set is better than an error.
+// seedBuiltins writes every embedded pack file that is missing on disk,
+// per file — an edited SKILL.md on the user's side keeps winning, while new
+// bundled files shipped in later versions still get seeded next to it.
+// Failures on individual files are ignored — a partially seeded set is
+// better than an error.
 func seedBuiltins(dir string) {
 	dismissed := readDismissed(dir)
-	entries, err := fs.Glob(builtinSkills, "skills/*/SKILL.md")
-	if err != nil {
-		return
-	}
-	for _, path := range entries {
-		name := path[len("skills/") : len(path)-len("/SKILL.md")]
-		if dismissed[name] {
-			continue
+	// The embedded FS walk itself cannot fail meaningfully; per-file errors
+	// below are ignored by design (partial seed beats a broken startup).
+	_ = fs.WalkDir(builtinSkills, "skills", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
 		}
-		skillDir := filepath.Join(dir, name)
-		target := filepath.Join(skillDir, "SKILL.md")
+		rel, ok := strings.CutPrefix(path, "skills/")
+		if !ok || !strings.Contains(rel, "/") {
+			return nil // not inside a skill directory
+		}
+		name, file, _ := strings.Cut(rel, "/")
+		if file == "" || dismissed[name] {
+			return nil
+		}
+		target := filepath.Join(dir, name, filepath.FromSlash(file))
 		if _, err := os.Stat(target); err == nil {
-			continue // exists (possibly user-edited) — never overwrite
+			return nil // exists (possibly user-edited) — never overwrite
 		}
 		raw, err := builtinSkills.ReadFile(path)
 		if err != nil {
-			continue
+			return nil
 		}
-		if err := os.MkdirAll(skillDir, 0o755); err != nil {
-			continue
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return nil
 		}
 		_ = os.WriteFile(target, raw, 0o644)
-	}
+		return nil
+	})
 }
 
 // readDismissed loads the deleted-builtin names (missing file → empty set).
@@ -160,6 +173,7 @@ func (s *SkillService) ListSkills() ([]domain.Skill, error) {
 		if err != nil {
 			continue // unreadable/broken skill — skip, never break listing
 		}
+		out = append(out, withFiles(sk))
 		sk.Builtin = builtinNames[e.Name()]
 		out = append(out, sk)
 	}
@@ -176,6 +190,7 @@ func (s *SkillService) GetSkill(name string) (domain.Skill, error) {
 	if err != nil {
 		return domain.Skill{}, fmt.Errorf("skill %q: %w", name, err)
 	}
+	sk = withFiles(sk)
 	sk.Builtin = builtinNames[name]
 	return sk, nil
 }
@@ -248,6 +263,168 @@ func parseSkillMD(path, fallbackName string) (domain.Skill, error) {
 		sk.Description = firstSentence(sk.Content)
 	}
 	return sk, nil
+}
+
+// listSkillFiles walks a skill's directory and returns its bundled files —
+// every regular file except SKILL.md itself — as sorted relative paths with
+// forward slashes (the portable convention zip and web budgets share).
+func listSkillFiles(skillDir string) []string {
+	var files []string
+	_ = filepath.WalkDir(skillDir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !d.Type().IsRegular() {
+			return nil // unreadable/odd entries are skipped, never fatal
+		}
+		rel, err := filepath.Rel(skillDir, p)
+		if err != nil || rel == "SKILL.md" {
+			return nil
+		}
+		files = append(files, filepath.ToSlash(rel))
+		return nil
+	})
+	sort.Strings(files)
+	return files
+}
+
+// withFiles attaches the bundled-file listing to a parsed skill.
+func withFiles(sk domain.Skill) domain.Skill {
+	sk.Files = listSkillFiles(filepath.Dir(sk.Path))
+	return sk
+}
+
+// safeSkillRelPath validates a bundled-file path from an untrusted source
+// (the LLM's skill-tool call or a zip entry): forward slashes, no absolute
+// paths, no dot-dot segments, no backslashes or drive letters. Returns the
+// cleaned slash path.
+func safeSkillRelPath(p string) (string, error) {
+	if p == "" {
+		return "", fmt.Errorf("empty skill file path")
+	}
+	if strings.ContainsRune(p, '\\') || strings.ContainsRune(p, ':') {
+		return "", fmt.Errorf("invalid skill file path %q", p)
+	}
+	if strings.HasPrefix(p, "/") {
+		return "", fmt.Errorf("absolute skill file path %q", p)
+	}
+	for _, seg := range strings.Split(p, "/") {
+		switch seg {
+		case "", ".", "..":
+			return "", fmt.Errorf("invalid skill file path %q", p)
+		}
+	}
+	return p, nil
+}
+
+// skillFileMax total guard is per file (skillFileMaxBytes); PackMaxBytes caps
+// one skill pack's bundled payload (export/import sanity, not a hard law).
+const skillPackMaxBytes = 32 << 20 // 32 MiB
+
+// SkillFileBytes reads one bundled file of a skill pack (path relative to the
+// skill directory, slash-separated). Used by the agent's skill tool (via
+// ReadSkillFile) and the expert export path.
+func (s *SkillService) SkillFileBytes(name, path string) ([]byte, error) {
+	if !skillNameRe.MatchString(name) {
+		return nil, fmt.Errorf("invalid skill name %q", name)
+	}
+	rel, err := safeSkillRelPath(path)
+	if err != nil {
+		return nil, err
+	}
+	skillDir := filepath.Join(s.dir, name)
+	target := filepath.Join(skillDir, filepath.FromSlash(rel))
+	// Containment double-check after cleaning (defence in depth — the
+	// validator above already rejects dot-dot segments).
+	if rel2, err := filepath.Rel(skillDir, target); err != nil ||
+		strings.HasPrefix(rel2, "..") || filepath.IsAbs(rel2) {
+		return nil, fmt.Errorf("invalid skill file path %q", path)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return nil, fmt.Errorf("skill %q file %q: %w", name, path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("skill %q file %q is not a regular file", name, path)
+	}
+	if info.Size() > skillFileMaxBytes {
+		return nil, fmt.Errorf("skill %q file %q exceeds %d bytes", name, path, skillFileMaxBytes)
+	}
+	raw, err := os.ReadFile(target)
+	if err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+// SkillFileList returns a skill's bundled files (relative slash paths,
+// SKILL.md excluded) — the export/packaging view of withFiles.
+func (s *SkillService) SkillFileList(name string) ([]string, error) {
+	if !skillNameRe.MatchString(name) {
+		return nil, fmt.Errorf("invalid skill name %q", name)
+	}
+	skillDir := filepath.Join(s.dir, name)
+	if _, err := os.Stat(filepath.Join(skillDir, "SKILL.md")); err != nil {
+		return nil, fmt.Errorf("skill %q: %w", name, err)
+	}
+	return listSkillFiles(skillDir), nil
+}
+
+// ReadSkillFile returns one bundled file's content as text (agent-facing).
+func (s *SkillService) ReadSkillFile(name, path string) (string, error) {
+	raw, err := s.SkillFileBytes(name, path)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+// ImportSkillFiles installs a whole skill pack (expert zip import): files map
+// relative slash paths to contents, SKILL.md required. An existing pack of
+// the same name is replaced — import is an explicit user action, and a
+// half-overwritten pack would be worse than a replaced one. Re-saving a
+// dismissed builtin clears its dismissal (same as SaveSkill).
+func (s *SkillService) ImportSkillFiles(name string, files map[string][]byte) error {
+	if !skillNameRe.MatchString(name) {
+		return fmt.Errorf("invalid skill name %q", name)
+	}
+	if files["SKILL.md"] == nil {
+		return fmt.Errorf("skill %q: SKILL.md missing", name)
+	}
+	cleaned := make(map[string][]byte, len(files))
+	var total int
+	for p, raw := range files {
+		rel, err := safeSkillRelPath(p)
+		if err != nil {
+			return fmt.Errorf("skill %q: %w", name, err)
+		}
+		if len(raw) > skillFileMaxBytes {
+			return fmt.Errorf("skill %q file %q exceeds %d bytes", name, p, skillFileMaxBytes)
+		}
+		total += len(raw)
+		if total > skillPackMaxBytes {
+			return fmt.Errorf("skill %q exceeds %d bytes", name, skillPackMaxBytes)
+		}
+		cleaned[rel] = raw
+	}
+	skillDir := filepath.Join(s.dir, name)
+	if err := os.RemoveAll(skillDir); err != nil {
+		return fmt.Errorf("replace skill %q: %w", name, err)
+	}
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		return fmt.Errorf("create skill dir: %w", err)
+	}
+	for rel, raw := range cleaned {
+		target := filepath.Join(skillDir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return fmt.Errorf("skill %q: %w", name, err)
+		}
+		if err := os.WriteFile(target, raw, 0o644); err != nil {
+			return fmt.Errorf("skill %q: write %q: %w", name, rel, err)
+		}
+	}
+	if set := readDismissed(s.dir); set[name] {
+		delete(set, name)
+		writeDismissed(s.dir, set)
+	}
+	return nil
 }
 
 // ExtractSkillFrontmatter parses the name/description keys out of a

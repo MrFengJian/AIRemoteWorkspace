@@ -4,9 +4,10 @@
 import {
   ExpertService,
   type ExpertDTO,
+  type ExpertExportResultDTO,
 } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 
-export type { ExpertDTO };
+export type { ExpertDTO, ExpertExportResultDTO };
 
 export const expertsApi = {
   /** Visible roster (dismissed builtins hidden), sorted by SortOrder. */
@@ -17,4 +18,9 @@ export const expertsApi = {
   save: (expert: ExpertDTO) => ExpertService.SaveExpert(expert),
   /** Delete an expert (builtins are dismissed, not destroyed). */
   remove: (id: string) => ExpertService.DeleteExpert(id),
+  /** Package the expert + its bound skill packs into a zip archive. */
+  exportPackage: (id: string, zipPath: string) =>
+    ExpertService.ExportExpert(id, zipPath),
+  /** Restore an expert package (new custom row + skill packs installed). */
+  importPackage: (zipPath: string) => ExpertService.ImportExpert(zipPath),
 };

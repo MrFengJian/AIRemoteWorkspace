@@ -875,6 +875,24 @@ fork 炸弹）宁可升级、绝不放行。
 
 模型侧另有 `skill` 工具可按名自助加载技能（READ 级）。
 
+技能包目录形态（对齐 Agent Skills 生态惯例）：
+
+```
+skills/<name>/SKILL.md            指令正文（frontmatter name/description）
+skills/<name>/scripts/…           附带脚本（如 cron-wrapper.sh）
+skills/<name>/references/…        参考文档
+```
+
+- 种子按文件粒度落地：SKILL.md 已存在（用户改过）不覆盖，缺失的附带
+  文件仍会补齐；删除内置包仍按名 Dismissed（整个目录不再复活）
+- `skill` 工具带 `path` 参数可读包内附件（skillFileMaxBytes 2MiB 上限、
+  路径校验拒绝 ../ 与绝对路径）；SKILL.md 正文末尾自动附附件清单
+- 专家 zip 包整体导出/导入（ExpertTransferService）：expert.json
+  （version 信封 + Expert 档案）+ skills/<name>/ 目录包；导入生成新的
+  自定义专家（builtin 标志不随包迁移、新 ID、强制启用），同名技能包
+  替换；防 zip-slip（拒绝 ..、绝对路径、反斜杠/盘符、非常规文件）+
+  体积护栏（包 64MiB / 条目 500 / 单文件 8MiB / 解压总量 64MiB）
+
 ---
 
 流程：
@@ -1063,12 +1081,13 @@ mysql-triage，文件尾部有来源标注），k8s-pod-troubleshoot 为原创�
 domain/expert.go                     Expert 模型 + 内置 ID 常量
 application/experts_builtin.go       6 个内置专家人设（SRE/K8s运维/K8s开发/Docker/Linux/DBA）
 application/expert_service.go        种子 + CRUD（GetExpert 兼作 runtime ExpertSource）
+application/expert_transfer.go       专家 zip 包导出/导入（信封 + 技能包 + zip-slip 防护）
 infrastructure/sqlite/expert_repo.go experts 表
 infrastructure/agent/runtime.go      activeExperts 映射、resolveExpert、expertPrompt、工具过滤
-infrastructure/agent/tools           BuildForSession(sessionID, allowed)
-interfaces/expert_service.go         Wails ExpertService
+infrastructure/agent/tools           BuildForSession(sessionID, allowed) + skill 工具 path 读附件
+interfaces/expert_service.go         Wails ExpertService（含 ExportExpert/ImportExpert）
 frontend features/experts/           api / hooks / 头像组件
-frontend settings ExpertsSection     设置 → 数字员工 管理界面
+frontend settings ExpertsSection     设置 → 数字员工 管理界面（导入/导出按钮）
 ```
 
 ---

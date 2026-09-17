@@ -104,6 +104,21 @@ func TestBuiltinScenarioSeeding(t *testing.T) {
 		t.Fatalf("seeding overwrote the user-edited pack: %q", edited)
 	}
 
+	// Directory-form packs: bundled files seed next to SKILL.md and are
+	// readable through the agent-facing path (with traversal refused).
+	if _, err := svc.GetSkill("cron-scheduling"); err != nil {
+		t.Fatalf("cron-scheduling pack missing: %v", err)
+	}
+	raw, err := svc.ReadSkillFile("cron-scheduling", "scripts/cron-wrapper.sh")
+	if err != nil || !strings.Contains(raw, "cron-wrapper.sh — Run a command with logging") {
+		t.Fatalf("bundled script not seeded/readable: err=%v len=%d", err, len(raw))
+	}
+	for _, bad := range []string{"../../etc/passwd", "/etc/passwd", `scripts\esc.sh`, ""} {
+		if _, err := svc.ReadSkillFile("cron-scheduling", bad); err == nil {
+			t.Fatalf("invalid path %q accepted", bad)
+		}
+	}
+
 	// Delete a builtin → dismissed list keeps it dead across restarts.
 	if err := svc.DeleteSkill("disk-full"); err != nil {
 		t.Fatal(err)

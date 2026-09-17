@@ -101,6 +101,10 @@ func (fakeSkills) GetSkill(name string) (domain.Skill, error) {
 	return domain.Skill{}, fmt.Errorf("skill %q not found", name)
 }
 
+func (fakeSkills) ReadSkillFile(name, path string) (string, error) {
+	return "", fmt.Errorf("skill %q file %q not found", name, path)
+}
+
 func TestResolveUserMessage(t *testing.T) {
 	dir := t.TempDir()
 	notes := filepath.Join(dir, "notes.txt")

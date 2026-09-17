@@ -289,6 +289,45 @@ export class ExpertDTO {
 }
 
 /**
+ * ExpertExportResultDTO reports what an export wrote.
+ */
+export class ExpertExportResultDTO {
+    /**
+     * Path is the zip file actually written (".zip" appended when missing).
+     */
+    "path": string;
+
+    /**
+     * Skills lists the bound skill packs included in the package.
+     */
+    "skills": string[];
+
+    /** Creates a new ExpertExportResultDTO instance. */
+    constructor($$source: Partial<ExpertExportResultDTO> = {}) {
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("skills" in $$source)) {
+            this["skills"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ExpertExportResultDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ExpertExportResultDTO {
+        const $$createField1_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("skills" in $$parsedSource) {
+            $$parsedSource["skills"] = $$createField1_0($$parsedSource["skills"]);
+        }
+        return new ExpertExportResultDTO($$parsedSource as Partial<ExpertExportResultDTO>);
+    }
+}
+
+/**
  * FileEntryDTO is the frontend-facing remote filesystem entry.
  */
 export class FileEntryDTO {
@@ -1015,12 +1054,14 @@ export class SessionLogInfoDTO {
 
 /**
  * SkillDTO is one agent skill's metadata for the input-box `/` picker and
- * the scenario manager. Content is only filled by GetSkill (editor use).
+ * the scenario manager. Content is only filled by GetSkill (editor use);
+ * Files lists a directory-form pack's bundled files (scripts/references).
  */
 export class SkillDTO {
     "name": string;
     "description": string;
     "content"?: string;
+    "files"?: string[];
     "builtin"?: boolean;
 
     /** Creates a new SkillDTO instance. */
@@ -1039,7 +1080,11 @@ export class SkillDTO {
      * Creates a new SkillDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): SkillDTO {
+        const $$createField3_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("files" in $$parsedSource) {
+            $$parsedSource["files"] = $$createField3_0($$parsedSource["files"]);
+        }
         return new SkillDTO($$parsedSource as Partial<SkillDTO>);
     }
 }

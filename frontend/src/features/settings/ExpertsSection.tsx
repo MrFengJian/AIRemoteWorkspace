@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
-import { Copy, Loader2, Pencil, Plus, Trash2, UsersRound } from "lucide-react";
+import { Copy, Download, Import, Loader2, Pencil, Plus, Trash2, UsersRound } from "lucide-react";
+import { Dialogs } from "@wailsio/runtime";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/card";
 import { useConfirm } from "@/lib/useConfirm";
 import { toast } from "@/lib/toast";
+import { expertsApi } from "@/features/experts/api";
 import {
   useExperts,
   useSaveExpert,
@@ -86,14 +88,60 @@ export function ExpertsSection() {
     });
   };
 
+  /** Package the expert + bound skill packs into a zip the user picks. */
+  const handleExport = async (e: ExpertDTO) => {
+    const target = await Dialogs.SaveFile({
+      Filename: `${e.name}.expert.zip`,
+      Title: t("settings.experts.exportPick"),
+    });
+    if (!target) return;
+    const result = await expertsApi.exportPackage(e.id, target);
+    const packs = (result.skills ?? []).join(", ");
+    toast.success(
+      packs
+        ? t("settings.experts.exportedWithSkills", { path: result.path, skills: packs })
+        : t("settings.experts.exported", { path: result.path }),
+    );
+  };
+
+  /** Restore an expert package: new custom row + skill packs installed. */
+  const handleImport = async () => {
+    const picked = await Dialogs.OpenFile({
+      CanChooseFiles: true,
+      Title: t("settings.experts.importPick"),
+    });
+    if (!picked) return;
+    const path = Array.isArray(picked) ? picked[0] : picked;
+    const ok = await askConfirm({
+      title: t("settings.experts.importTitle"),
+      message: t("settings.experts.importConfirm", { path }),
+      confirmLabel: t("common.confirm"),
+    });
+    if (!ok) return;
+    try {
+      const e = await expertsApi.importPackage(path);
+      queryClient.invalidateQueries({ queryKey: EXPERTS_KEY });
+      queryClient.invalidateQueries({ queryKey: ["agent-skills"] });
+      toast.success(t("settings.experts.imported", { name: e.name }));
+    } catch (err) {
+      toast.error(`${t("settings.experts.importFailed")}: ${errorMessage(err)}`);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">{t("settings.experts.title")}</h2>
-        <Button size="sm" onClick={openAdd}>
-          <Plus className="h-3.5 w-3.5" />
-          {t("settings.experts.add")}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => void handleImport()}>
+            <Import className="h-3.5 w-3.5" />
+            {t("settings.experts.import")}
+          </Button>
+          <Button size="sm" onClick={openAdd}>
+            <Plus className="h-3.5 w-3.5" />
+            {t("settings.experts.add")}
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -149,6 +197,24 @@ export function ExpertsSection() {
                   <Button variant="ghost" size="sm" className="h-7" onClick={() => openDuplicate(e)}>
                     <Copy className="h-3.5 w-3.5" />
                     {t("settings.experts.duplicate")}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7"
+                    title={t("settings.experts.export")}
+                    onClick={() =>
+                      void (async () => {
+                        try {
+                          await handleExport(e);
+                        } catch (err) {
+                          toast.error(`${t("settings.experts.exportFailed")}: ${errorMessage(err)}`);
+                        }
+                      })()
+                    }
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    {t("settings.experts.export")}
                   </Button>
                   <Button
                     variant="ghost"

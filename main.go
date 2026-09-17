@@ -26,7 +26,7 @@ import (
 // the UI and, later, the MCP system_info tool.
 const (
 	appName    = "AI Remote Workspace"
-	appVersion = "0.9.0"
+	appVersion = "0.10.0"
 	// appDirName is the single directory name used under xdg.DataHome /
 	// xdg.ConfigHome (database + skills + the data-dir pointer file).
 	appDirName = "ai-remote-workspace"
@@ -224,7 +224,8 @@ func main() {
 	sftpService.SetRemoteEdits(remoteEdits)
 	windowService := interfaces.NewWindowService(hostSvc)
 	providerService := interfaces.NewModelProviderService(providerSvc)
-	expertService := interfaces.NewExpertService(expertSvc)
+	expertTransfer := application.NewExpertTransferService(expertSvc, skillSvc)
+	expertService := interfaces.NewExpertService(expertSvc, expertTransfer)
 	agentService := interfaces.NewAgentService(agentRuntime, permGate, convSvc, skillSvc, expertSvc)
 	mcpService := interfaces.NewMCPService(mcpServer)
 

@@ -179,6 +179,8 @@ Docker 面板的 kubectl CLI 同构方案（SSH 会话走 exec 通道，本地�
 - 确定性体检快照 —— `MonitorService.Snapshot` 聚合 CPU / 内存 / 磁盘 / Top 进程 / 监听端口 / journalctl·dmesg 近期错误，诊断会话首轮自动注入，不烧 LLM 的分诊上下文
 - 诊断模式 —— 独立系统提示词模板（快照优先、场景包决策树、证据优先，结论按 现象 / 根因 / 证据 / 建议 / 风险 输出）；Agent 面板一键诊断入口，症状输入自动带快照发起会话，权限策略零新机制
 - 沉淀闭环 —— 会话历史右键「保存为场景」，LLM 一次性提炼为 SKILL.md 草稿，预览编辑后写入技能目录，下次同类症状即被命中；场景库轻 UI（列表 / 新建 / 编辑 / 删除）
+- 技能目录形态 —— 技能包从单文件升级为目录：`skills/<name>/` 下 SKILL.md 之外可附带 `scripts/`、`references/` 等依赖文件（种子按文件粒度落地，用户改过的 SKILL.md 不覆盖、缺失附件照常补齐）；`skill` 工具新增 `path` 参数按路径读附件（路径校验 + 2MiB 上限），SKILL.md 正文末尾自动附附件清单；cron-scheduling 包自带 `scripts/cron-wrapper.sh` 作为示例
+- 专家 zip 包导出/导入 —— `ExpertTransferService` 把专家档案（expert.json，version 信封）连同其绑定的技能包目录整体打包/恢复：导出为 `<专家名>.expert.zip`；导入生成新的自定义专家（builtin 标志不随包迁移、新 ID、自动启用），包内同名技能包替换本地；防 zip-slip（拒绝 `..`/绝对路径/反斜杠/非常规文件）与体积护栏（包 64MiB / 条目 500 / 单文件 8MiB / 解压总量 64MiB）
 - Phase C（远期可选）：历史诊断检索 / 结构化结论面板
 
 ---

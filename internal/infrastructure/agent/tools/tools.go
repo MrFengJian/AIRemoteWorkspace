@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
@@ -35,6 +36,9 @@ type PermissionGate interface {
 type SkillBackend interface {
 	ListSkills() ([]domain.Skill, error)
 	GetSkill(name string) (domain.Skill, error)
+	// ReadSkillFile returns one bundled file of a directory-form skill pack
+	// (path relative to the skill directory, slash-separated).
+	ReadSkillFile(name, path string) (string, error)
 }
 
 // SftpFileOps is the subset of the SFTP manager the file tools need. Progress
@@ -200,7 +204,9 @@ func (ss *sessionToolSet) buildSkillTool() (tool.BaseTool, error) {
 		skills = nil // listing failed — still offer the tool, generic description
 	}
 	desc := "Load the full instructions of an available skill into this conversation. " +
-		"Use it whenever the user asks to follow a skill, or before performing work covered by one.\nAvailable skills:"
+		"Use it whenever the user asks to follow a skill, or before performing work covered by one. " +
+		"Skills may bundle extra files (scripts, references) listed at the end of their instructions — " +
+		"pass such a path via the `path` argument to read its content.\nAvailable skills:"
 	for _, s := range skills {
 		desc += fmt.Sprintf("\n- %s: %s", s.Name, s.Description)
 	}
@@ -219,7 +225,9 @@ func (ss *sessionToolSet) buildSkillTool() (tool.BaseTool, error) {
 }
 
 // loadSkill resolves a skill name to its markdown instructions (READ tier —
-// skills live on the user's machine and only extend the conversation).
+// skills live on the user's machine and only extend the conversation). With
+// `path` set it instead returns one bundled file of the pack (directory-form
+// skills: scripts, references), same READ tier.
 func (ss *sessionToolSet) loadSkill(ctx context.Context, a skillArgs) (string, error) {
 	if ss.skills == nil {
 		return "", fmt.Errorf("skills not available")
@@ -227,11 +235,18 @@ func (ss *sessionToolSet) loadSkill(ctx context.Context, a skillArgs) (string, e
 	if err := ss.gateCheck(ctx, "skill", domain.PermissionRead, a); err != nil {
 		return "", err
 	}
+	if a.Path != "" {
+		return ss.skills.ReadSkillFile(a.Skill, a.Path)
+	}
 	sk, err := ss.skills.GetSkill(a.Skill)
 	if err != nil {
 		return "", err
 	}
-	return sk.Content, nil
+	if len(sk.Files) == 0 {
+		return sk.Content, nil
+	}
+	return sk.Content + "\n\n---\nBundled files in this skill pack (read one with the skill tool, " +
+		"passing `skill` plus its `path`):\n" + strings.Join(sk.Files, "\n"), nil
 }
 
 // build constructs all tools for this sessionToolSet as (name, tool) pairs —
@@ -346,6 +361,9 @@ type localExecArgs struct {
 
 type skillArgs struct {
 	Skill string `json:"skill" jsonschema:"description=skill name (see the tool description list),required"`
+	// Path (optional) reads one bundled file of the pack instead of the
+	// instructions — directory-form skills ship scripts/references.
+	Path string `json:"path,omitempty" jsonschema:"description=bundled file path to read instead of the instructions (relative to the skill, e.g. scripts/foo.py)"`
 }
 
 type readPathArgs struct {

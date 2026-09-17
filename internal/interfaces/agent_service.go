@@ -45,12 +45,14 @@ type ConversationMessageDTO struct {
 }
 
 // SkillDTO is one agent skill's metadata for the input-box `/` picker and
-// the scenario manager. Content is only filled by GetSkill (editor use).
+// the scenario manager. Content is only filled by GetSkill (editor use);
+// Files lists a directory-form pack's bundled files (scripts/references).
 type SkillDTO struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Content     string `json:"content,omitempty"`
-	Builtin     bool   `json:"builtin,omitempty"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Content     string   `json:"content,omitempty"`
+	Files       []string `json:"files,omitempty"`
+	Builtin     bool     `json:"builtin,omitempty"`
 }
 
 // ScenarioDraftDTO is an LLM-distilled scenario draft (Phase B 沉淀闭环):
@@ -100,7 +102,7 @@ func (a *AgentService) ListSkills() ([]SkillDTO, error) {
 	}
 	out := make([]SkillDTO, 0, len(skills))
 	for _, s := range skills {
-		out = append(out, SkillDTO{Name: s.Name, Description: s.Description, Builtin: s.Builtin})
+		out = append(out, SkillDTO{Name: s.Name, Description: s.Description, Files: orEmpty(s.Files), Builtin: s.Builtin})
 	}
 	return out, nil
 }
@@ -114,7 +116,7 @@ func (a *AgentService) GetSkill(name string) (SkillDTO, error) {
 	if err != nil {
 		return SkillDTO{}, err
 	}
-	return SkillDTO{Name: s.Name, Description: s.Description, Content: s.Content, Builtin: s.Builtin}, nil
+	return SkillDTO{Name: s.Name, Description: s.Description, Content: s.Content, Files: orEmpty(s.Files), Builtin: s.Builtin}, nil
 }
 
 // SaveSkill creates or overwrites a skill's SKILL.md (scenario editor save).
