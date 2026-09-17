@@ -19,7 +19,7 @@ Phase 5  安全增强               ✅ 已完成（SecretStore）
    ↓
 Phase 6  MCP Server             ✅ 已完成
    ↓
-Phase 7  Docker / Kubernetes    Docker 面板 ✅ · K8s 面板延后
+Phase 7  Docker / Kubernetes    Docker 面板 ✅ · K8s 面板 ✅（v0.9）
    ↓
 Phase 8  Xshell 能力对齐        连接链路 / 审计 / 传输 / 运维效率
 Phase 9  运维专家              角色化运维专家（人设 + 能力 + 安全边界）
@@ -290,7 +290,7 @@ PTY 输出 tee 到 `<数据目录>/logs/<主机>/<日期>.log`，全局开关 + 
 
 ### 后续可选（未排期）
 
-- 专家导入 / 导出（JSON 分享）
+- ~~专家导入 / 导出（JSON 分享）~~ ✅ 已超额交付：zip 整包导出/导入（manifest + SOUL + HEARTBEAT + 私有技能，见「故障报告追踪」章节上方）
 - 会话内多专家快速 @ 引用与协作（编排）
 - 专家级自定义工具（MCP 工具子集绑定）
 
@@ -328,5 +328,6 @@ PTY 输出 tee 到 `<数据目录>/logs/<主机>/<日期>.log`，全局开关 + 
 对应阶段：**Phase 1 – Phase 6** 完成。
 
 > **现状**：v0.1.0 已发布（Phase 1–5 + 计划外功能全部达成，发布流水线已验证）。
-> Phase 6 MCP Server 已实现（目标 v0.2），MVP 功能清单全部达成；剩余为稳定性验收
-> （冷启动 / SSH / Terminal 长时间稳定）与 Phase 7 延后项（K8s 面板、Diagnosis Agent）。
+> Phase 6 MCP Server 已实现（目标 v0.2），MVP 功能清单全部达成；Phase 7 的两项延后
+> 项均已落地（K8s 面板 v0.9、Diagnosis Agent 能力并入专家体系），剩余为稳定性验收
+> （冷启动 / SSH / Terminal 长时间稳定）。

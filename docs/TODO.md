@@ -80,11 +80,8 @@
 - [x] 容器生命周期控制（start / stop / restart / pause / unpause，allowlist + 确认对话框）
 - [x] 友好降级（CLI 未安装 / 守护进程未运行分类提示，不报错）
 - [x] Agent 容器运维：直接经 ssh_exec / local_exec 使用 docker / kubectl CLI（提示词引导 + 危险动词 WRITE 分级 + 64KB 输出截断）
-- [ ] Kubernetes 面板（pod / deploy / logs UI）— 延后，待 Docker 面板使用反馈
-- [~] Diagnosis Agent — 方案见 [DIAGNOSIS_AGENT.md](./DIAGNOSIS_AGENT.md)
-  - [x] Phase A：内置场景包（9 个 SKILL.md）+ 诊断模式提示词 + 体检快照注入 + Agent 面板入口
-  - [x] Phase B：沉淀闭环（「保存为场景」LLM 提炼 SKILL.md）+ 场景库管理轻 UI
-  - [ ] Phase C（远期可选）：历史诊断检索 / 结构化结论面板（结论面板设计已定，见 [DIAGNOSIS_AGENT.md](./DIAGNOSIS_AGENT.md)，待排期）
+- [x] Kubernetes 面板 — 已上线（v0.9，kubectl CLI 同构方案：概览/工作负载/Pods/Services/事件/日志 六页签 + 节点卡片 + YAML 查看/应用），详见 ROADMAP Phase 7
+- [x] Diagnosis Agent — Phase A/B 已交付；诊断入口随专家体系成熟退役（诊断 = 切换 SRE 诊断专家）；「历史诊断检索/结构化结论面板」不再排期——结构化结论的职责由「故障报告追踪页」承接（见 Phase 9）
 - [x] 诊断场景沉淀（CPU 高、磁盘满、内存/OOM、服务异常、端口不通、容器重启循环、网络延迟、磁盘 IO、SSH 登录慢）
 
 ## Phase 8 — Xshell 能力对齐
@@ -121,7 +118,7 @@
 
 - [ ] Telnet 协议源（TCP + IAC 协商）
 - [ ] 串口协议源（go.bug.st/serial）
-- [ ] 密钥管理器（生成 / 导入 / 转换 / 导出）→ [x] 已上线（设置 → 密钥管理：Ed25519/RSA/ECDSA 生成、口令加密、导入含口令私钥、导出私钥+.pub、指纹列表、删除）
+- [x] 密钥管理器（生成 / 导入 / 转换 / 导出）：设置 → 密钥管理（Ed25519/RSA/ECDSA 生成、口令加密、导入含口令私钥、导出私钥+.pub、指纹列表、删除）
 - [ ] SSH Agent 转发（会话级开关）
 - [ ] 会话组批量打开（一键打开分组内全部主机）
 - [x] 终端编码按主机切换（UTF-8 / GBK / GB18030 / Big5）：输出解码、输入编码、会话日志与登录脚本匹配均在转码后的 UTF-8 流上进行
@@ -186,7 +183,7 @@
   - [x] 设置 → 运维专家：名册管理（启用开关/编辑/副本/删除确认）+ 表单对话框（身份/人设/能力/模型/交互五区块）
   - [x] i18n 中英词条补全
 - [x] 质量验证：`go build` + `go test ./internal/...`（新增 expert_service / expert_repo / runtime 专家层测试）+ `npm run build`
-- [ ] 手测清单：专家选择器切换人设（徽章/头像/开场白联动）→ 诊断按钮发起 → 快照注入对话 → 工具白名单生效（审批框只见允许工具）→ 设置增删改专家实时同步到选择器 → 恢复历史对话还原人设 → 本地终端会话使用专家
+- [ ] 手测清单：专家选择器切换人设（徽章/头像/开场白联动）→ 选中 SRE 诊断专家后首回合自动注入快照 → 工具白名单生效（审批框只见允许工具）→ 设置增删改专家实时同步到选择器 → 恢复历史对话还原人设 → 本地终端会话使用专家 → 生成故障报告（草稿预览/保存/追踪页过滤）
 
 ---
 
