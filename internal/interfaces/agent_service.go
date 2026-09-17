@@ -82,7 +82,7 @@ type ContextPathDTO struct {
 
 // AgentService exposes the AI agent to the frontend. Provider/model selection
 // is per chat call; provider management lives in ModelProviderService and
-// the digital-employee roster in ExpertService.
+// the ops-expert roster in ExpertService.
 type AgentService struct {
 	app     *wailsapp.App
 	runtime *agent.Runtime
@@ -94,7 +94,7 @@ type AgentService struct {
 
 // NewAgentService wires the AgentService. The *Application is injected via
 // ServiceStartup. skills (may be nil) backs the input-box `/` skill picker;
-// experts (may be nil) disables the digital-employee persona layer.
+// experts (may be nil) disables the ops-expert persona layer.
 func NewAgentService(runtime *agent.Runtime, gate *appsvc.PermissionGate, convs *appsvc.ConversationService, skills *appsvc.SkillService, experts *appsvc.ExpertService) *AgentService {
 	return &AgentService{runtime: runtime, gate: gate, convs: convs, skills: skills, experts: experts}
 }
@@ -195,7 +195,7 @@ func (a *AgentService) expertMeta(expertID string) (string, string) {
 }
 
 // StartChat kicks off a streaming agent chat against the selected provider +
-// model. expertID ("" = general assistant) selects the digital-employee
+// model. expertID ("" = general assistant) selects the ops-expert
 // persona; an AutoSnapshot expert injects a fresh health snapshot on its
 // first turn. Output flows via events:
 //   agent:<sessionID>:chunk    — incremental LLM text

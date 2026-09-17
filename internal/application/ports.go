@@ -130,7 +130,7 @@ type ConversationRepository interface {
 	Delete(conversationID string) error
 }
 
-// ExpertRepository persists the digital-employee expert roster. Implemented
+// ExpertRepository persists the ops-expert roster. Implemented
 // by infrastructure/sqlite.ExpertRepo. Dismissed builtins keep their row so
 // the seeder can tell "deleted on purpose" from "never seeded".
 type ExpertRepository interface {

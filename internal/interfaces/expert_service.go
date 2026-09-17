@@ -10,7 +10,7 @@ import (
 	"github.com/ai-remote/workspace/internal/domain"
 )
 
-// ExpertDTO mirrors domain.Expert for the frontend (digital-employee roster
+// ExpertDTO mirrors domain.Expert for the frontend (ops-expert roster
 // management and the chat-side persona pickers).
 type ExpertDTO struct {
 	ID               string   `json:"id"`
@@ -69,7 +69,7 @@ func orEmpty(s []string) []string {
 	return s
 }
 
-// ExpertService exposes the digital-employee roster (运维专家/数字员工) to
+// ExpertService exposes the ops-expert roster (运维专家) to
 // the frontend: the chat-side pickers read it, the settings page manages it.
 // The transfer dependency (may be nil) backs expert package export/import.
 type ExpertService struct {

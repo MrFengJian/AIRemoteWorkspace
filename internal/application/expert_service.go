@@ -9,7 +9,7 @@ import (
 	"github.com/ai-remote/workspace/internal/domain"
 )
 
-// ExpertService manages the digital-employee roster (运维专家/数字员工):
+// ExpertService manages the ops-expert roster (运维专家):
 // builtin experts seeded from the binary plus user-defined ones, with CRUD,
 // enable/disable and the builtin-dismissal lifecycle. It also feeds the
 // agent runtime as its ExpertSource (GetExpert).

@@ -71,7 +71,7 @@ interface ExpertFormDialogProps {
 }
 
 /**
- * ExpertFormDialog — create/edit a digital employee. Sections follow the
+ * ExpertFormDialog — create/edit an ops expert. Sections follow the
  * persona-card convention: identity, persona prompt, capabilities (tool
  * allowlist + bound skills), model binding, interaction design.
  */

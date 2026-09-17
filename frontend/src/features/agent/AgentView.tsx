@@ -108,11 +108,11 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
   const [inputHistory, setInputHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState<number | null>(null);
 
-  // ── Expert persona (数字员工) & scenario management ────────────────────
+  // ── Expert persona (运维专家) & scenario management ────────────────────
   const [scenariosOpen, setScenariosOpen] = useState(false);
   const [saveScenarioConv, setSaveScenarioConv] = useState<ConversationDTO | null>(null);
 
-  // Digital-employee roster (shared cache with the settings page). Only
+  // Ops-expert roster (shared cache with the settings page). Only
   // enabled experts appear in the picker.
   const { data: allExperts } = useExperts();
   const experts = useMemo(() => (allExperts ?? []).filter((e) => e.enabled), [allExperts]);
@@ -403,7 +403,7 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
     experts.find((e) => e.id === activeExpertID) ??
     experts.find((e) => e.id === GENERAL_ASSISTANT_ID);
 
-  /** Switch the session's digital employee: record it (store + backend) and
+  /** Switch the session's ops expert: record it (store + backend) and
    *  apply the persona's defaults best-effort — default model (unless the
    *  expert has none) and default approval policy. The user can still
    *  override both via the inline selectors afterwards. */
@@ -1117,7 +1117,7 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
         {providers.length > 0 ? (
           <div className="flex items-center gap-1.5 pb-2">
             <UsersRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            {/* Digital employee picker: "" = the general assistant. */}
+            {/* Ops-expert picker: "" = the general assistant. */}
             <Select
               value={activeExpertID}
               onChange={(e) => handleExpertChange(e.target.value)}

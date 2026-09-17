@@ -152,7 +152,7 @@ func TestCapContext(t *testing.T) {
 	}
 }
 
-// ── digital-employee experts (persona layer + snapshot window) ───────────
+// ── ops experts (persona layer + snapshot window) ───────────
 
 type fakeSnapshots struct{ out string }
 

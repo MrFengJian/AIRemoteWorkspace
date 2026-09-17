@@ -140,7 +140,7 @@ func main() {
 	// `skill` tool both resolve through it.
 	skillsDir := filepath.Join(dataDir, "skills")
 	skillSvc := application.NewSkillService(skillsDir)
-	// Digital employees (数字员工): the expert roster lives in SQLite with
+	// Ops experts (运维专家): the expert roster lives in SQLite with
 	// builtin personas seeded from the binary (embedded expert directories,
 	// manifest.json + SOUL.md + HEARTBEAT.md + private skills/). The runtime
 	// resolves personas through the same service that backs the management UI.

@@ -28,7 +28,7 @@ import { ExpertAvatar } from "@/features/experts/avatar";
 import { ExpertFormDialog } from "@/features/settings/ExpertFormDialog";
 
 /**
- * Settings → 数字员工 (Experts). Manages the digital-employee roster: the
+ * Settings → 运维专家 (Experts). Manages the ops-expert roster: the
  * builtin personas seeded from the binary plus user-defined ones. List +
  * mutations run through TanStack Query (queryKey "experts") so the agent
  * panel's persona picker stays in sync. Deleting a builtin only dismisses it

@@ -2,7 +2,7 @@ package domain
 
 import "time"
 
-// Expert is one "digital employee" (数字员工) — a role-specialized ops expert
+// Expert is one ops expert (运维专家) — a role-specialized expert
 // persona the agent runtime can embody. Following the industry persona-card
 // convention (Coze/Dify/GPTs-style bots), an expert bundles a structured
 // identity (name/role/icon), the persona instructions, capability scoping

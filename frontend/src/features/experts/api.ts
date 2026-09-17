@@ -1,5 +1,5 @@
 // Experts feature API — typed wrappers over the generated ExpertService
-// bindings (the digital-employee roster).
+// bindings (the ops-expert roster).
 
 import {
   ExpertService,

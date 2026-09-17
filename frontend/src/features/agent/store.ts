@@ -35,7 +35,7 @@ interface AgentState {
   activeConvBySession: Record<string, string>;
   /** Approval policy per session (the input-bar dropdown). */
   policies: Record<string, SessionPolicy>;
-  /** Active expert (digital employee) per session; "" = the general
+  /** Active expert (ops expert) per session; "" = the general
    *  assistant. Kept across new chats — leaving a persona is explicit. */
   expertsBySession: Record<string, string>;
 
@@ -168,7 +168,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       const h = { ...s.histories };
       delete h[sessionID];
       // The expert selection is deliberately KEPT: a new conversation is a
-      // new topic with the same digital employee.
+      // new topic with the same ops expert.
       return { histories: h };
     }),
 }));

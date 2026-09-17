@@ -5,7 +5,7 @@ import { expertsApi } from "@/features/experts/api";
 /** Query key for the expert roster (shared by settings + agent panel). */
 export const EXPERTS_KEY = ["experts"] as const;
 
-/** useExperts subscribes to the digital-employee roster. Local SQLite reads
+/** useExperts subscribes to the ops-expert roster. Local SQLite reads
  *  are cheap; refetchOnMount keeps the pickers in sync with edits made in
  *  the settings page without any event wiring. */
 export function useExperts() {

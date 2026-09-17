@@ -28,7 +28,7 @@ type Turn struct {
 
 // Conversation is a persisted agent chat, scoped to the host (HostID "" =
 // local machine) it happened on. Resumable across app restarts. ExpertID/
-// ExpertName record the digital employee that authored it ("" = the general
+// ExpertName record the ops expert that authored it ("" = the general
 // assistant), so the history list can badge conversations and resuming one
 // restores the expert.
 type Conversation struct {

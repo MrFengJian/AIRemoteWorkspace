@@ -42,7 +42,7 @@ type expertSkillScoper interface {
 	SkillSourceFor(expertID string) (domain.SkillStore, bool)
 }
 
-// ExpertSource resolves digital-employee expert personas by id — implemented
+// ExpertSource resolves ops-expert personas by id — implemented
 // by the application layer's ExpertService. May be nil: expert ids then
 // degrade to the general assistant.
 type ExpertSource interface {
@@ -153,7 +153,7 @@ type AgentConfigSource func() domain.AgentConfig
 // turns — the application layer's ConversationService. skills (may be nil)
 // enables /skill invocation and the model-facing skill tool. snapshots (may
 // be nil) disables the AutoSnapshot experts' health-check snapshot. experts
-// (may be nil) disables the digital-employee persona layer.
+// (may be nil) disables the ops-expert persona layer.
 func NewRuntime(llm LLMResolver, sshMgr *ssh.Manager, sftp SftpFileOps, gate PermissionGate, secrets SecretsForResolver, sink TurnSink, agentCfg AgentConfigSource, skills SkillSource, snapshots SnapshotSource, experts ExpertSource) *Runtime {
 	return &Runtime{
 		llm:           llm,
@@ -194,7 +194,7 @@ func (r *Runtime) agentConfig() domain.AgentConfig {
 
 // Chat starts a streaming agent chat for a session using the selected
 // provider + model. expertID ("" = the general assistant) selects the
-// digital-employee persona for the turn; the session's conversation history
+// ops-expert persona for the turn; the session's conversation history
 // is replayed so the model keeps context across turns.
 func (r *Runtime) Chat(ctx context.Context, sessionID, providerID, model, expertID, userMessage string, events AgentEvents) error {
 	return r.runChat(ctx, sessionID, providerID, model, expertID, userMessage, userMessage, events)
@@ -487,7 +487,7 @@ func (r *Runtime) Cancel(sessionID string) {
 // ClearHistory forgets a session's conversation (frontend "clear chat") and
 // reopens the current expert's snapshot window — the next AutoSnapshot turn
 // carries a fresh health snapshot. The expert selection itself is KEPT: a
-// new conversation is a new topic with the same digital employee; leaving
+// new conversation is a new topic with the same ops expert; leaving
 // the persona is an explicit switch (badge X / selector).
 func (r *Runtime) ClearHistory(sessionID string) {
 	r.mu.Lock()
@@ -801,7 +801,7 @@ const (
 )
 
 // systemPrompt is the LLM-facing contract: persona + environment + tool and
-// approval semantics. exp (may be nil) selects the digital-employee persona;
+// approval semantics. exp (may be nil) selects the ops-expert persona;
 // without one the built-in operations-assistant template is used. The user's
 // standing instructions from global settings are appended to every variant.
 func (r *Runtime) systemPrompt(sessionID string, exp *domain.Expert, allowed map[string]bool) string {
@@ -837,7 +837,7 @@ func (r *Runtime) systemPrompt(sessionID string, exp *domain.Expert, allowed map
 	return base
 }
 
-// expertPrompt composes a digital employee's prompt: identity card, the
+// expertPrompt composes an ops expert's prompt: identity card, the
 // persona's own instructions, the environment line, and the fixed tool and
 // permission contracts (never trust a persona to state them), plus the
 // expert's bound skills when a skill source is wired.
@@ -847,7 +847,7 @@ func (r *Runtime) expertPrompt(e *domain.Expert, sessionID string, isLocal bool,
 	if e.Role != "" {
 		fmt.Fprintf(&b, " (%s)", e.Role)
 	}
-	b.WriteString(" — a digital-employee ops expert working inside the AI Remote Workspace.")
+	b.WriteString(" — an ops expert working inside the AI Remote Workspace.")
 	if d := strings.TrimSpace(e.Description); d != "" {
 		b.WriteString("\nMission: " + d)
 	}

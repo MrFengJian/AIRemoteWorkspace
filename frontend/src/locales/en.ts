@@ -437,7 +437,7 @@ export const en = {
     deleteConvTitle: "Delete conversation",
     deleteConvConfirm: 'Delete the conversation "{{title}}"? This cannot be undone.',
     menuSaveScenario: "Save as scenario",
-    expertTitle: "Digital employee (ops expert)",
+    expertTitle: "Ops experts",
     expertGeneral: "General assistant",
     expertBadge: "Expert",
     exitExpert: "Back to the general assistant",
@@ -631,10 +631,10 @@ export const en = {
       formIncomplete: "Name and base URL are required.",
     },
     experts: {
-      title: "Digital Employees",
+      title: "Ops Experts",
       roster: "Expert Roster",
       rosterDesc:
-        "Role-specialized ops experts (digital employees): once selected in a session, the AI works with that expert's persona, tools and methodology. Builtins are editable; roll your own too.",
+        "Role-specialized ops experts: once selected in a session, the AI works with that expert's persona, tools and methodology. Builtins are editable; roll your own too.",
       add: "New Expert",
       addTitle: "New Expert",
       editTitle: "Edit Expert",

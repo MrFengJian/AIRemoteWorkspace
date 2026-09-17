@@ -1045,9 +1045,9 @@ TunnelManager.Ensure（按规则 reconcile：同配置去重、变更替换、�
 
 ---
 
-# 16.8 数字员工（运维专家角色系统）
+# 16.8 运维专家（角色系统）
 
-按业界数字员工最佳实践建模（结构化人设 + 能力配置 + 安全边界 + 交互设计 + 生命周期）。详设见 `docs/ROADMAP.md` Phase 9。
+按业界运维专家系统最佳实践建模（结构化人设 + 能力配置 + 安全边界 + 交互设计 + 生命周期）。详设见 `docs/ROADMAP.md` Phase 9。
 
 专家档案（domain.Expert）：
 
@@ -1108,7 +1108,7 @@ infrastructure/agent/runtime.go      activeExperts、resolveExpert（默认专�
 infrastructure/agent/tools           BuildForSession + skill 工具（作用域存储 + path 读附件）
 interfaces/expert_service.go         Wails ExpertService（含 ExportExpert/ImportExpert）
 frontend features/experts/           api / hooks / 头像组件
-frontend settings ExpertsSection     设置 → 数字员工 管理界面（导入/导出按钮）
+frontend settings ExpertsSection     设置 → 运维专家 管理界面（导入/导出按钮）
 frontend settings ExpertFormDialog   专家编辑（含 HEARTBEAT 文本域）
 ```
 
@@ -1242,7 +1242,7 @@ TODO:
 
 ---
 
-# Phase 9 - Digital Employees（数字员工）
+# Phase 9 - Ops Experts（运维专家）
 
 详见 docs/ROADMAP.md Phase 9 / §16.8。
 

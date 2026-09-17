@@ -11,7 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * Expert identity rendering: each digital employee picks a lucide icon name
+ * Expert identity rendering: each ops expert picks a lucide icon name
  * and a named gradient scheme; unknown values degrade to the default bot
  * look so a bad entry can never break the UI.
  */

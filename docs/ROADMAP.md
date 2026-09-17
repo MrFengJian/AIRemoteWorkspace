@@ -22,7 +22,7 @@ Phase 6  MCP Server             ✅ 已完成
 Phase 7  Docker / Kubernetes    Docker 面板 ✅ · K8s 面板延后
    ↓
 Phase 8  Xshell 能力对齐        连接链路 / 审计 / 传输 / 运维效率
-Phase 9  数字员工              角色化运维专家（人设 + 能力 + 安全边界）
+Phase 9  运维专家              角色化运维专家（人设 + 能力 + 安全边界）
 ```
 
 ---
@@ -177,7 +177,7 @@ Docker 面板的 kubectl CLI 同构方案（SSH 会话走 exec 通道，本地�
   - 原创 K8s 排障 1 个：`k8s-pod-troubleshoot`（症状驱动决策树：CrashLoopBackOff / OOMKilled / Pending / ImagePullBackOff / Terminating 不退 / Service 不通五跳验证）
 - 专家默认绑定技能 —— 6 个内置专家各自通过 `SkillRefs` 默认绑定匹配的场景包（SRE 诊断 → 五大症状包；K8s 运维/开发 → k8s-pod-troubleshoot 等；Docker → docker-essentials + container-restart-loop；Linux → 服务排障 + 定时任务速查；DBA → mysql-triage）。升级安装时种子逻辑只对仍为旧默认签名（v0.9 前）的行补齐绑定，用户自选的技能不受影响；选型过程检索了 skillhub.cn 的同类专家与技能（专家包模型与本产品 专家+SkillRefs 同构），未采用无许可信息的社区技能
 - 确定性体检快照 —— `MonitorService.Snapshot` 聚合 CPU / 内存 / 磁盘 / Top 进程 / 监听端口 / journalctl·dmesg 近期错误，诊断会话首轮自动注入，不烧 LLM 的分诊上下文
-- 诊断模式 —— 独立系统提示词模板（快照优先、场景包决策树、证据优先，结论按 现象 / 根因 / 证据 / 建议 / 风险 输出）；Agent 面板一键诊断入口，症状输入自动带快照发起会话，权限策略零新机制
+- 诊断模式 —— ~~独立系统提示词模板 + Agent 面板一键诊断入口~~（**入口已退役**：由内置 SRE 诊断专家承接，见下「诊断模式统一为内置专家」；结论格式 现象 / 根因 / 证据 / 建议 / 风险 保留为该专家的人设输出契约）；权限策略零新机制
 - 沉淀闭环 —— 会话历史右键「保存为场景」，LLM 一次性提炼为 SKILL.md 草稿，预览编辑后写入技能目录，下次同类症状即被命中；场景库轻 UI（列表 / 新建 / 编辑 / 删除）
 - 技能目录形态 —— 技能包从单文件升级为目录：`skills/<name>/` 下 SKILL.md 之外可附带 `scripts/`、`references/` 等依赖文件（种子按文件粒度落地，用户改过的 SKILL.md 不覆盖、缺失附件照常补齐）；`skill` 工具新增 `path` 参数按路径读附件（路径校验 + 2MiB 上限），SKILL.md 正文末尾自动附附件清单；cron-scheduling 包自带 `scripts/cron-wrapper.sh` 作为示例
 - 专家 zip 包导出/导入 —— `ExpertTransferService` 把专家目录整体打包/恢复：`manifest.json`（身份卡）+ `SOUL.md`（人设）+ `HEARTBEAT.md`（值守指引，可选）+ `skills/`（绑定的技能包，附件随包）；导出为 `<专家名>.expert.zip`；导入生成新的自定义专家（builtin 标志不随包迁移、新 ID、自动启用），包内技能装入该专家**私有** `skills/`；防 zip-slip（拒绝 `..`/绝对路径/反斜杠/非常规文件）与体积护栏（包 64MiB / 条目 500 / 单文件 8MiB / 解压总量 64MiB）
@@ -233,11 +233,11 @@ PTY 输出 tee 到 `<数据目录>/logs/<主机>/<日期>.log`，全局开关 + 
 
 ---
 
-## Phase 9 — 数字员工（运维专家角色系统）✅
+## Phase 9 — 运维专家（角色系统）✅
 
-> 按业界数字员工（Coze / Dify / GPTs 类产品）的最佳实践建模：**结构化人设档案 + 能力配置 + 安全边界 + 交互设计 + 生命周期管理**。用户可自定义不同角色的运维专家（K8s 运维专家、K8s 应用开发者、Docker 专家……），也可直接使用内置角色。
+> 按业界运维专家系统（Coze / Dify / GPTs 类产品的角色卡）的最佳实践建模：**结构化人设档案 + 能力配置 + 安全边界 + 交互设计 + 生命周期管理**。用户可自定义不同角色的运维专家（K8s 运维专家、K8s 应用开发者、Docker 专家……），也可直接使用内置角色。
 
-### 数字员工模型（domain.Expert）
+### 运维专家模型（domain.Expert）
 
 | 最佳实践要素 | 落地字段 / 机制 |
 |---|---|
@@ -251,7 +251,7 @@ PTY 输出 tee 到 `<数据目录>/logs/<主机>/<日期>.log`，全局开关 + 
 
 ### 诊断模式统一为内置专家（入口随后移除）
 
-原硬编码「诊断模式」重构为内置 **SRE 诊断专家**（`builtin-diagnosis-sre`，AutoSnapshot）：人设即原三段式 triage 模板（证据优先 + 现象/根因/证据/建议/风险结论格式），`AutoSnapshot` 标志使其在被选中/切换后的首回合自动注入只读体检快照（采集失败降级为提示，不失败）。行为变化：新对话不再自动退出诊断专家——「新对话 = 与同一位数字员工开新话题」，退出人设是显式操作（徽章 X / 选择器）。
+原硬编码「诊断模式」重构为内置 **SRE 诊断专家**（`builtin-diagnosis-sre`，AutoSnapshot）：人设即原三段式 triage 模板（证据优先 + 现象/根因/证据/建议/风险结论格式），`AutoSnapshot` 标志使其在被选中/切换后的首回合自动注入只读体检快照（采集失败降级为提示，不失败）。行为变化：新对话不再自动退出诊断专家——「新对话 = 与同一位运维专家开新话题」，退出人设是显式操作（徽章 X / 选择器）。
 
 **诊断入口退役**：专家体系成熟后，独立的诊断对话框（选专家 + 场景芯片引导）与普通路径完全同构——选择器切到 SRE 专家即等价，`$` 技能下拉覆盖场景芯片，欢迎卡推荐问题承担症状引导。为减少复杂度，入口对话框已移除；AutoSnapshot 机制保留为通用专家能力。
 
@@ -286,7 +286,7 @@ PTY 输出 tee 到 `<数据目录>/logs/<主机>/<日期>.log`，全局开关 + 
 - **存储**：SQLite `experts` 表（`sqlite/expert_repo.go`）；内置专家随 binary 定义（`application/experts_builtin.go`）启动种子，用户编辑不覆盖、删除仅 Dismissed（与内置 SKILL.md 同语义）
 - **运行时**：`agent.Runtime` 以 `experts map[session]expert` 取代诊断开关；`Chat(..., expertID, ...)`；快照窗口随专家切换 / 新对话重开；工具集按白名单过滤（`tools.BuildForSession(sessionID, allowed)`，skill 工具始终保留）；专家 Temperature/MaxSteps 覆盖全局默认
 - **接口**：新增 `ExpertService`（List/Get/Save/Delete）；`AgentService.StartChat` 增加 expertID；`ConversationDTO` 携带 expertId/expertName（历史列表徽章 + 恢复对话还原人设）
-- **前端**：设置新增「数字员工」分类（列表 + 表单对话框：身份/人设/能力/模型/交互五区块）；AI 面板输入区专家选择器 + 头部人设徽章 + 空会话开场白卡片与推荐问题 + 助手消息按人设渲染头像
+- **前端**：设置新增「运维专家」分类（列表 + 表单对话框：身份/人设/能力/模型/交互五区块）；AI 面板输入区专家选择器 + 头部人设徽章 + 空会话开场白卡片与推荐问题 + 助手消息按人设渲染头像
 
 ### 后续可选（未排期）
 

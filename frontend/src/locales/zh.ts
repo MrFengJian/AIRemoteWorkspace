@@ -435,7 +435,7 @@ export const zh = {
     deleteConvTitle: "删除会话",
     deleteConvConfirm: "删除会话「{{title}}」？删除后不可恢复。",
     menuSaveScenario: "保存为场景",
-    expertTitle: "数字员工（运维专家）",
+    expertTitle: "运维专家",
     expertGeneral: "通用助手",
     expertBadge: "专家模式",
     exitExpert: "退回通用助手",
@@ -624,10 +624,10 @@ export const zh = {
       formIncomplete: "名称和 Base URL 为必填项。",
     },
     experts: {
-      title: "数字员工",
+      title: "运维专家",
       roster: "专家名册",
       rosterDesc:
-        "按角色定制的运维专家（数字员工）：在会话中选择后，AI 以该专家的人设、工具与方法论工作。内置专家可编辑，也可创建自己的专家。",
+        "按角色定制的运维专家：在会话中选择后，AI 以该专家的人设、工具与方法论工作。内置专家可编辑，也可创建自己的专家。",
       add: "新建专家",
       addTitle: "新建专家",
       editTitle: "编辑专家",
