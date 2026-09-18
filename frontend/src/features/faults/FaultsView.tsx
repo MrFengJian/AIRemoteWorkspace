@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileWarning, Loader2, Search, Trash2 } from "lucide-react";
+import { FileWarning, Loader2, Save, Search, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -75,6 +75,14 @@ export function FaultsView() {
   });
 
   const [detail, setDetail] = useState<FaultReportDTO | null>(null);
+  // Status edits stay local until the user clicks 保存 — an explicit save
+  // button beats silent auto-apply (no visible feedback).
+  const [pendingStatus, setPendingStatus] = useState("");
+  useEffect(() => {
+    setPendingStatus(detail?.status ?? "");
+  }, [detail]);
+  const statusDirty = !!detail && pendingStatus !== "" && pendingStatus !== detail.status;
+
   const openDetail = (report: FaultReportDTO) => {
     faultsApi
       .get(report.id)
@@ -87,10 +95,14 @@ export function FaultsView() {
     queryClient.invalidateQueries({ queryKey: FAULTS_KEY });
   };
 
-  const handleStatus = (report: FaultReportDTO, next: string) => {
+  const handleStatusSave = () => {
+    if (!detail || !statusDirty) return;
     faultsApi
-      .setStatus(report.id, next)
-      .then(refreshDetailAndList)
+      .setStatus(detail.id, pendingStatus)
+      .then((updated) => {
+        refreshDetailAndList(updated);
+        toast.success(t("faults.statusSaved"));
+      })
       .catch((e) => toast.error(errorMessage(e)));
   };
 
@@ -255,14 +267,33 @@ export function FaultsView() {
                 </Button>
                 <Label className="text-xs text-muted-foreground">{t("faults.status")}</Label>
                 <Select
-                  value={detail.status}
-                  onChange={(e) => handleStatus(detail, e.target.value)}
+                  value={pendingStatus}
+                  onChange={(e) => setPendingStatus(e.target.value)}
                   className="h-8 w-32 text-xs"
                 >
                   {FAULT_STATUSES.map((s) => (
                     <option key={s} value={s}>{t(`faults.status_${s}`)}</option>
                   ))}
                 </Select>
+                {statusDirty && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPendingStatus(detail.status)}
+                    >
+                      {t("faults.revertStatus")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-primary text-primary-foreground"
+                      onClick={handleStatusSave}
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      {t("faults.saveStatus")}
+                    </Button>
+                  </>
+                )}
               </>
             )}
           </DialogFooter>

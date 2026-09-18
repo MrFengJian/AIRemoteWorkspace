@@ -62,6 +62,9 @@ export const en = {
     deleteTitle: "Delete fault report",
     deleteConfirm: 'Delete report "{{title}}"? This cannot be undone.',
     deleted: "Fault report deleted",
+    saveStatus: "Save status",
+    statusSaved: "Status updated",
+    revertStatus: "Revert",
   },
 
   // ── SSH connection flow ────────────────────────────────────

@@ -62,6 +62,9 @@ export const zh = {
     deleteTitle: "删除故障报告",
     deleteConfirm: "删除报告「{{title}}」？删除后不可恢复。",
     deleted: "故障报告已删除",
+    saveStatus: "保存状态",
+    statusSaved: "状态已更新",
+    revertStatus: "撤销",
   },
 
   // ── SSH 连接过程 ────────────────────────────────────────────
