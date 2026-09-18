@@ -1,30 +1,46 @@
 # AI Remote Workspace
 
+<div align="right">
+
+[简体中文](./README.md) | [English](./README_EN.md)
+
+</div>
+
 > 一个轻量、本地优先、AI 增强的开发者 Remote Workspace。
 
-Go 原生（Wails v3 + React）的跨平台桌面应用，把 **SSH / Terminal / SFTP / Local Shell / AI Agent ** 统一到一个面向个人开发者的 AI 工作环境。
+Go 原生（Wails v3 + React）的跨平台桌面应用，把 **SSH / Terminal / SFTP / Local Shell / AI Agent** 统一到一个面向个人开发者的 AI 工作环境。
 
 不替代传统 SSH Client，而是让 AI 在「Remote Context + Tools + Permission」之上真正完成运维与诊断工作。
 
 > 受[Netcatty](https://github.com/binaricat/Netcatty)启发，但是electron的依赖太重量级了，作为一个轻度工具，使用wails3+golang的webview2方案是个更好的选择。
-> 
+>
 > 保持轻量级的工具实现，只增加必要的功能。
 
 ## 核心特性
 
-- 🔌 **SSH Workspace** — 多 Host 管理、稳定终端（xterm.js + PTY）
-- 🖥️ **本地终端** — 跨平台本地 PTY（PowerShell / bash / zsh），不走 SSH
+- 🔌 **SSH Workspace** — 多 Host 管理、稳定终端（xterm.js + PTY）：分屏与同步键入、断线自动重连、重启后会话恢复、会话日志落盘、登录脚本、终端编码切换（UTF-8 / GBK / Big5）、跳板/代理、窗口失焦系统通知
+- 🖥️ **本地终端** — 跨平台本地 PTY（PowerShell / PowerShell 7 / CMD / Git Bash / WSL 按实例 / bash / zsh 按可用性检测），不走 SSH
 - 📁 **SFTP 文件管理** — 浏览、上传、下载
 - 📊 **主机监控** — 概览 / 进程 / 端口三个视图，基于 `/proc` 与系统原生工具采集，远程主机零依赖
-- ☸️ **K8s 面板** — 常规集群资源管理：工作负载（Deployment / StatefulSet / DaemonSet）启停与滚动重启、Pod 列表与多容器日志、Services、事件；kubectl CLI 采集（SSH / 本地双通道），命名空间范围切换，CRD 等自由资源刻意不做
-- 🤖 **AI Agent** — LLM + Tool Calling，本地与远程统一执行，危险操作审批
-- 🧑‍💻 **运维专家** — 按业界 Agent 目录布局组织的专家系统：每位专家是一个目录（manifest.json 身份卡 + SOUL.md 人设核心 + HEARTBEAT.md 值守指引 + skills/ 私有技能包），内置 K8s 运维 / K8s 应用开发 / Docker / Linux 系统 / 数据库 / SRE 诊断 6 类专家与**默认专家「通用助手」**（自带欢迎词与推荐问题）；专家私有技能不进公共技能列表，与公共技能重名时该专家会话内私有版优先；专家可整体导出为 zip 包、再导入恢复（新建自定义专家，防 zip-slip 护栏）；人设不可越过审批安全边界
-- 🩺 **SRE 诊断专家与场景库** — 诊断由内置「SRE 诊断专家」承担（激活后首回合自动注入只读体检快照：CPU / 内存 / 磁盘 / 端口 / 近期错误日志），按内置场景包（CPU 高 / 磁盘满 / OOM / 服务异常 / 端口不通 / 容器重启循环等 14 个，含取自 SkillHub 社区的 MIT-0 技能改编包）决策树排查，结论按「现象 / 根因 / 证据 / 建议 / 风险」输出；技能支持目录形态（可附带脚本与参考文档），会话可经 AI 提炼沉淀为新场景（SKILL.md）
+- 🐳 **Docker 面板** — 容器 / 镜像 / 网络 / 卷 / 资源统计五个视图，容器生命周期控制（启停 / 重启 / 暂停，allowlist + 确认对话框）；kubectl / docker CLI 采集（SSH / 本地双通道），CLI 未安装或守护进程未运行时平静降级
+- ☸️ **K8s 面板** — 常规集群资源管理：工作负载（Deployment / StatefulSet / DaemonSet）启停与滚动重启、Pod 列表与多容器日志、Services、事件、节点卡片（资源水位 + YAML 查看/应用）；命名空间范围切换，CRD 等自由资源刻意不做
+- 🤖 **AI Agent** — LLM + Tool Calling（OpenAI 兼容多模型接入），本地与远程统一执行，危险操作分级审批
+- 🧑‍💻 **运维专家** — 按业界 Agent 目录布局组织的专家系统：每位专家是一个目录（manifest.json 身份卡 + SOUL.md 人设核心 + HEARTBEAT.md 值守指引 + skills/ 私有技能包），内置 K8s 运维 / K8s 应用开发 / Docker / Linux 系统 / 数据库 / SRE 诊断 6 类专家与**默认专家「通用助手」**；专家私有技能不进公共技能列表，与公共技能重名时该专家会话内私有版优先；专家可整体导出为 zip 包、再导入恢复（新建自定义专家，防 zip-slip 护栏）；人设不可越过审批安全边界
+- 🩺 **场景库与 `$` 技能调用** — 内置 14 个诊断场景包（CPU 高 / 磁盘满 / OOM / 服务异常 / 端口不通 / 容器重启循环等，含取自 SkillHub 社区的 MIT-0 改编包），输入 `$` 下拉选择、`$名称` 调用并高亮显示；技能支持目录形态（可附带脚本与参考文档）；会话可经 AI 提炼沉淀为新场景
 - 📋 **故障报告追踪** — Agent 排障后一键把会话提炼为结构化故障报告（现象 / 根因 / 证据 / 处置 / 预防 + 严重级别），附着在主机上作为可回溯资产；独立追踪页支持按主机 / 关键字 / 级别 / 状态过滤，报告沿「未解决 → 观察中 → 已解决」生命周期跟踪主机问题
 - 🎨 **外观与快捷键** — Xshell 风格的终端外观设置（13 套配色 / 字体 / 字号实时预览）与可自定义快捷键（含鼠标中键行为）
-- 🔐 **分层安全** — 系统密码库托管敏感数据，危险操作需用户授权
+- 🌐 **中英双语** — 界面语言中文 / English 一键切换（设置 → 语言）
+- 🔐 **分层安全** — 系统密码库托管敏感数据 + 密钥管理器（Ed25519 / RSA / ECDSA 生成、导入、导出），危险操作需用户授权
 - 🔗 **MCP Server** — 在本机把主机 / 远程终端 / 文件能力以 MCP 工具开放给 Claude / Codex / Cursor 等外部 Agent，写操作仍需应用内审批
 - 📦 **单 Binary** — 下载即用，无需复杂部署
+
+## 下载安装
+
+前往 [GitHub Releases](../../releases) 下载对应平台的安装包或单文件可执行程序：
+
+- **Windows**：NSIS 安装包（`.exe`）或绿色单文件
+- **macOS**：`.dmg` / `.app`（Intel 与 Apple Silicon）
+- **Linux**：`.AppImage` / `.deb` / `.rpm`
 
 ## 技术栈
 
@@ -34,7 +50,7 @@ Go 原生（Wails v3 + React）的跨平台桌面应用，把 **SSH / Terminal /
 | ----------------- | ---------------------------------------------------------------- |
 | Desktop Framework | Wails v3                                                         |
 | Backend           | Go 1.24+                                                         |
-| LLM Agent         | [Eino](https://github.com/cloudwego/eino) from bytedance         |
+| LLM Agent         | [Eino](https://github.com/cloudwego/eino) from bytedance         |
 | Frontend          | React 19 · TypeScript · Vite                                     |
 | Styling           | Tailwind CSS v4 · shadcn/ui · Radix UI                           |
 | State / Data      | Zustand · TanStack Query                                         |
@@ -229,31 +245,31 @@ npx mcp-remote http://127.0.0.1:8765/mcp --header "Authorization: Bearer <你的
 .
 ├── main.go                 # 应用入口：组装各层 + Wails 窗口 + time 事件
 ├── internal/
-│   ├── domain/             # 业务模型（Host/Session/Tool/Agent/Config/SSH）
-│   ├── application/        # 业务流程 + port 接口（HostService/ConnectionManager）
+│   ├── domain/             # 业务模型（Host/Session/Tool/Agent/Config/Expert/FaultReport…）
+│   ├── application/        # 业务流程 + port 接口（HostService/ConnectionManager/SkillService/ExpertService/FaultReportService…）
+│   │   └── skills/         # 内置场景包（go:embed，14 个 SKILL.md 及附带脚本）
+│   │   └── experts/        # 内置专家目录（go:embed，7 个 manifest/SOUL/HEARTBEAT）
 │   ├── infrastructure/
-│   │   ├── agent/          # Agent 会话管理（多轮对话 / 工具调用执行 / 会话持久化）
+│   │   ├── agent/          # Agent 运行时（多轮对话 / ReAct 工具调用 / 会话持久化 / 场景与报告提炼）
 │   │   ├── localpty/       # 本地终端 PTY（Windows ConPTY / Unix pty）
-│   │   ├── mcpserver/      # 本地 MCP Server（Streamable HTTP @ 127.0.0.1 + Bearer Token，8 个工具）
+│   │   ├── mcpserver/      # 本地 MCP Server（Streamable HTTP @ 127.0.0.1 + Bearer Token）
 │   │   ├── secret/         # OS 密码库（Windows Credential Manager / macOS Keychain / Linux Secret Service）
-│   │   ├── sftp/           # SFTP Manager（连接缓存）+ 文件操作（ls/upload/download/delete/rename/mkdir）
-│   │   ├── sqlite/         # SQLite 存储实现 + schema 迁移（hosts/host_keys/settings）
+│   │   ├── sftp/           # SFTP Manager（连接缓存）+ 文件操作
+│   │   ├── sqlite/         # SQLite 存储实现 + AutoMigrate（hosts/settings/conversations/experts/fault_reports…）
 │   │   └── ssh/            # SSH Client / PTY Session / ConnectionManager / 已知主机校验
-│   └── interfaces/         # Wails Services（Host/Terminal/SFTP/Agent/Monitor/ModelProvider/Config/MCP）
+│   └── interfaces/         # Wails Services（Host/Terminal/SFTP/Agent/Monitor/Docker/K8s/Expert/FaultReport/ModelProvider/Config/MCP…）
 ├── frontend/
 │   ├── src/
-│   │   ├── app/            # providers, router
-│   │   ├── features/       # Feature-Based：hosts/ terminal/ agent/ sftp/ monitor/ settings/
+│   │   ├── features/       # Feature-Based：hosts/ terminal/ agent/ sftp/ monitor/ docker/ k8s/ experts/ faults/ settings/
 │   │   ├── keybindings/    # 快捷键系统（命令表 / 键位匹配 / 全局分发）
 │   │   ├── i18n/           # i18next 初始化（zh / en 文案见 locales/）
 │   │   ├── components/     # ui/ (shadcn), layout/ (AppShell/Sidebar/StatusBar)
 │   │   ├── stores/         # 全局状态（Zustand）
 │   │   ├── lib/            # utils, queryClient, wails helpers
-│   │   ├── styles/         # Design Token (globals.css)
-│   │   └── themes/         # Dark theme token overrides
+│   │   └── styles/         # Design Token (globals.css) + themes/
 │   └── bindings/           # Wails 自动生成的 TS 绑定（勿手改）
 ├── build/                  # 各平台打包资源（Windows/macOS/Linux/iOS/Android）
-└── docs/                   # PRD / 架构 / 安全 / 路线图 / 截图（screenshots/）
+└── docs/                   # PRD / 架构 / 安全 / 路线图 / 待办
 ```
 
 ## 截图
