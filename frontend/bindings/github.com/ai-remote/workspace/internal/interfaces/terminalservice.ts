@@ -34,6 +34,19 @@ export function CloseSession(sessionID: string): $CancellablePromise<void> {
 }
 
 /**
+ * WriteStdin forwards a keystroke/line to the session's shell (local or
+ * SSH). Sessions with a non-UTF-8 terminal encoding have their input
+ * encoded through the session's encoder first.
+ * GetSessionCwd reports the session shell's working directory WITHOUT
+ * touching the interactive session (Linux remotes: a /proc probe over a
+ * throwaway exec channel; other platforms return ""). Feeds the SFTP
+ * panel's follow-session-cwd toggle.
+ */
+export function GetSessionCwd(sessionID: string): $CancellablePromise<string> {
+    return $Call.ByID(2482168099, sessionID);
+}
+
+/**
  * GetSessionLog reports the session's current recording status.
  */
 export function GetSessionLog(sessionID: string): $CancellablePromise<$models.SessionLogInfoDTO> {
@@ -90,11 +103,6 @@ export function StopSessionLog(sessionID: string): $CancellablePromise<$models.S
     return $Call.ByID(3577009637, sessionID);
 }
 
-/**
- * WriteStdin forwards a keystroke/line to the session's shell (local or
- * SSH). Sessions with a non-UTF-8 terminal encoding have their input
- * encoded through the session's encoder first.
- */
 export function WriteStdin(sessionID: string, data: string | null): $CancellablePromise<void> {
     return $Call.ByID(925434392, sessionID, data);
 }

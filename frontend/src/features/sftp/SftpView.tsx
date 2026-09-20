@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { ContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
 import {
   sftpApi,
+  terminalCwdApi,
   newTransferId,
   onTransferProgress,
   transferDone,
@@ -34,9 +35,7 @@ import {
   type TransferProgress,
 } from "@/features/sftp/api";
 import { useTerminalStore } from "@/features/terminal/terminal.store";
-import { TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { cn } from "@/lib/utils";
-import { encodeBase64 } from "@/lib/base64";
 import { useConfirm } from "@/lib/useConfirm";
 import { toast, errorMessage } from "@/lib/toast";
 
@@ -49,18 +48,6 @@ interface SftpViewProps {
    *  follow-session-cwd toggle; absent in legacy usages). */
   sessionID?: string;
 }
-
-/**
- * One-line shell integration injected into the interactive shell ON EXPLICIT
- * USER ACTION (radar icon click): a POSIX-sh/bash/zsh polyglot that reports
- * the working directory via OSC 7 on every prompt redraw (zsh via precmd
- * hook, bash/sh via PROMPT_COMMAND, guarded against double-install). The
- * line is echoed in scrollback once — why it is never sent automatically.
- */
-const OSC7_INTEGRATION =
-  "eval '_zz_osc7(){ printf \"\\033]7;file://%s%s\\007\" \"${HOSTNAME:-${HOST:-localhost}}\" \"$PWD\"; }; " +
-  "if [ -n \"$ZSH_VERSION\" ]; then autoload -Uz add-zsh-hook; add-zsh-hook precmd _zz_osc7; " +
-  "else case \";${PROMPT_COMMAND:-};\" in *\";_zz_osc7;\"*) ;; *) PROMPT_COMMAND=\"_zz_osc7;${PROMPT_COMMAND}\";; esac; fi; _zz_osc7'\n";
 
 /** One in-flight upload/download, shown as a progress bar in the status bar. */
 interface TransferState extends TransferProgress {
@@ -139,42 +126,43 @@ export function SftpView({ embeddedHostID, sessionID }: SftpViewProps) {
     }
   }, [embeddedHostID, hostId]);
 
-  // ── Follow session cwd (OSC 7 driven; see TerminalPanel's sniffer) ──
-  // Default ON but PASSIVE: navigation follows whatever the shell reports,
-  // nothing is written to the session. The integration line goes out only on
-  // an explicit icon click ("activate tracking"), never on panel mount.
+  // ── Follow session cwd — zero-intrusion by design.
+  // Default ON and passive: nothing is ever written to the session. The
+  // shell’s cwd arrives through two channels — the OSC 7 sniffer in
+  // TerminalPanel (native-reporting shells) and a 2s /proc probe over a
+  // throwaway exec channel (Linux remotes; covers every other shell). Both
+  // land in sessionCwd; the effect below navigates on change.
   const followCwd = useTerminalStore((s) => (sessionID ? s.sftpFollow[sessionID] ?? true : false));
   const termCwd = useTerminalStore((s) => (sessionID ? s.sessionCwd[sessionID] : undefined));
-  const injected = useTerminalStore((s) => (sessionID ? s.sftpInjected[sessionID] ?? false : false));
-  const setSftpFollow = useTerminalStore((s) => s.setSftpFollow);
-  const setSftpInjected = useTerminalStore((s) => s.setSftpInjected);
-  // Tracking is "live" once the integration went out, or the shell already
-  // reports its cwd natively (OSC 7 without injection).
-  const canTrack = injected || !!termCwd;
-
-  const injectIntegration = () => {
-    if (!sessionID) return;
-    setSftpInjected(sessionID, true);
-    TerminalService.WriteStdin(sessionID, encodeBase64(OSC7_INTEGRATION)).catch(() => {
-      setSftpInjected(sessionID, false); // allow retry
-    });
-  };
+  const setSessionCwd = useTerminalStore((s) => s.setSessionCwd);
+  const setSftpFollowToggle = useTerminalStore((s) => s.setSftpFollow);
 
   const handleToggleFollow = () => {
     if (!sessionID) return;
-    // First click on a default-follow session that has no tracking yet:
-    // activate the integration (stay on) instead of silently turning off.
-    if (followCwd && !canTrack) {
-      injectIntegration();
-      return;
-    }
-    const next = !followCwd;
-    setSftpFollow(sessionID, next);
-    if (next) {
-      if (!injected) injectIntegration();
-      if (termCwd && termCwd !== cwd) navigate(termCwd);
-    }
+    setSftpFollowToggle(sessionID, !followCwd);
   };
+
+  // Probe loop while following: ask the backend for the shell’s cwd.
+  useEffect(() => {
+    if (!followCwd || !sessionID) return;
+    let stop = false;
+    const tick = () => {
+      terminalCwdApi
+        .get(sessionID)
+        .then((p) => {
+          if (stop || !p || !p.startsWith("/")) return;
+          const cur = useTerminalStore.getState().sessionCwd[sessionID];
+          if (p !== cur) setSessionCwd(sessionID, p);
+        })
+        .catch(() => {});
+    };
+    tick();
+    const timer = setInterval(tick, 2000);
+    return () => {
+      stop = true;
+      clearInterval(timer);
+    };
+  }, [followCwd, sessionID, setSessionCwd]);
 
   // While following, every reported cwd change navigates the browser.
   useEffect(() => {
@@ -472,7 +460,7 @@ export function SftpView({ embeddedHostID, sessionID }: SftpViewProps) {
           <button
             type="button"
             onClick={handleToggleFollow}
-            title={t(followCwd && !canTrack ? "sftp.followCwdActivate" : "sftp.followCwdTip")}
+            title={t("sftp.followCwdTip")}
             aria-label={t("sftp.followCwd")}
             aria-pressed={followCwd}
             className={cn(
@@ -483,10 +471,7 @@ export function SftpView({ embeddedHostID, sessionID }: SftpViewProps) {
             )}
           >
             <Radar className="mx-auto h-4 w-4" />
-            {followCwd && !canTrack && (
-              <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-500" />
-            )}
-          </button>
+                      </button>
         )}
         <Button
           variant="ghost"

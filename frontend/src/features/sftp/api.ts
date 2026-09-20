@@ -6,6 +6,9 @@
 // Per-transfer events: progress on "sftp:transfer:<id>", terminal state on
 // "sftp:transfer:<id>:end" ("" success | "cancelled" | error text).
 
+import {
+  TerminalService,
+} from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { Events } from "@wailsio/runtime";
 
 import {
@@ -127,4 +130,9 @@ export const sftpApi: SftpApi = {
   localDelete: (path) => SftpService.LocalDelete(path),
   beginRemoteEdit: (hostID, remotePath) =>
     SftpService.BeginRemoteEdit(hostID, remotePath),
+};
+
+/** Session shell working directory (Linux remotes; "" = unknown). */
+export const terminalCwdApi = {
+  get: (sessionID: string) => TerminalService.GetSessionCwd(sessionID),
 };

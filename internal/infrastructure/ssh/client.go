@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,12 +23,12 @@ import (
 
 // ConnectOptions describes a single dial attempt.
 type ConnectOptions struct {
-	HostID    string // logical id for host-key lookups
-	Host      string
-	Port      int
-	Username  string
-	Timeout   time.Duration // dial timeout; 0 = 15s
-	OnNewKey  func(alg, fp string)
+	HostID   string // logical id for host-key lookups
+	Host     string
+	Port     int
+	Username string
+	Timeout  time.Duration // dial timeout; 0 = 15s
+	OnNewKey func(alg, fp string)
 	// OnProgress receives "connect" (TCP dial) and "handshake" (key
 	// exchange + host-key verification + authentication) as they start —
 	// fed to the UI's connection progress indicator. May be nil.
@@ -53,6 +54,22 @@ type Client struct {
 
 	stopKeepalive chan struct{}
 	closeOnce     sync.Once
+}
+
+// LocalPort returns the client-side ephemeral TCP port of this connection —
+// the discriminator that lets a remote /proc scan tell our shell processes
+// apart from every other session's (each session dials its own connection).
+// 0 when the address has no port (never in practice).
+func (c *Client) LocalPort() int {
+	if c.conn == nil {
+		return 0
+	}
+	_, portStr, err := net.SplitHostPort(c.conn.LocalAddr().String())
+	if err != nil {
+		return 0
+	}
+	port, _ := strconv.Atoi(portStr)
+	return port
 }
 
 // Dial connects to the host, authenticates, and starts a keepalive loop.

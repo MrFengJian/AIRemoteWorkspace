@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,6 +47,10 @@ type managedSession struct {
 	client *Client
 	pty    *PtySession
 	host   domain.Host
+	// Client-side ephemeral port of the connection — the discriminator for
+	// the /proc cwd probe (FollowCwd): the interactive shell's environ sets
+	// SSH_CONNECTION to "<clientip> <clientport> …", unique per session.
+	localPort int
 	// Everything the auto-reconnect needs: resolved credentials (session
 	// lifetime, same scope as the connection itself), the event sink, the
 	// output handler, and the latest PTY size to apply on redial.
@@ -149,9 +154,10 @@ func (m *Manager) OpenSession(
 	}
 
 	ms := &managedSession{
-		id:       sessionID,
-		client:   client,
-		pty:      pty,
+		id:        sessionID,
+		client:    client,
+		localPort: client.LocalPort(),
+		pty:       pty,
 		host:     host,
 		creds:    creds,
 		events:   events,
@@ -320,6 +326,7 @@ func (m *Manager) swapSession(ms *managedSession, client *Client, pty *PtySessio
 	defer ms.mu.Unlock()
 	_ = ms.client.Close() // the old link is dead regardless
 	ms.client = client
+	ms.localPort = client.LocalPort()
 	ms.pty = pty
 }
 
@@ -440,6 +447,37 @@ func (m *Manager) execSession(ctx context.Context, sessionID, cmd string, stdin 
 		<-done
 		return "", ctx.Err()
 	}
+}
+
+// FollowCwd reports the interactive shell's working directory WITHOUT
+// touching the session: a throwaway exec channel scans /proc for processes
+// whose SSH_CONNECTION environment carries this session's client port (each
+// session dials its own connection, so the port is unique) and whose cmdline
+// looks like a shell; the oldest match's /proc/<pid>/cwd is the answer.
+// Linux remotes only  anything else returns "" (follow stays idle), and the
+// probe never writes a byte to the user's terminal.
+func (m *Manager) FollowCwd(ctx context.Context, sessionID string) (string, error) {
+	ms, ok := m.session(sessionID)
+	if !ok {
+		return "", errSessionNotFound(sessionID)
+	}
+	ms.mu.Lock()
+	client, port := ms.client, ms.localPort
+	ms.mu.Unlock()
+	if client == nil || port == 0 {
+		return "", nil
+	}
+	// NUL and newline are spelled as octal escapes so the remote shell (not
+	// the Go compiler) interprets them inside tr.
+	probe := "for d in $(ls -d /proc/[0-9]* 2>/dev/null | sort -t/ -k3 -n); do " +
+		"tr '\\000' '\\n' <\"$d/environ\" 2>/dev/null | grep -q \"^SSH_CONNECTION=.* \" + fmt.Sprint(port) + \" \" || continue; " +
+		"tr '\\000' ' ' <\"$d/cmdline\" 2>/dev/null | grep -qE '(^|/| )-?(bash|zsh|sh|ksh|dash|fish)( |$)' || continue; " +
+		"readlink \"$d/cwd\" 2>/dev/null && break; done"
+	out, err := m.ExecInSessionCtx(ctx, sessionID, probe)
+	if err != nil {
+		return "", nil // unsupported platform / shell — follow stays idle
+	}
+	return strings.TrimSpace(out), nil
 }
 
 // HostOfSession returns the domain.Host associated with a session.

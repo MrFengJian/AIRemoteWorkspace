@@ -373,7 +373,6 @@ export const en = {
     newFolderTitle: "New folder",
     followCwd: "Follow session",
     followCwdTip: "This view follows the terminal working directory. When tracking is not active yet, clicking the icon injects a one-line shell integration (bash/zsh, visible once in scrollback); the prompt then reports its cwd on every redraw. Click again to stop following.",
-    followCwdActivate: "Click to inject the cwd-report command (bash/zsh) and start following the session directory",
     showHidden: "Show hidden files",
     hideHidden: "Hide hidden files",
   },

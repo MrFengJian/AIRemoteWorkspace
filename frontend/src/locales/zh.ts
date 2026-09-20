@@ -371,7 +371,6 @@ export const zh = {
     newFolderTitle: "新建文件夹",
     followCwd: "跟随会话",
     followCwdTip: "SFTP 视图自动跟随终端工作目录。追踪未激活时，点击图标会向当前 shell 注入一行集成命令（bash/zsh，滚动缓冲区可见一次），之后每次回提示符都上报工作目录；再次点击停止跟随。",
-    followCwdActivate: "点击注入目录上报命令（bash/zsh），启用对会话目录的跟随",
     showHidden: "显示隐藏文件",
     hideHidden: "隐藏隐藏文件",
   },
