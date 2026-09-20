@@ -11,7 +11,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -22,9 +22,7 @@ import * as domain$0 from "../domain/models.js";
  * be updated — persists it, and returns the refreshed status.
  */
 export function RegenerateToken(): $CancellablePromise<domain$0.MCPStatus> {
-    return $Call.ByID(3252352706).then(($result: any) => {
-        return $$createType0($result);
-    });
+    return $Call.ByID(3252352706);
 }
 
 /**
@@ -32,10 +30,5 @@ export function RegenerateToken(): $CancellablePromise<domain$0.MCPStatus> {
  * last error) for the settings page.
  */
 export function Status(): $CancellablePromise<domain$0.MCPStatus> {
-    return $Call.ByID(2207773045).then(($result: any) => {
-        return $$createType0($result);
-    });
+    return $Call.ByID(2207773045);
 }
-
-// Private type creation functions
-const $$createType0 = domain$0.MCPStatus.createFrom;

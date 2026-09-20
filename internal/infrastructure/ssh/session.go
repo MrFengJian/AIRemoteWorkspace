@@ -34,8 +34,11 @@ type PtySession struct {
 	mu        sync.Mutex
 }
 
-// NewPtySession opens a PTY shell session on client.
-func NewPtySession(client *Client, cols, rows int, onOutput OutputHandler) (*PtySession, error) {
+// NewPtySession opens a PTY shell session on client. When startCmd is empty
+// a plain interactive shell is requested; otherwise an exec request starts
+// the wrapped command instead (used for startup-time shell integration: the
+// integration loads before the first prompt, so it never echoes).
+func NewPtySession(client *Client, cols, rows int, onOutput OutputHandler, startCmd string) (*PtySession, error) {
 	if cols <= 0 {
 		cols = 80
 	}
@@ -76,8 +79,14 @@ func NewPtySession(client *Client, cols, rows int, onOutput OutputHandler) (*Pty
 		return nil, fmt.Errorf("stderr pipe: %w", err)
 	}
 
-	// Start the remote shell. After this, output begins streaming.
-	if err := sess.Shell(); err != nil {
+	// Start the remote shell (plain, or the wrapped integration command).
+	// Pipes are attached above — output begins streaming only after this.
+	if startCmd != "" {
+		if err := sess.Start(startCmd); err != nil {
+			_ = sess.Close()
+			return nil, fmt.Errorf("start %q: %w", startCmd, err)
+		}
+	} else if err := sess.Shell(); err != nil {
 		_ = sess.Close()
 		return nil, fmt.Errorf("start shell: %w", err)
 	}

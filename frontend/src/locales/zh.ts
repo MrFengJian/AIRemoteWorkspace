@@ -16,7 +16,7 @@ export const zh = {
     copy: "复制",
     connect: "连接",
     close: "关闭",
-    refresh: "刷新",
+    reoresh: "刷新",
     confirm: "确认",
     ok: "确定",
     retry: "重试",

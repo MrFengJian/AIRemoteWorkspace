@@ -34,7 +34,6 @@ import {
   type TransferProgress,
 } from "@/features/sftp/api";
 import { useTerminalStore } from "@/features/terminal/terminal.store";
-import { injectShellIntegration, isShellIntegrationInjected } from "@/features/terminal/osc7";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "@/lib/useConfirm";
 import { toast, errorMessage } from "@/lib/toast";
@@ -126,11 +125,10 @@ export function SftpView({ embeddedHostID, sessionID }: SftpViewProps) {
     }
   }, [embeddedHostID, hostId]);
 
-  // ──   // Follow session cwd (OSC 7 driven; see TerminalPanel’s sniffer).
-  // Default ON. Nothing is typed into the session unless the shell does not
-  // report its cwd natively — then the one-line integration is sent once
-  // per session, and the pane’s echo-suppression window keeps the command
-  // invisible. Follow-up cwd updates arrive via OSC 7.
+  // ──   //   // Follow session cwd (OSC 7 driven; see TerminalPanel’s sniffer).
+  // Default ON. The cwd is reported by the shell integration that the
+  // backend injects at session startup (Tabby-style: wrapped start command,
+  // loads before the first prompt — zero echo).
   const followCwd = useTerminalStore((s) => (sessionID ? s.sftpFollow[sessionID] ?? true : false));
   const termCwd = useTerminalStore((s) => (sessionID ? s.sessionCwd[sessionID] : undefined));
 
@@ -139,14 +137,12 @@ export function SftpView({ embeddedHostID, sessionID }: SftpViewProps) {
     useTerminalStore.getState().setSftpFollow(sessionID, !followCwd);
   };
 
-  // Silent activation: on panel open (and whenever follow is on) make sure
-  // the shell reports its cwd — injected once, suppressed from rendering.
+  // While following, every reported cwd change navigates the browser.
   useEffect(() => {
-    if (!followCwd || !sessionID) return;
-    if (!isShellIntegrationInjected(sessionID)) {
-      injectShellIntegration(sessionID);
-    }
-  }, [followCwd, sessionID]);
+    if (!followCwd || !sessionID || !termCwd) return;
+    if (termCwd !== cwd) navigate(termCwd);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [followCwd, termCwd]);
 
   // While following, every reported cwd change navigates the browser.
   useEffect(() => {

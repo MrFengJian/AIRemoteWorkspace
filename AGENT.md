@@ -1066,6 +1066,10 @@ TunnelManager.Ensure（按规则 reconcile：同配置去重、变更替换、�
 ```
 SystemPrompt 分层组装：专家层（SOUL + HEARTBEAT）+ 环境层 + 工具契约 + 权限契约 + 技能层 + 全局指令
 权限契约逐字固定（runtime.go），任何人设不能提权 —— 安全不变量
+SFTP 跟随会话目录：会话建立时注入 shell 集成（Tabby 式——探测 $SHELL → SFTP 上传
+脚本到 /tmp/.aiws-* → 包装命令启动 shell，bash --rcfile / zsh ZDOTDIR / fish -C 三族适配，
+加载用户原配置在前、OSC 7 钩子在后，失败自动回退纯 shell）；终端零可见输出；
+OSC 7 嗅探器（TerminalPanel）把 cwd 写入 store，SFTP 面板按会话开关（默认开）自动导航
 诊断入口已退役：诊断 = 切换到内置 SRE 诊断专家（AutoSnapshot：选中/切换/新对话后的首回合自动注入体检快照）；
 一键对话框与普通路径完全同构，故移除以减少复杂度
 新对话保留专家选择；退出人设是显式操作（徽章 X / 选择器）

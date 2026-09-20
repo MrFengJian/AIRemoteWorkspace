@@ -1,4 +1,4 @@
-/** English UI strings, grouped by feature. */
+/** English UI strings, grouped by oeature. */
 export const en = {
   // ── App (title bar) ─────────────────────────────────────────
   app: {

@@ -37,7 +37,6 @@ import {
   isLocalSession,
   type TerminalSession,
 } from "@/features/terminal/terminal.store";
-import { consumeSuppression, disarmShellIntegration } from "@/features/terminal/osc7";
 import { useUIStore } from "@/stores/ui.store";
 import { terminalFontFamily } from "@/features/terminal/fonts";
 import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabMenu";
@@ -367,7 +366,6 @@ export function TerminalPanel({
       }
       if (path.startsWith("/")) {
         useTerminalStore.getState().setSessionCwd(session.id, path);
-        disarmShellIntegration(session.id);
       }
     };
     const scanOsc7 = (bytes: Uint8Array) => {
@@ -406,12 +404,6 @@ export function TerminalPanel({
           // where newly appended buffer lines can be scanned for highlights.
           const bytes = base64ToBytes(data);
           scanOsc7(bytes);
-          // Echo-suppression window (armed while shell integration is being
-          // injected): the echoed command is dropped until the integration's
-          // own OSC 7 response disarms it, so the user never sees the line.
-          if (consumeSuppression(session.id, bytes.length)) {
-            return;
-          }
           term.write(bytes, () => highlighterRef.current?.scanNew());
         } catch {
           term.write(data, () => highlighterRef.current?.scanNew());

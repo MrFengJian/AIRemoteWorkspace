@@ -132,6 +132,11 @@ func (m *Manager) OpenSession(
 		return "", err
 	}
 
+	// Startup-time shell integration (Tabby-style): detect the login shell,
+	// upload the integration, and start the shell wrapped — OSC 7 reporting
+	// from the first prompt, zero echo. "" = plain shell (unsupported/failed).
+	integCmd := client.prepareIntegration(ctx)
+
 	// Output handler routes PTY chunks to the events sink.
 	onOutput := func(data []byte) {
 		if events != nil {
@@ -142,16 +147,16 @@ func (m *Manager) OpenSession(
 	if events != nil {
 		events.OnProgress(sessionID, "session")
 	}
-	pty, err := NewPtySession(client, cols, rows, onOutput)
+	pty, err := NewPtySession(client, cols, rows, onOutput, integCmd)
 	if err != nil {
 		_ = client.Close()
 		return "", err
 	}
 
 	ms := &managedSession{
-		id:        sessionID,
-		client:    client,
-		pty:       pty,
+		id:       sessionID,
+		client:   client,
+		pty:      pty,
 		host:     host,
 		creds:    creds,
 		events:   events,
@@ -219,7 +224,8 @@ func (m *Manager) watchSession(ms *managedSession, pty *PtySession) {
 			continue
 		}
 		cols, rows := ms.snapshotSize()
-		newPty, err := NewPtySession(client, cols, rows, ms.snapshotOutput())
+		integCmd := client.prepareIntegration(context.Background())
+		newPty, err := NewPtySession(client, cols, rows, ms.snapshotOutput(), integCmd)
 		if err != nil {
 			_ = client.Close()
 			lastErr = err
@@ -441,7 +447,6 @@ func (m *Manager) execSession(ctx context.Context, sessionID, cmd string, stdin 
 		return "", ctx.Err()
 	}
 }
-
 
 // HostOfSession returns the domain.Host associated with a session.
 func (m *Manager) HostOfSession(sessionID string) (domain.Host, bool) {
