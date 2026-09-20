@@ -49,6 +49,9 @@ interface TerminalState {
   /** SFTP follow-session-cwd toggle per session (default off). */
   sftpFollow: Record<string, boolean>;
   setSftpFollow: (id: string, on: boolean) => void;
+  /** Sessions whose shell already received the OSC 7 integration line. */
+  sftpInjected: Record<string, boolean>;
+  setSftpInjected: (id: string, on: boolean) => void;
 
   addSession: (id: string, hostID: string, hostName: string, terminalTheme: string, terminalFont: string, terminalFontSize: number) => void;
   /** Register a LOCAL terminal session (no host; appearance from the global
@@ -79,6 +82,7 @@ export const useTerminalStore = create<TerminalState>((set) => ({
   activePaneId: null,
   sessionCwd: {},
   sftpFollow: {},
+  sftpInjected: {},
 
   setActivePane: (paneId) => set({ activePaneId: paneId }),
 
@@ -87,6 +91,9 @@ export const useTerminalStore = create<TerminalState>((set) => ({
 
   setSftpFollow: (id, on) =>
     set((s) => ({ sftpFollow: { ...s.sftpFollow, [id]: on } })),
+
+  setSftpInjected: (id, on) =>
+    set((s) => ({ sftpInjected: { ...s.sftpInjected, [id]: on } })),
 
   addSession: (id, hostID, hostName, terminalTheme, terminalFont, terminalFontSize) =>
     set((s) => ({

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Dialogs } from "@wailsio/runtime";
 import {
@@ -51,39 +51,16 @@ interface SftpViewProps {
 }
 
 /**
- * One-line shell integration injected into the interactive shell when the
- * follow toggle is enabled: a POSIX-sh/bash/zsh polyglot that reports the
- * working directory via OSC 7 on every prompt redraw (zsh via precmd hook,
- * bash/sh via PROMPT_COMMAND, guarded against double-install). The line is
- * visible in scrollback once — that is the tradeoff for zero profile edits.
+ * One-line shell integration injected into the interactive shell ON EXPLICIT
+ * USER ACTION (radar icon click): a POSIX-sh/bash/zsh polyglot that reports
+ * the working directory via OSC 7 on every prompt redraw (zsh via precmd
+ * hook, bash/sh via PROMPT_COMMAND, guarded against double-install). The
+ * line is echoed in scrollback once — why it is never sent automatically.
  */
 const OSC7_INTEGRATION =
   "eval '_zz_osc7(){ printf \"\\033]7;file://%s%s\\007\" \"${HOSTNAME:-${HOST:-localhost}}\" \"$PWD\"; }; " +
   "if [ -n \"$ZSH_VERSION\" ]; then autoload -Uz add-zsh-hook; add-zsh-hook precmd _zz_osc7; " +
   "else case \";${PROMPT_COMMAND:-};\" in *\";_zz_osc7;\"*) ;; *) PROMPT_COMMAND=\"_zz_osc7;${PROMPT_COMMAND}\";; esac; fi; _zz_osc7'\n";
-
-/** Sessions whose shell already received the OSC 7 integration. Module-level
- *  so re-opening the panel doesn't re-send the line; the snippet itself is
- *  also double-install-guarded inside the shell. */
-const injectedSessions = new Set<string>();
-
-function injectOsc7Integration(sessionID: string) {
-  injectedSessions.add(sessionID);
-  TerminalService.WriteStdin(sessionID, encodeBase64(OSC7_INTEGRATION)).catch(() => {
-    injectedSessions.delete(sessionID); // allow retry on a later open
-  });
-}
-
-/** Inject once per session while follow is on (default) and the panel opens. */
-function useInjectOsc7Once(sessionID: string | undefined, followCwd: boolean) {
-  const injectedRef = useRef(injectedSessions);
-  useEffect(() => {
-    if (sessionID && followCwd && !injectedSessions.has(sessionID)) {
-      injectOsc7Integration(sessionID);
-    }
-  }, [sessionID, followCwd]);
-  return injectedRef;
-}
 
 /** One in-flight upload/download, shown as a progress bar in the status bar. */
 interface TransferState extends TransferProgress {
@@ -163,22 +140,40 @@ export function SftpView({ embeddedHostID, sessionID }: SftpViewProps) {
   }, [embeddedHostID, hostId]);
 
   // ── Follow session cwd (OSC 7 driven; see TerminalPanel's sniffer) ──
-  // Default ON: every session follows unless the user turned it off. The
-  // shell integration is injected once per session (module-level set, so
-  // re-opening the panel doesn't re-send it; the snippet itself is also
-  // guarded against double-install inside the shell).
+  // Default ON but PASSIVE: navigation follows whatever the shell reports,
+  // nothing is written to the session. The integration line goes out only on
+  // an explicit icon click ("activate tracking"), never on panel mount.
   const followCwd = useTerminalStore((s) => (sessionID ? s.sftpFollow[sessionID] ?? true : false));
   const termCwd = useTerminalStore((s) => (sessionID ? s.sessionCwd[sessionID] : undefined));
+  const injected = useTerminalStore((s) => (sessionID ? s.sftpInjected[sessionID] ?? false : false));
   const setSftpFollow = useTerminalStore((s) => s.setSftpFollow);
-  const injectedRef = useInjectOsc7Once(sessionID, followCwd);
+  const setSftpInjected = useTerminalStore((s) => s.setSftpInjected);
+  // Tracking is "live" once the integration went out, or the shell already
+  // reports its cwd natively (OSC 7 without injection).
+  const canTrack = injected || !!termCwd;
 
-  const handleToggleFollow = (on: boolean) => {
+  const injectIntegration = () => {
     if (!sessionID) return;
-    setSftpFollow(sessionID, on);
-    if (on && !injectedRef.current.has(sessionID)) {
-      injectOsc7Integration(sessionID);
+    setSftpInjected(sessionID, true);
+    TerminalService.WriteStdin(sessionID, encodeBase64(OSC7_INTEGRATION)).catch(() => {
+      setSftpInjected(sessionID, false); // allow retry
+    });
+  };
+
+  const handleToggleFollow = () => {
+    if (!sessionID) return;
+    // First click on a default-follow session that has no tracking yet:
+    // activate the integration (stay on) instead of silently turning off.
+    if (followCwd && !canTrack) {
+      injectIntegration();
+      return;
     }
-    if (on && termCwd && termCwd !== cwd) navigate(termCwd);
+    const next = !followCwd;
+    setSftpFollow(sessionID, next);
+    if (next) {
+      if (!injected) injectIntegration();
+      if (termCwd && termCwd !== cwd) navigate(termCwd);
+    }
   };
 
   // While following, every reported cwd change navigates the browser.
@@ -476,18 +471,21 @@ export function SftpView({ embeddedHostID, sessionID }: SftpViewProps) {
         {sessionID && (
           <button
             type="button"
-            onClick={() => handleToggleFollow(!followCwd)}
-            title={t("sftp.followCwdTip")}
+            onClick={handleToggleFollow}
+            title={t(followCwd && !canTrack ? "sftp.followCwdActivate" : "sftp.followCwdTip")}
             aria-label={t("sftp.followCwd")}
             aria-pressed={followCwd}
             className={cn(
-              "h-8 w-8 shrink-0 rounded-[var(--radius)] transition-colors",
+              "relative h-8 w-8 shrink-0 rounded-[var(--radius)] transition-colors",
               followCwd
                 ? "bg-accent text-primary"
                 : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
           >
-            <Radar className={cn("mx-auto h-4 w-4", followCwd && "text-primary")} />
+            <Radar className="mx-auto h-4 w-4" />
+            {followCwd && !canTrack && (
+              <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-500" />
+            )}
           </button>
         )}
         <Button
