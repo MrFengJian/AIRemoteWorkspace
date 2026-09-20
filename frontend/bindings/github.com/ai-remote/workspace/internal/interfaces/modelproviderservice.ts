@@ -8,7 +8,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -24,20 +24,16 @@ export function DeleteProvider(id: string): $CancellablePromise<void> {
 /**
  * FetchModels lists the models a provider exposes via its /models endpoint.
  */
-export function FetchModels($in: $models.TestProviderInput): $CancellablePromise<string[]> {
-    return $Call.ByID(2538470563, $in).then(($result: any) => {
-        return $$createType0($result);
-    });
+export function FetchModels($in: $models.TestProviderInput): $CancellablePromise<string[] | null> {
+    return $Call.ByID(2538470563, $in);
 }
 
 /**
  * ListProviders returns all providers with their enabled state and whether an
  * API key is stored.
  */
-export function ListProviders(): $CancellablePromise<$models.ModelProviderDTO[]> {
-    return $Call.ByID(2664383435).then(($result: any) => {
-        return $$createType2($result);
-    });
+export function ListProviders(): $CancellablePromise<$models.ModelProviderDTO[] | null> {
+    return $Call.ByID(2664383435);
 }
 
 /**
@@ -51,13 +47,5 @@ export function SaveProvider($in: $models.SaveProviderInput): $CancellablePromis
  * TestProvider verifies the endpoint with a minimal chat completion.
  */
 export function TestProvider($in: $models.TestProviderInput): $CancellablePromise<$models.TestConnectionResult> {
-    return $Call.ByID(1804890310, $in).then(($result: any) => {
-        return $$createType3($result);
-    });
+    return $Call.ByID(1804890310, $in);
 }
-
-// Private type creation functions
-const $$createType0 = $Create.Array($Create.Any);
-const $$createType1 = $models.ModelProviderDTO.createFrom;
-const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = $models.TestConnectionResult.createFrom;

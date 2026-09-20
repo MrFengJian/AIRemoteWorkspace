@@ -3,51 +3,18 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Create as $Create } from "@wailsio/runtime";
-
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
 import * as domain$0 from "../domain/models.js";
 
 /**
  * ApprovalRequest is sent to the frontend when a WRITE/DANGEROUS tool needs
  * the user's approval. The frontend shows a dialog and calls ApproveToolCall.
  */
-export class ApprovalRequest {
+export interface ApprovalRequest {
     "reqId": string;
     "sessionId": string;
     "toolName": string;
     "permission": domain$0.Permission;
     "args": string;
-
-    /** Creates a new ApprovalRequest instance. */
-    constructor($$source: Partial<ApprovalRequest> = {}) {
-        if (!("reqId" in $$source)) {
-            this["reqId"] = "";
-        }
-        if (!("sessionId" in $$source)) {
-            this["sessionId"] = "";
-        }
-        if (!("toolName" in $$source)) {
-            this["toolName"] = "";
-        }
-        if (!("permission" in $$source)) {
-            this["permission"] = domain$0.Permission.$zero;
-        }
-        if (!("args" in $$source)) {
-            this["args"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ApprovalRequest instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ApprovalRequest {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new ApprovalRequest($$parsedSource as Partial<ApprovalRequest>);
-    }
 }
 
 /**
@@ -58,19 +25,5 @@ export class ApprovalRequest {
  * concurrent remote edits are not detected. Credentials resolve inside the
  * SftpService on every transfer (OS vault included).
  */
-export class RemoteEditService {
-
-    /** Creates a new RemoteEditService instance. */
-    constructor($$source: Partial<RemoteEditService> = {}) {
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new RemoteEditService instance from a string or object.
-     */
-    static createFrom($$source: any = {}): RemoteEditService {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new RemoteEditService($$parsedSource as Partial<RemoteEditService>);
-    }
+export interface RemoteEditService {
 }

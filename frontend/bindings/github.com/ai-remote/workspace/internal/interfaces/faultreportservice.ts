@@ -10,7 +10,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -27,18 +27,14 @@ export function DeleteReport(id: string): $CancellablePromise<void> {
  * GetReport returns one report with its full markdown body.
  */
 export function GetReport(id: string): $CancellablePromise<$models.FaultReportDTO> {
-    return $Call.ByID(1387666717, id).then(($result: any) => {
-        return $$createType0($result);
-    });
+    return $Call.ByID(1387666717, id);
 }
 
 /**
  * ListReports returns reports matching the filter (newest first).
  */
-export function ListReports(filter: $models.FaultReportFilterDTO): $CancellablePromise<$models.FaultReportDTO[]> {
-    return $Call.ByID(127575808, filter).then(($result: any) => {
-        return $$createType1($result);
-    });
+export function ListReports(filter: $models.FaultReportFilterDTO): $CancellablePromise<$models.FaultReportDTO[] | null> {
+    return $Call.ByID(127575808, filter);
 }
 
 /**
@@ -46,9 +42,7 @@ export function ListReports(filter: $models.FaultReportFilterDTO): $CancellableP
  * draft with host context; severity/status normalize server-side).
  */
 export function SaveReport(dto: $models.FaultReportDTO): $CancellablePromise<$models.FaultReportDTO> {
-    return $Call.ByID(827505862, dto).then(($result: any) => {
-        return $$createType0($result);
-    });
+    return $Call.ByID(827505862, dto);
 }
 
 /**
@@ -56,11 +50,5 @@ export function SaveReport(dto: $models.FaultReportDTO): $CancellablePromise<$mo
  * (open → monitoring → resolved).
  */
 export function SetReportStatus(id: string, status: string): $CancellablePromise<$models.FaultReportDTO> {
-    return $Call.ByID(750180011, id, status).then(($result: any) => {
-        return $$createType0($result);
-    });
+    return $Call.ByID(750180011, id, status);
 }
-
-// Private type creation functions
-const $$createType0 = $models.FaultReportDTO.createFrom;
-const $$createType1 = $Create.Array($$createType0);
