@@ -346,6 +346,54 @@ export function TerminalPanel({
     });
 
     const outEventName = `term:${session.id}:out`;
+    // OSC 7 sniffing: shells with integration report their working directory
+    // as `ESC ] 7 ; file://host/path (BEL | ESC \)` on every prompt redraw —
+    // the standard cwd-tracking channel (Windows Terminal / VS Code). The
+    // sequence may split across output chunks, so a tiny stateful buffer
+    // reassembles it (capped: garbage never grows unbounded).
+    const latin1 = new TextDecoder("latin1");
+    let osc7Buf: string | null = null;
+    const emitOsc7Cwd = (payload: string) => {
+      if (!payload.startsWith("file://")) return;
+      let path = payload.slice("file://".length);
+      const slash = path.indexOf("/");
+      if (slash === -1) return;
+      path = path.slice(slash);
+      try {
+        path = decodeURIComponent(path);
+      } catch {
+        /* keep raw — a malformed escape beats dropping the update */
+      }
+      if (path.startsWith("/")) {
+        useTerminalStore.getState().setSessionCwd(session.id, path);
+      }
+    };
+    const scanOsc7 = (bytes: Uint8Array) => {
+      const s = latin1.decode(bytes);
+      let i = 0;
+      while (i < s.length) {
+        if (osc7Buf !== null) {
+          const bel = s.indexOf("\x07", i);
+          const st = s.indexOf("\x1b\\", i);
+          const end =
+            bel === -1 ? st : st === -1 ? bel : Math.min(bel, st);
+          if (end === -1) {
+            if (osc7Buf.length + s.length - i > 4096) osc7Buf = null; // runaway
+            else osc7Buf += s.slice(i);
+            return;
+          }
+          osc7Buf += s.slice(i, end);
+          if (osc7Buf.length <= 4096) emitOsc7Cwd(osc7Buf);
+          osc7Buf = null;
+          i = end + (s.startsWith("\x1b\\", end) ? 2 : 1);
+        } else {
+          const start = s.indexOf("\x1b]7;", i);
+          if (start === -1) return;
+          osc7Buf = "";
+          i = start + 4;
+        }
+      }
+    };
     const outCancel = Events.On(outEventName, (event: unknown) => {
       const data = (event as { data?: unknown }).data;
       if (typeof data === "string" && data.length > 0) {
@@ -354,7 +402,9 @@ export function TerminalPanel({
           // characters even when a read splits them across events. The write
           // callback fires after the parser consumed the chunk — the point
           // where newly appended buffer lines can be scanned for highlights.
-          term.write(base64ToBytes(data), () => highlighterRef.current?.scanNew());
+          const bytes = base64ToBytes(data);
+          scanOsc7(bytes);
+          term.write(bytes, () => highlighterRef.current?.scanNew());
         } catch {
           term.write(data, () => highlighterRef.current?.scanNew());
         }

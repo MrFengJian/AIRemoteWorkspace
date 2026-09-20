@@ -18,6 +18,7 @@ import {
   Eye,
   EyeOff,
   X,
+  Radar,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,10 @@ import {
   type FileEntryDTO,
   type TransferProgress,
 } from "@/features/sftp/api";
+import { useTerminalStore } from "@/features/terminal/terminal.store";
+import { TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 import { cn } from "@/lib/utils";
+import { encodeBase64 } from "@/lib/base64";
 import { useConfirm } from "@/lib/useConfirm";
 import { toast, errorMessage } from "@/lib/toast";
 
@@ -41,7 +45,22 @@ interface SftpViewProps {
    *  host (the SFTP panel lives inside the terminal view; there is no
    *  standalone mode anymore). Switching the prop resets the browser. */
   embeddedHostID: string;
+  /** The terminal session this panel is bound to (enables the
+   *  follow-session-cwd toggle; absent in legacy usages). */
+  sessionID?: string;
 }
+
+/**
+ * One-line shell integration injected into the interactive shell when the
+ * follow toggle is enabled: a POSIX-sh/bash/zsh polyglot that reports the
+ * working directory via OSC 7 on every prompt redraw (zsh via precmd hook,
+ * bash/sh via PROMPT_COMMAND, guarded against double-install). The line is
+ * visible in scrollback once — that is the tradeoff for zero profile edits.
+ */
+const OSC7_INTEGRATION =
+  "eval '_zz_osc7(){ printf \"\\033]7;file://%s%s\\007\" \"${HOSTNAME:-${HOST:-localhost}}\" \"$PWD\"; }; " +
+  "if [ -n \"$ZSH_VERSION\" ]; then autoload -Uz add-zsh-hook; add-zsh-hook precmd _zz_osc7; " +
+  "else case \";${PROMPT_COMMAND:-};\" in *\";_zz_osc7;\"*) ;; *) PROMPT_COMMAND=\"_zz_osc7;${PROMPT_COMMAND}\";; esac; fi; _zz_osc7'\n";
 
 /** One in-flight upload/download, shown as a progress bar in the status bar. */
 interface TransferState extends TransferProgress {
@@ -91,7 +110,7 @@ async function suggestName(
  * All browse state lives in the component (not a global store); switching the
  * host prop (terminal tab switch) resets the browser to "/".
  */
-export function SftpView({ embeddedHostID }: SftpViewProps) {
+export function SftpView({ embeddedHostID, sessionID }: SftpViewProps) {
   const { t } = useTranslation();
 
   // ── Browse state (component-local; see class comment) ──────────────
@@ -119,6 +138,30 @@ export function SftpView({ embeddedHostID }: SftpViewProps) {
       setError(null);
     }
   }, [embeddedHostID, hostId]);
+
+  // ── Follow session cwd (OSC 7 driven; see TerminalPanel's sniffer) ──
+  const followCwd = useTerminalStore((s) => (sessionID ? s.sftpFollow[sessionID] ?? false : false));
+  const termCwd = useTerminalStore((s) => (sessionID ? s.sessionCwd[sessionID] : undefined));
+  const setSftpFollow = useTerminalStore((s) => s.setSftpFollow);
+
+  const handleToggleFollow = (on: boolean) => {
+    if (!sessionID) return;
+    setSftpFollow(sessionID, on);
+    if (on) {
+      // Inject the shell integration so the remote prompt starts reporting
+      // its cwd via OSC 7 (runs once immediately → the first follow lands
+      // without waiting for the user to press Enter).
+      TerminalService.WriteStdin(sessionID, encodeBase64(OSC7_INTEGRATION)).catch(() => {});
+      if (termCwd && termCwd !== cwd) navigate(termCwd);
+    }
+  };
+
+  // While following, every reported cwd change navigates the browser.
+  useEffect(() => {
+    if (!followCwd || !sessionID || !termCwd) return;
+    if (termCwd !== cwd) navigate(termCwd);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [followCwd, termCwd]);
 
   // Keep the path input in sync with cwd.
   useEffect(() => setPathInput(cwd), [cwd]);
@@ -401,6 +444,26 @@ export function SftpView({ embeddedHostID }: SftpViewProps) {
           onKeyDown={(e) => e.key === "Enter" && submitPath()}
           placeholder="/"
         />
+        {/* Follow session cwd: the terminal reports its working directory via
+            OSC 7 (integration injected on enable); the browser navigates on
+            every change. Remote sessions only — the browser needs a host. */}
+        {sessionID && (
+          <button
+            type="button"
+            onClick={() => handleToggleFollow(!followCwd)}
+            title={t("sftp.followCwdTip")}
+            aria-pressed={followCwd}
+            className={cn(
+              "flex h-8 shrink-0 items-center gap-1 rounded-[var(--radius)] px-2 text-xs transition-colors",
+              followCwd
+                ? "bg-accent text-primary"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            )}
+          >
+            <Radar className="h-3.5 w-3.5" />
+            {t("sftp.followCwd")}
+          </button>
+        )}
         <Button
           variant="ghost"
           size="icon"

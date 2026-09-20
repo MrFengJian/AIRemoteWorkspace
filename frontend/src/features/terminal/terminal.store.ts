@@ -42,6 +42,14 @@ interface TerminalState {
   activePaneId: string | null;
   setActivePane: (paneId: string) => void;
 
+  /** Session working directory reported by the shell via OSC 7 (keyed by
+   *  backend session id; updates on every prompt redraw). */
+  sessionCwd: Record<string, string>;
+  setSessionCwd: (id: string, cwd: string) => void;
+  /** SFTP follow-session-cwd toggle per session (default off). */
+  sftpFollow: Record<string, boolean>;
+  setSftpFollow: (id: string, on: boolean) => void;
+
   addSession: (id: string, hostID: string, hostName: string, terminalTheme: string, terminalFont: string, terminalFontSize: number) => void;
   /** Register a LOCAL terminal session (no host; appearance from the global
    *  terminal defaults resolved at open time). */
@@ -69,8 +77,16 @@ export const useTerminalStore = create<TerminalState>((set) => ({
   sessions: [],
   activeId: null,
   activePaneId: null,
+  sessionCwd: {},
+  sftpFollow: {},
 
   setActivePane: (paneId) => set({ activePaneId: paneId }),
+
+  setSessionCwd: (id, cwd) =>
+    set((s) => ({ sessionCwd: { ...s.sessionCwd, [id]: cwd } })),
+
+  setSftpFollow: (id, on) =>
+    set((s) => ({ sftpFollow: { ...s.sftpFollow, [id]: on } })),
 
   addSession: (id, hostID, hostName, terminalTheme, terminalFont, terminalFontSize) =>
     set((s) => ({

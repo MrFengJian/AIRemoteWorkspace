@@ -1261,6 +1261,7 @@ export function TerminalView() {
               {rightTab === "sftp" ? (
                 <SftpView
                   embeddedHostID={activeSession.hostID}
+                  sessionID={activeSession.id}
                 />
               ) : rightTab === "monitor" ? (
                 <MonitorView

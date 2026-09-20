@@ -369,6 +369,8 @@ export const zh = {
     deleteTitle: "删除文件",
     newFolderPrompt: "新文件夹名称：",
     newFolderTitle: "新建文件夹",
+    followCwd: "跟随会话",
+    followCwdTip: "开启后自动向当前 shell 注入一行集成命令（bash/zsh，会在滚动缓冲区可见），之后每次回提示符都上报工作目录，SFTP 视图自动跟随切换；再次点击关闭。",
     showHidden: "显示隐藏文件",
     hideHidden: "隐藏隐藏文件",
   },
