@@ -370,7 +370,7 @@ export const zh = {
     newFolderPrompt: "新文件夹名称：",
     newFolderTitle: "新建文件夹",
     followCwd: "跟随会话",
-    followCwdTip: "SFTP 视图自动跟随终端工作目录（默认开启）。shell 未原生上报目录时，会静默注入一行集成命令（bash/zsh，注入内容经抑制处理，终端中不可见）；点击图标关闭。",
+    followCwdTip: "SFTP 视图自动跟随终端当前目录（默认开启），点击开关",
     showHidden: "显示隐藏文件",
     hideHidden: "隐藏隐藏文件",
   },

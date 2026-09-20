@@ -372,7 +372,7 @@ export const en = {
     newFolderPrompt: "New folder name:",
     newFolderTitle: "New folder",
     followCwd: "Follow session",
-    followCwdTip: "This view follows the terminal working directory (on by default). Shells that do not report their cwd natively receive a one-line integration — injected silently with echo suppression, never visible in the terminal; click the icon to stop.",
+    followCwdTip: "SFTP view follows the terminal working directory automatically (on by default); click to toggle",
     showHidden: "Show hidden files",
     hideHidden: "Hide hidden files",
   },
