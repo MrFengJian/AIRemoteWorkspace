@@ -10,7 +10,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -27,8 +27,10 @@ import * as $models from "./models.js";
  * being edited and are reconciled on save); anything else holding the port —
  * another process, or another host's tunnel — is reported.
  */
-export function CheckTunnelPorts(hostID: string, ports: number[] | null): $CancellablePromise<number[] | null> {
-    return $Call.ByID(1171169755, hostID, ports);
+export function CheckTunnelPorts(hostID: string, ports: number[]): $CancellablePromise<number[]> {
+    return $Call.ByID(1171169755, hostID, ports).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
 /**
@@ -42,8 +44,10 @@ export function EmitStatus(s: domain$0.TunnelStatus): $CancellablePromise<void> 
 /**
  * ListTunnels returns the status of every known tunnel (all hosts).
  */
-export function ListTunnels(): $CancellablePromise<$models.TunnelStatusDTO[] | null> {
-    return $Call.ByID(1427034688);
+export function ListTunnels(): $CancellablePromise<$models.TunnelStatusDTO[]> {
+    return $Call.ByID(1427034688).then(($result: any) => {
+        return $$createType2($result);
+    });
 }
 
 /**
@@ -65,3 +69,8 @@ export function StartTunnel(hostID: string): $CancellablePromise<void> {
 export function StopTunnel(hostID: string): $CancellablePromise<void> {
     return $Call.ByID(3368897255, hostID);
 }
+
+// Private type creation functions
+const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = $models.TunnelStatusDTO.createFrom;
+const $$createType2 = $Create.Array($$createType1);

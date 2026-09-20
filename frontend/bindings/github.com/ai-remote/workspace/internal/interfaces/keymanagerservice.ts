@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -36,19 +36,30 @@ export function ExportKey(id: string, targetPath: string): $CancellablePromise<s
  * the authorized_keys-format public line (for copying to servers).
  */
 export function GenerateKey(req: $models.GenerateKeyRequestDTO): $CancellablePromise<[$models.ManagedKeyDTO, string]> {
-    return $Call.ByID(2959909989, req);
+    return $Call.ByID(2959909989, req).then(($result: any) => {
+        $result[0] = $$createType0($result[0]);
+        return $result;
+    });
 }
 
 /**
  * ImportKey registers an existing private key file.
  */
 export function ImportKey(req: $models.ImportKeyRequestDTO): $CancellablePromise<$models.ManagedKeyDTO> {
-    return $Call.ByID(3312635047, req);
+    return $Call.ByID(3312635047, req).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
 /**
  * ListKeys returns every managed key.
  */
-export function ListKeys(): $CancellablePromise<$models.ManagedKeyDTO[] | null> {
-    return $Call.ByID(3231029269);
+export function ListKeys(): $CancellablePromise<$models.ManagedKeyDTO[]> {
+    return $Call.ByID(3231029269).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
+
+// Private type creation functions
+const $$createType0 = $models.ManagedKeyDTO.createFrom;
+const $$createType1 = $Create.Array($$createType0);

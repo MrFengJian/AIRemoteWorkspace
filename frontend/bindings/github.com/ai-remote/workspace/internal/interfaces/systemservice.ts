@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -24,7 +24,9 @@ import * as $models from "./models.js";
  * it is still the default location).
  */
 export function GetDataDirInfo(): $CancellablePromise<$models.DataDirInfoDTO> {
-    return $Call.ByID(4198088101);
+    return $Call.ByID(4198088101).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
 /**
@@ -33,7 +35,9 @@ export function GetDataDirInfo(): $CancellablePromise<$models.DataDirInfoDTO> {
  * resolves the route). Used by the terminal right-click "paste local IP".
  */
 export function GetLocalIP(): $CancellablePromise<$models.LocalIPResult> {
-    return $Call.ByID(1333072652);
+    return $Call.ByID(1333072652).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
 /**
@@ -41,8 +45,10 @@ export function GetLocalIP(): $CancellablePromise<$models.LocalIPResult> {
  * preference order — the first entry is the effective default when no
  * explicit default is configured.
  */
-export function ListLocalShells(): $CancellablePromise<localpty$0.LocalShell[] | null> {
-    return $Call.ByID(644928086);
+export function ListLocalShells(): $CancellablePromise<localpty$0.LocalShell[]> {
+    return $Call.ByID(644928086).then(($result: any) => {
+        return $$createType3($result);
+    });
 }
 
 /**
@@ -51,7 +57,9 @@ export function ListLocalShells(): $CancellablePromise<localpty$0.LocalShell[] |
  * location without a restart.
  */
 export function MigrateDataDir(target: string): $CancellablePromise<$models.DataDirInfoDTO> {
-    return $Call.ByID(2309162650, target);
+    return $Call.ByID(2309162650, target).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
 /**
@@ -74,5 +82,14 @@ export function PickDataDir(): $CancellablePromise<string> {
  * SystemInfo returns the runtime info shown in the StatusBar.
  */
 export function SystemInfo(): $CancellablePromise<$models.SystemInfoResult> {
-    return $Call.ByID(1969377999);
+    return $Call.ByID(1969377999).then(($result: any) => {
+        return $$createType4($result);
+    });
 }
+
+// Private type creation functions
+const $$createType0 = $models.DataDirInfoDTO.createFrom;
+const $$createType1 = $models.LocalIPResult.createFrom;
+const $$createType2 = localpty$0.LocalShell.createFrom;
+const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = $models.SystemInfoResult.createFrom;

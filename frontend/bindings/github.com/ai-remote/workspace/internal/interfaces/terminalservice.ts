@@ -20,7 +20,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -34,23 +34,12 @@ export function CloseSession(sessionID: string): $CancellablePromise<void> {
 }
 
 /**
- * WriteStdin forwards a keystroke/line to the session's shell (local or
- * SSH). Sessions with a non-UTF-8 terminal encoding have their input
- * encoded through the session's encoder first.
- * GetSessionCwd reports the session shell's working directory WITHOUT
- * touching the interactive session (Linux remotes: a /proc probe over a
- * throwaway exec channel; other platforms return ""). Feeds the SFTP
- * panel's follow-session-cwd toggle.
- */
-export function GetSessionCwd(sessionID: string): $CancellablePromise<string> {
-    return $Call.ByID(2482168099, sessionID);
-}
-
-/**
  * GetSessionLog reports the session's current recording status.
  */
 export function GetSessionLog(sessionID: string): $CancellablePromise<$models.SessionLogInfoDTO> {
-    return $Call.ByID(4129471043, sessionID);
+    return $Call.ByID(4129471043, sessionID).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
 /**
@@ -61,7 +50,9 @@ export function GetSessionLog(sessionID: string): $CancellablePromise<$models.Se
  * OpenSession.
  */
 export function OpenLocalSession(size: $models.PtySizeDTO, shellID: string): $CancellablePromise<$models.OpenSessionResult> {
-    return $Call.ByID(3464489582, size, shellID);
+    return $Call.ByID(3464489582, size, shellID).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
 /**
@@ -70,7 +61,9 @@ export function OpenLocalSession(size: $models.PtySizeDTO, shellID: string): $Ca
  * "term:<id>:exit".
  */
 export function OpenSession(req: $models.OpenSessionRequest): $CancellablePromise<$models.OpenSessionResult> {
-    return $Call.ByID(2393237829, req);
+    return $Call.ByID(2393237829, req).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
 /**
@@ -93,16 +86,29 @@ export function ResizeSession(sessionID: string, size: $models.PtySizeDTO): $Can
  * <数据目录>/logs/<主机>/<时间>-<会话>.log and returns the file info.
  */
 export function StartSessionLog(sessionID: string, hostName: string): $CancellablePromise<$models.SessionLogInfoDTO> {
-    return $Call.ByID(1451611327, sessionID, hostName);
+    return $Call.ByID(1451611327, sessionID, hostName).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
 /**
  * StopSessionLog closes the session's log file.
  */
 export function StopSessionLog(sessionID: string): $CancellablePromise<$models.SessionLogInfoDTO> {
-    return $Call.ByID(3577009637, sessionID);
+    return $Call.ByID(3577009637, sessionID).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
-export function WriteStdin(sessionID: string, data: string | null): $CancellablePromise<void> {
+/**
+ * WriteStdin forwards a keystroke/line to the session's shell (local or
+ * SSH). Sessions with a non-UTF-8 terminal encoding have their input
+ * encoded through the session's encoder first.
+ */
+export function WriteStdin(sessionID: string, data: string): $CancellablePromise<void> {
     return $Call.ByID(925434392, sessionID, data);
 }
+
+// Private type creation functions
+const $$createType0 = $models.SessionLogInfoDTO.createFrom;
+const $$createType1 = $models.OpenSessionResult.createFrom;

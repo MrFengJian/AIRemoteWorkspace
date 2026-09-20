@@ -27,7 +27,6 @@ import { Badge } from "@/components/ui/badge";
 import { ContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
 import {
   sftpApi,
-  terminalCwdApi,
   newTransferId,
   onTransferProgress,
   transferDone,
@@ -35,6 +34,7 @@ import {
   type TransferProgress,
 } from "@/features/sftp/api";
 import { useTerminalStore } from "@/features/terminal/terminal.store";
+import { injectShellIntegration, isShellIntegrationInjected } from "@/features/terminal/osc7";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "@/lib/useConfirm";
 import { toast, errorMessage } from "@/lib/toast";
@@ -126,43 +126,34 @@ export function SftpView({ embeddedHostID, sessionID }: SftpViewProps) {
     }
   }, [embeddedHostID, hostId]);
 
-  // ── Follow session cwd — zero-intrusion by design.
-  // Default ON and passive: nothing is ever written to the session. The
-  // shell’s cwd arrives through two channels — the OSC 7 sniffer in
-  // TerminalPanel (native-reporting shells) and a 2s /proc probe over a
-  // throwaway exec channel (Linux remotes; covers every other shell). Both
-  // land in sessionCwd; the effect below navigates on change.
+  // ──   // Follow session cwd (OSC 7 driven; see TerminalPanel’s sniffer).
+  // Default ON. Nothing is typed into the session unless the shell does not
+  // report its cwd natively — then the one-line integration is sent once
+  // per session, and the pane’s echo-suppression window keeps the command
+  // invisible. Follow-up cwd updates arrive via OSC 7.
   const followCwd = useTerminalStore((s) => (sessionID ? s.sftpFollow[sessionID] ?? true : false));
   const termCwd = useTerminalStore((s) => (sessionID ? s.sessionCwd[sessionID] : undefined));
-  const setSessionCwd = useTerminalStore((s) => s.setSessionCwd);
-  const setSftpFollowToggle = useTerminalStore((s) => s.setSftpFollow);
 
   const handleToggleFollow = () => {
     if (!sessionID) return;
-    setSftpFollowToggle(sessionID, !followCwd);
+    useTerminalStore.getState().setSftpFollow(sessionID, !followCwd);
   };
 
-  // Probe loop while following: ask the backend for the shell’s cwd.
+  // Silent activation: on panel open (and whenever follow is on) make sure
+  // the shell reports its cwd — injected once, suppressed from rendering.
   useEffect(() => {
     if (!followCwd || !sessionID) return;
-    let stop = false;
-    const tick = () => {
-      terminalCwdApi
-        .get(sessionID)
-        .then((p) => {
-          if (stop || !p || !p.startsWith("/")) return;
-          const cur = useTerminalStore.getState().sessionCwd[sessionID];
-          if (p !== cur) setSessionCwd(sessionID, p);
-        })
-        .catch(() => {});
-    };
-    tick();
-    const timer = setInterval(tick, 2000);
-    return () => {
-      stop = true;
-      clearInterval(timer);
-    };
-  }, [followCwd, sessionID, setSessionCwd]);
+    if (!isShellIntegrationInjected(sessionID)) {
+      injectShellIntegration(sessionID);
+    }
+  }, [followCwd, sessionID]);
+
+  // While following, every reported cwd change navigates the browser.
+  useEffect(() => {
+    if (!followCwd || !sessionID || !termCwd) return;
+    if (termCwd !== cwd) navigate(termCwd);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [followCwd, termCwd]);
 
   // While following, every reported cwd change navigates the browser.
   useEffect(() => {

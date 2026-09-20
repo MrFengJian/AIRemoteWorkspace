@@ -9,7 +9,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
 
 	wailsapp "github.com/wailsapp/wails/v3/pkg/application"
 	"golang.org/x/text/encoding"
@@ -205,23 +204,6 @@ func (t *TerminalService) OpenLocalSession(size PtySizeDTO, shellID string) (Ope
 // WriteStdin forwards a keystroke/line to the session's shell (local or
 // SSH). Sessions with a non-UTF-8 terminal encoding have their input
 // encoded through the session's encoder first.
-// GetSessionCwd reports the session shell's working directory WITHOUT
-// touching the interactive session (Linux remotes: a /proc probe over a
-// throwaway exec channel; other platforms return ""). Feeds the SFTP
-// panel's follow-session-cwd toggle.
-func (t *TerminalService) GetSessionCwd(sessionID string) (string, error) {
-	if localpty.IsLocal(sessionID) {
-		return "", nil // local shells: OSC 7 sniffer only
-	}
-	sm, ok := t.connManager.(*ssh.Manager)
-	if !ok {
-		return "", nil
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	return sm.FollowCwd(ctx, sessionID)
-}
-
 func (t *TerminalService) WriteStdin(sessionID string, data []byte) error {
 	if enc, ok := t.encoders.Load(sessionID); ok {
 		if out, encErr := enc.(*encoding.Encoder).Bytes(data); encErr == nil {

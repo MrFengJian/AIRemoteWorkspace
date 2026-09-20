@@ -5,8 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -48,10 +46,6 @@ type managedSession struct {
 	client *Client
 	pty    *PtySession
 	host   domain.Host
-	// Client-side ephemeral port of the connection — the discriminator for
-	// the /proc cwd probe (FollowCwd): the interactive shell's environ sets
-	// SSH_CONNECTION to "<clientip> <clientport> …", unique per session.
-	localPort int
 	// Everything the auto-reconnect needs: resolved credentials (session
 	// lifetime, same scope as the connection itself), the event sink, the
 	// output handler, and the latest PTY size to apply on redial.
@@ -157,7 +151,6 @@ func (m *Manager) OpenSession(
 	ms := &managedSession{
 		id:        sessionID,
 		client:    client,
-		localPort: client.LocalPort(),
 		pty:       pty,
 		host:     host,
 		creds:    creds,
@@ -327,7 +320,6 @@ func (m *Manager) swapSession(ms *managedSession, client *Client, pty *PtySessio
 	defer ms.mu.Unlock()
 	_ = ms.client.Close() // the old link is dead regardless
 	ms.client = client
-	ms.localPort = client.LocalPort()
 	ms.pty = pty
 }
 
@@ -450,50 +442,6 @@ func (m *Manager) execSession(ctx context.Context, sessionID, cmd string, stdin 
 	}
 }
 
-// followCwdProbe scans /proc for the caller's interactive shell (matched by its
-// SSH_CONNECTION client port, restricted to shell-looking cmdlines, oldest
-// match wins) and prints its working directory. Designed to run through the
-// user's login shell via ssh exec; silent on unsupported platforms.
-const followCwdProbe = `for d in $(ls -d /proc/[0-9]* 2>/dev/null | sort -t/ -k3 -n); do
-  if tr '\000' '\n' 2>/dev/null <"$d/environ" | grep -q "^SSH_CONNECTION=.* ${PORT} "; then
-    if tr '\000' ' ' 2>/dev/null <"$d/cmdline" | grep -qE '(^|/| )-?(bash|zsh|sh|ksh|dash|fish)( |$)'; then
-      readlink "$d/cwd" 2>/dev/null && break
-    fi
-  fi
-done; exit 0`
-
-// FollowCwd reports the interactive shell's working directory WITHOUT
-// touching the session: a throwaway exec channel scans /proc for processes
-// whose SSH_CONNECTION environment carries this session's client port (each
-// session dials its own connection, so the port is unique) and whose cmdline
-// looks like a shell; the oldest match's /proc/<pid>/cwd is the answer.
-// Linux remotes only — anything else returns "" (follow stays idle), and the
-// probe never writes a byte to the user's terminal.
-func (m *Manager) FollowCwd(ctx context.Context, sessionID string) (string, error) {
-	ms, ok := m.session(sessionID)
-	if !ok {
-		return "", errSessionNotFound(sessionID)
-	}
-	ms.mu.Lock()
-	client, port := ms.client, ms.localPort
-	ms.mu.Unlock()
-	if client == nil || port == 0 {
-		return "", nil
-	}
-	// NUL and newline are spelled as octal escapes so the remote shell (not
-	// the Go compiler) interprets them inside tr. 2>/dev/null sits BEFORE the
-	// <file redirect: on multi-user remotes, unreadable other-user environ
-	// files would otherwise spew permission errors into the combined output —
-	// and the trailing exit 0 keeps "nothing found" distinct from a channel
-	// error (ExecInSessionCtx merges stderr into its result). PORT is passed
-	// as a variable so the probe itself needs no Go-side interpolation.
-	probe := "PORT=" + strconv.Itoa(port) + "; " + followCwdProbe
-	out, err := m.ExecInSessionCtx(ctx, sessionID, probe)
-	if err != nil {
-		return "", nil // unsupported platform / shell — follow stays idle
-	}
-	return strings.TrimSpace(out), nil
-}
 
 // HostOfSession returns the domain.Host associated with a session.
 func (m *Manager) HostOfSession(sessionID string) (domain.Host, bool) {
