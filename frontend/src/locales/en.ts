@@ -372,7 +372,7 @@ export const en = {
     newFolderPrompt: "New folder name:",
     newFolderTitle: "New folder",
     followCwd: "Follow session",
-    followCwdTip: "Injects a one-line shell integration into the current shell (bash/zsh, visible once in scrollback); the prompt then reports its working directory via OSC 7 and this view follows every change. Click again to stop.",
+    followCwdTip: "This view follows the terminal working directory (on by default). Enabling injects a one-line shell integration (bash/zsh, visible once in scrollback); the prompt then reports its cwd on every prompt redraw. Click the icon to stop.",
     showHidden: "Show hidden files",
     hideHidden: "Hide hidden files",
   },

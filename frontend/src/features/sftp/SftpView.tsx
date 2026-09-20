@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Dialogs } from "@wailsio/runtime";
 import {
@@ -61,6 +61,29 @@ const OSC7_INTEGRATION =
   "eval '_zz_osc7(){ printf \"\\033]7;file://%s%s\\007\" \"${HOSTNAME:-${HOST:-localhost}}\" \"$PWD\"; }; " +
   "if [ -n \"$ZSH_VERSION\" ]; then autoload -Uz add-zsh-hook; add-zsh-hook precmd _zz_osc7; " +
   "else case \";${PROMPT_COMMAND:-};\" in *\";_zz_osc7;\"*) ;; *) PROMPT_COMMAND=\"_zz_osc7;${PROMPT_COMMAND}\";; esac; fi; _zz_osc7'\n";
+
+/** Sessions whose shell already received the OSC 7 integration. Module-level
+ *  so re-opening the panel doesn't re-send the line; the snippet itself is
+ *  also double-install-guarded inside the shell. */
+const injectedSessions = new Set<string>();
+
+function injectOsc7Integration(sessionID: string) {
+  injectedSessions.add(sessionID);
+  TerminalService.WriteStdin(sessionID, encodeBase64(OSC7_INTEGRATION)).catch(() => {
+    injectedSessions.delete(sessionID); // allow retry on a later open
+  });
+}
+
+/** Inject once per session while follow is on (default) and the panel opens. */
+function useInjectOsc7Once(sessionID: string | undefined, followCwd: boolean) {
+  const injectedRef = useRef(injectedSessions);
+  useEffect(() => {
+    if (sessionID && followCwd && !injectedSessions.has(sessionID)) {
+      injectOsc7Integration(sessionID);
+    }
+  }, [sessionID, followCwd]);
+  return injectedRef;
+}
 
 /** One in-flight upload/download, shown as a progress bar in the status bar. */
 interface TransferState extends TransferProgress {
@@ -140,20 +163,22 @@ export function SftpView({ embeddedHostID, sessionID }: SftpViewProps) {
   }, [embeddedHostID, hostId]);
 
   // ── Follow session cwd (OSC 7 driven; see TerminalPanel's sniffer) ──
-  const followCwd = useTerminalStore((s) => (sessionID ? s.sftpFollow[sessionID] ?? false : false));
+  // Default ON: every session follows unless the user turned it off. The
+  // shell integration is injected once per session (module-level set, so
+  // re-opening the panel doesn't re-send it; the snippet itself is also
+  // guarded against double-install inside the shell).
+  const followCwd = useTerminalStore((s) => (sessionID ? s.sftpFollow[sessionID] ?? true : false));
   const termCwd = useTerminalStore((s) => (sessionID ? s.sessionCwd[sessionID] : undefined));
   const setSftpFollow = useTerminalStore((s) => s.setSftpFollow);
+  const injectedRef = useInjectOsc7Once(sessionID, followCwd);
 
   const handleToggleFollow = (on: boolean) => {
     if (!sessionID) return;
     setSftpFollow(sessionID, on);
-    if (on) {
-      // Inject the shell integration so the remote prompt starts reporting
-      // its cwd via OSC 7 (runs once immediately → the first follow lands
-      // without waiting for the user to press Enter).
-      TerminalService.WriteStdin(sessionID, encodeBase64(OSC7_INTEGRATION)).catch(() => {});
-      if (termCwd && termCwd !== cwd) navigate(termCwd);
+    if (on && !injectedRef.current.has(sessionID)) {
+      injectOsc7Integration(sessionID);
     }
+    if (on && termCwd && termCwd !== cwd) navigate(termCwd);
   };
 
   // While following, every reported cwd change navigates the browser.
@@ -445,23 +470,24 @@ export function SftpView({ embeddedHostID, sessionID }: SftpViewProps) {
           placeholder="/"
         />
         {/* Follow session cwd: the terminal reports its working directory via
-            OSC 7 (integration injected on enable); the browser navigates on
-            every change. Remote sessions only — the browser needs a host. */}
+            OSC 7 (integration injected once, on by default); the browser
+            navigates on every change. Remote sessions only — the browser
+            needs a host. Icon-only on purpose: the tooltip carries the text. */}
         {sessionID && (
           <button
             type="button"
             onClick={() => handleToggleFollow(!followCwd)}
             title={t("sftp.followCwdTip")}
+            aria-label={t("sftp.followCwd")}
             aria-pressed={followCwd}
             className={cn(
-              "flex h-8 shrink-0 items-center gap-1 rounded-[var(--radius)] px-2 text-xs transition-colors",
+              "h-8 w-8 shrink-0 rounded-[var(--radius)] transition-colors",
               followCwd
                 ? "bg-accent text-primary"
                 : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
           >
-            <Radar className="h-3.5 w-3.5" />
-            {t("sftp.followCwd")}
+            <Radar className={cn("mx-auto h-4 w-4", followCwd && "text-primary")} />
           </button>
         )}
         <Button
