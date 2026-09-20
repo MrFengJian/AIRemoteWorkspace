@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -449,12 +450,24 @@ func (m *Manager) execSession(ctx context.Context, sessionID, cmd string, stdin 
 	}
 }
 
+// followCwdProbe scans /proc for the caller's interactive shell (matched by its
+// SSH_CONNECTION client port, restricted to shell-looking cmdlines, oldest
+// match wins) and prints its working directory. Designed to run through the
+// user's login shell via ssh exec; silent on unsupported platforms.
+const followCwdProbe = `for d in $(ls -d /proc/[0-9]* 2>/dev/null | sort -t/ -k3 -n); do
+  if tr '\000' '\n' 2>/dev/null <"$d/environ" | grep -q "^SSH_CONNECTION=.* ${PORT} "; then
+    if tr '\000' ' ' 2>/dev/null <"$d/cmdline" | grep -qE '(^|/| )-?(bash|zsh|sh|ksh|dash|fish)( |$)'; then
+      readlink "$d/cwd" 2>/dev/null && break
+    fi
+  fi
+done; exit 0`
+
 // FollowCwd reports the interactive shell's working directory WITHOUT
 // touching the session: a throwaway exec channel scans /proc for processes
 // whose SSH_CONNECTION environment carries this session's client port (each
 // session dials its own connection, so the port is unique) and whose cmdline
 // looks like a shell; the oldest match's /proc/<pid>/cwd is the answer.
-// Linux remotes only  anything else returns "" (follow stays idle), and the
+// Linux remotes only — anything else returns "" (follow stays idle), and the
 // probe never writes a byte to the user's terminal.
 func (m *Manager) FollowCwd(ctx context.Context, sessionID string) (string, error) {
 	ms, ok := m.session(sessionID)
@@ -468,11 +481,13 @@ func (m *Manager) FollowCwd(ctx context.Context, sessionID string) (string, erro
 		return "", nil
 	}
 	// NUL and newline are spelled as octal escapes so the remote shell (not
-	// the Go compiler) interprets them inside tr.
-	probe := "for d in $(ls -d /proc/[0-9]* 2>/dev/null | sort -t/ -k3 -n); do " +
-		"tr '\\000' '\\n' <\"$d/environ\" 2>/dev/null | grep -q \"^SSH_CONNECTION=.* \" + fmt.Sprint(port) + \" \" || continue; " +
-		"tr '\\000' ' ' <\"$d/cmdline\" 2>/dev/null | grep -qE '(^|/| )-?(bash|zsh|sh|ksh|dash|fish)( |$)' || continue; " +
-		"readlink \"$d/cwd\" 2>/dev/null && break; done"
+	// the Go compiler) interprets them inside tr. 2>/dev/null sits BEFORE the
+	// <file redirect: on multi-user remotes, unreadable other-user environ
+	// files would otherwise spew permission errors into the combined output —
+	// and the trailing exit 0 keeps "nothing found" distinct from a channel
+	// error (ExecInSessionCtx merges stderr into its result). PORT is passed
+	// as a variable so the probe itself needs no Go-side interpolation.
+	probe := "PORT=" + strconv.Itoa(port) + "; " + followCwdProbe
 	out, err := m.ExecInSessionCtx(ctx, sessionID, probe)
 	if err != nil {
 		return "", nil // unsupported platform / shell — follow stays idle
