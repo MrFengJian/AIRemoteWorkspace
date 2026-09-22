@@ -22,6 +22,7 @@ import {
   History as HistoryIcon,
   MessageSquarePlus,
   ShieldCheck,
+  Zap,
   FileWarning,
   BookMarked,
   Sparkles,
@@ -100,6 +101,7 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
     finishToolSteps,
     dropTrailingEmptyAssistant,
     dropTrailingNotice,
+    setTrailingContent,
     clearHistory,
   } = useAgentStore();
   const queryClient = useQueryClient();
@@ -120,7 +122,8 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
   // ── Input completion (`$` skills, `@` files & terminal ranges) ──────
   type Completion =
     | { kind: "skill"; start: number; query: string }
-    | { kind: "path"; start: number; dir: string; prefix: string };
+    | { kind: "path"; start: number; dir: string; prefix: string }
+    | { kind: "cmd"; query: string };
   type CompletionItem = { key: string; label: string; desc: string; apply: () => void };
   const [completion, setCompletion] = useState<Completion | null>(null);
   const [completionIdx, setCompletionIdx] = useState(0);
@@ -128,6 +131,13 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
 
   const detectCompletion = (value: string, caret: number) => {
     const before = value.slice(0, caret);
+    // Built-in quick commands: "/name" (compact / token / summary / clear).
+    const cmdM = /^\s*\/(\w*)$/.exec(before);
+    if (cmdM) {
+      setCompletion({ kind: "cmd", query: cmdM[1] });
+      setCompletionIdx(0);
+      return;
+    }
     // Skill: "$name" as the first token of the message.
     const skillM = /^\s*\$([\w-]*)$/.exec(before);
     if (skillM) {
@@ -155,7 +165,7 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
   /** Replace the active @//token span with text; keep the picker open for
    *  directory selections so the next level lists immediately. */
   const replaceToken = (tokenText: string, close: boolean) => {
-    if (!completion) return;
+    if (!completion || completion.kind === "cmd") return;
     const el = textareaRef.current;
     const caret = el?.selectionStart ?? input.length;
     let next = input.slice(0, completion.start) + tokenText;
@@ -277,9 +287,32 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
     };
   }, [completionDir, activeSessionId]);
 
+  // Built-in quick commands (⚡): app actions on the session — never sent
+  // to the LLM; the command and its result are recorded into the history.
+  const quickCommands = [
+    { cmd: "compact", descKey: "agent.quickCompactDesc", needsModel: true },
+    { cmd: "token", descKey: "agent.quickTokenDesc", needsModel: false },
+    { cmd: "summary", descKey: "agent.quickSummaryDesc", needsModel: true },
+    { cmd: "clear", descKey: "agent.quickClearDesc", needsModel: false },
+  ] as const;
+
   // Completion items for the current picker state.
   const completionItems: CompletionItem[] = (() => {
     if (!completion) return [];
+    if (completion.kind === "cmd") {
+      const q = completion.query.toLowerCase();
+      return quickCommands
+        .filter((c) => c.cmd.toLowerCase().startsWith(q))
+        .map((c) => ({
+          key: c.cmd,
+          label: "/" + c.cmd,
+          desc: t(c.descKey),
+          apply: () => {
+            setCompletion(null);
+            void runQuickCommand(c.cmd, c.needsModel);
+          },
+        }));
+    }
     if (completion.kind === "skill") {
       const q = completion.query.toLowerCase();
       return (agentSkills ?? [])
@@ -574,6 +607,20 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
 
   const send = async (text: string) => {
     if (!activeSessionId || !text.trim() || streaming[activeSessionId]) return;
+    // Built-in quick commands ("/compact" …): execute the app action instead
+    // of sending the text to the LLM.
+    const slashM = /^\/(\w+)\s*$/.exec(text.trim());
+    if (slashM) {
+      const known = quickCommands.find((c) => c.cmd === slashM[1].toLowerCase());
+      if (known) {
+        runQuickCommand(known.cmd, known.needsModel);
+        setInput("");
+        setCompletion(null);
+        return;
+      }
+      toast.error(t("agent.quickUnknown", { cmd: slashM[1] }));
+      return;
+    }
     if (!modelChosen) return;
     setInputHistory((h) => [...h.slice(-MAX_INPUT_HISTORY + 1), text.trim()]);
     setHistoryIdx(null);
@@ -602,6 +649,37 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
       });
     }
   };
+
+  /** Built-in quick commands (⚡ / slash): app actions on the session.
+   *  The backend records the command + result into the conversation history
+   *  like a normal turn; the command text is never sent to the LLM. */
+  const runQuickCommand = (cmd: string, needsModel: boolean) => {
+    if (!activeSessionId || streaming[activeSessionId]) return;
+    if (needsModel && !modelChosen) return;
+    addMessage(activeSessionId, { role: "user", content: "/" + cmd });
+    addMessage(activeSessionId, { role: "assistant", content: "" });
+    setStreaming(activeSessionId, true);
+    atBottomRef.current = true;
+    const fail = (msg: string) => {
+      setStreaming(activeSessionId, false);
+      dropTrailingEmptyAssistant(activeSessionId);
+      addMessage(activeSessionId, {
+        role: "assistant",
+        variant: "error",
+        content: `${t("agent.errorPrefix")} ${msg}`,
+      });
+    };
+    agentApi
+      .runCommand(activeSessionId, agentProviderId, agentModel, cmd)
+      .then((res) => {
+        setStreaming(activeSessionId, false);
+        setTrailingContent(activeSessionId, res.result);
+      })
+      .catch((e) => fail(e instanceof Error ? e.message : String(e)));
+  };
+
+  /** ⚡ quick-command menu open state. */
+  const [quickOpen, setQuickOpen] = useState(false);
 
   const handleSend = () => send(input);
 
@@ -1114,6 +1192,27 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
             ))}
           </div>
         )}
+        {/* ⚡ built-in quick commands (executed immediately on click). */}
+        {quickOpen && (
+          <div className="absolute bottom-full left-3 right-3 z-30 mb-1 max-h-52 overflow-auto rounded-[var(--radius)] border border-border bg-popover py-1 shadow-lg">
+            {quickCommands.map((c) => (
+              <button
+                key={c.cmd}
+                type="button"
+                disabled={c.needsModel && (!modelChosen || isStreaming)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setQuickOpen(false);
+                  runQuickCommand(c.cmd, c.needsModel);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <span className="shrink-0 font-mono font-medium text-foreground">/{c.cmd}</span>
+                <span className="min-w-0 flex-1 truncate">{t(c.descKey)}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {providers.length > 0 ? (
           <div className="flex items-center gap-1.5 pb-2">
             <UsersRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -1207,6 +1306,20 @@ export function AgentView({ embeddedSessionID }: AgentViewProps = {}) {
           </div>
         )}
         <div className="flex items-end gap-2">
+          <button
+            type="button"
+            onClick={() => setQuickOpen((v) => !v)}
+            aria-label={t("agent.quickMenu")}
+            title={t("agent.quickMenu")}
+            className={cn(
+              "flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius)] border border-border transition-colors",
+              quickOpen
+                ? "border-primary/50 bg-accent text-primary"
+                : "text-muted-foreground hover:border-primary/50 hover:bg-accent hover:text-primary",
+            )}
+          >
+            <Zap className="h-4 w-4" />
+          </button>
           <button
             type="button"
             onClick={openReportDialog}

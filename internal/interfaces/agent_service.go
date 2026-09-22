@@ -198,11 +198,12 @@ func (a *AgentService) expertMeta(expertID string) (string, string) {
 // model. expertID ("" = general assistant) selects the ops-expert
 // persona; an AutoSnapshot expert injects a fresh health snapshot on its
 // first turn. Output flows via events:
-//   agent:<sessionID>:chunk    — incremental LLM text
-//   agent:<sessionID>:toolcall — tool invocation start (id/tool/args)
-//   agent:<sessionID>:toolend  — tool invocation result (id/result)
-//   agent:<sessionID>:done     — chat completed
-//   agent:<sessionID>:error    — chat failed
+//
+//	agent:<sessionID>:chunk    — incremental LLM text
+//	agent:<sessionID>:toolcall — tool invocation start (id/tool/args)
+//	agent:<sessionID>:toolend  — tool invocation result (id/result)
+//	agent:<sessionID>:done     — chat completed
+//	agent:<sessionID>:error    — chat failed
 func (a *AgentService) StartChat(sessionID, providerID, model, expertID, message string) error {
 	if a.runtime == nil {
 		return fmt.Errorf("agent runtime not available")
@@ -378,6 +379,31 @@ func (a *AgentService) DraftScenario(conversationID, providerID, model string) (
 	}
 	name, desc := appsvc.ExtractSkillFrontmatter(content)
 	return ScenarioDraftDTO{Name: name, Description: desc, Content: content}, nil
+}
+
+// SessionCommandResultDTO is the outcome of a built-in quick command
+// (⚡ / slash): the command plus its assistant-facing result text. Both are
+// already recorded into the conversation history by the runtime.
+type SessionCommandResultDTO struct {
+	Command string `json:"command"`
+	Result  string `json:"result"`
+}
+
+// RunCommand executes a built-in quick command on the session's conversation
+// memory (/compact /token /summary /clear). The command and its result are
+// recorded into the conversation history like a normal turn, but the command
+// text is never sent to the LLM.
+func (a *AgentService) RunCommand(sessionID, providerID, model, command string) (SessionCommandResultDTO, error) {
+	if a.runtime == nil {
+		return SessionCommandResultDTO{}, fmt.Errorf("agent runtime not available")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), draftTimeout)
+	defer cancel()
+	result, err := a.runtime.RunCommand(ctx, sessionID, providerID, model, command)
+	if err != nil {
+		return SessionCommandResultDTO{}, err
+	}
+	return SessionCommandResultDTO{Command: strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(strings.ToLower(command)), "/")), Result: result}, nil
 }
 
 // draftTimeout bounds the one-shot distillation call — long enough for slow

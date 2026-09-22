@@ -8,7 +8,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -18,7 +18,9 @@ import * as $models from "./models.js";
  * CreateHost validates and stores a new host.
  */
 export function CreateHost($in: $models.HostInputDTO): $CancellablePromise<$models.HostDTO> {
-    return $Call.ByID(3920295711, $in);
+    return $Call.ByID(3920295711, $in).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
 /**
@@ -32,7 +34,9 @@ export function DeleteHost(id: string): $CancellablePromise<void> {
  * GetHost returns a single host by id.
  */
 export function GetHost(id: string): $CancellablePromise<$models.HostDTO> {
-    return $Call.ByID(3669425417, id);
+    return $Call.ByID(3669425417, id).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
 /**
@@ -40,14 +44,18 @@ export function GetHost(id: string): $CancellablePromise<$models.HostDTO> {
  * the edit dialog to show a "remembered" indicator without revealing values.
  */
 export function GetRememberedCredentials(hostID: string): $CancellablePromise<$models.RememberedCredentialsDTO> {
-    return $Call.ByID(501246757, hostID);
+    return $Call.ByID(501246757, hostID).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
 /**
  * ListHosts returns all stored hosts.
  */
-export function ListHosts(): $CancellablePromise<$models.HostDTO[] | null> {
-    return $Call.ByID(910715712);
+export function ListHosts(): $CancellablePromise<$models.HostDTO[]> {
+    return $Call.ByID(910715712).then(($result: any) => {
+        return $$createType2($result);
+    });
 }
 
 /**
@@ -74,12 +82,22 @@ export function SetAgentModel(hostID: string, providerID: string, model: string)
  * (so "remember password" works for testing too, not just connecting).
  */
 export function TestConnection(hostID: string, creds: $models.CredentialsDTO): $CancellablePromise<$models.TestConnectionResult> {
-    return $Call.ByID(1230124561, hostID, creds);
+    return $Call.ByID(1230124561, hostID, creds).then(($result: any) => {
+        return $$createType3($result);
+    });
 }
 
 /**
  * UpdateHost modifies an existing host.
  */
 export function UpdateHost(id: string, $in: $models.HostInputDTO): $CancellablePromise<$models.HostDTO> {
-    return $Call.ByID(2844861182, id, $in);
+    return $Call.ByID(2844861182, id, $in).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
+
+// Private type creation functions
+const $$createType0 = $models.HostDTO.createFrom;
+const $$createType1 = $models.RememberedCredentialsDTO.createFrom;
+const $$createType2 = $Create.Array($$createType0);
+const $$createType3 = $models.TestConnectionResult.createFrom;

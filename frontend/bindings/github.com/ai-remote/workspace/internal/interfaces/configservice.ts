@@ -10,7 +10,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -21,7 +21,9 @@ import * as domain$0 from "../domain/models.js";
  * Returning the concrete domain.AppConfig lets Wails emit typed TS bindings.
  */
 export function GetAppConfig(): $CancellablePromise<domain$0.AppConfig> {
-    return $Call.ByID(1085469112);
+    return $Call.ByID(1085469112).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
 /**
@@ -41,3 +43,6 @@ export function SetAppConfig(cfg: domain$0.AppConfig): $CancellablePromise<void>
 export function SetOnChange(fn: any): $CancellablePromise<void> {
     return $Call.ByID(3994277326, fn);
 }
+
+// Private type creation functions
+const $$createType0 = domain$0.AppConfig.createFrom;

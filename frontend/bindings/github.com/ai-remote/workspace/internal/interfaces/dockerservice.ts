@@ -10,7 +10,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -27,15 +27,19 @@ export function ContainerAction(sessionID: string, container: string, action: st
 /**
  * GetContainerStats returns one-shot resource usage per running container.
  */
-export function GetContainerStats(sessionID: string): $CancellablePromise<domain$0.DockerContainerStats[] | null> {
-    return $Call.ByID(1995022483, sessionID);
+export function GetContainerStats(sessionID: string): $CancellablePromise<domain$0.DockerContainerStats[]> {
+    return $Call.ByID(1995022483, sessionID).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
 /**
  * GetInfo returns the Docker overview (server version + counters) for a session.
  */
 export function GetInfo(sessionID: string): $CancellablePromise<domain$0.DockerInfo> {
-    return $Call.ByID(1355750061, sessionID);
+    return $Call.ByID(1355750061, sessionID).then(($result: any) => {
+        return $$createType2($result);
+    });
 }
 
 /**
@@ -49,27 +53,47 @@ export function GetLogs(sessionID: string, container: string, tail: number): $Ca
  * InspectNetwork returns one network's detail (name or ID reference).
  */
 export function InspectNetwork(sessionID: string, network: string): $CancellablePromise<domain$0.DockerNetworkDetail> {
-    return $Call.ByID(718825661, sessionID, network);
+    return $Call.ByID(718825661, sessionID, network).then(($result: any) => {
+        return $$createType3($result);
+    });
 }
 
 /**
  * ListContainers returns the container list for a session (all=true includes
  * stopped containers).
  */
-export function ListContainers(sessionID: string, all: boolean): $CancellablePromise<domain$0.DockerContainer[] | null> {
-    return $Call.ByID(595444031, sessionID, all);
+export function ListContainers(sessionID: string, all: boolean): $CancellablePromise<domain$0.DockerContainer[]> {
+    return $Call.ByID(595444031, sessionID, all).then(($result: any) => {
+        return $$createType5($result);
+    });
 }
 
 /**
  * ListImages returns the image list for a session.
  */
-export function ListImages(sessionID: string): $CancellablePromise<domain$0.DockerImage[] | null> {
-    return $Call.ByID(3101217033, sessionID);
+export function ListImages(sessionID: string): $CancellablePromise<domain$0.DockerImage[]> {
+    return $Call.ByID(3101217033, sessionID).then(($result: any) => {
+        return $$createType7($result);
+    });
 }
 
 /**
  * ListNetworks returns the network list for a session.
  */
-export function ListNetworks(sessionID: string): $CancellablePromise<domain$0.DockerNetwork[] | null> {
-    return $Call.ByID(2343702608, sessionID);
+export function ListNetworks(sessionID: string): $CancellablePromise<domain$0.DockerNetwork[]> {
+    return $Call.ByID(2343702608, sessionID).then(($result: any) => {
+        return $$createType9($result);
+    });
 }
+
+// Private type creation functions
+const $$createType0 = domain$0.DockerContainerStats.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = domain$0.DockerInfo.createFrom;
+const $$createType3 = domain$0.DockerNetworkDetail.createFrom;
+const $$createType4 = domain$0.DockerContainer.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = domain$0.DockerImage.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = domain$0.DockerNetwork.createFrom;
+const $$createType9 = $Create.Array($$createType8);

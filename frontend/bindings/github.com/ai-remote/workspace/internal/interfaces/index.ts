@@ -36,7 +36,7 @@ export {
     WindowService
 };
 
-export type {
+export {
     ContextPathDTO,
     ConversationDTO,
     ConversationMessageDTO,
@@ -61,6 +61,7 @@ export type {
     RememberedCredentialsDTO,
     SaveProviderInput,
     ScenarioDraftDTO,
+    SessionCommandResultDTO,
     SessionLogInfoDTO,
     SkillDTO,
     SystemInfoResult,

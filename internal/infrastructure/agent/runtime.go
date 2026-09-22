@@ -14,15 +14,17 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
-	"github.com/cloudwego/eino/compose"
+	openaimodel "github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/tool"
+	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/flow/agent/react"
 	"github.com/cloudwego/eino/schema"
-	openaimodel "github.com/cloudwego/eino-ext/components/model/openai"
 
 	"github.com/ai-remote/workspace/internal/domain"
 	"github.com/ai-remote/workspace/internal/infrastructure/agent/tools"
@@ -1000,7 +1002,155 @@ func (r *Runtime) DistillFaultReport(ctx context.Context, providerID, model, tra
 	return strings.TrimSpace(resp.Content), nil
 }
 
-func (r *Runtime) buildResolver() CredsResolver {	return func(sessionID string) (domain.Host, domain.Credentials, error) {
+// Built-in quick commands (⚡ menu / slash input). Each is an APP action on
+// the current session: the command and its result are recorded into the
+// conversation history exactly like a normal turn (persisted via the sink),
+// but the command text itself is never sent to the LLM.
+func (r *Runtime) RunCommand(ctx context.Context, sessionID, providerID, model, command string) (string, error) {
+	cmd := strings.TrimPrefix(strings.TrimSpace(strings.ToLower(command)), "/")
+	r.mu.Lock()
+	hist := append([]*schema.Message(nil), r.histories[sessionID]...)
+	r.mu.Unlock()
+
+	switch cmd {
+	case "compact":
+		summary, err := r.summarizeHistory(ctx, providerID, model, hist)
+		if err != nil {
+			return "", err
+		}
+		// The summary IS the distilled prior context going forward: memory is
+		// replaced by the command exchange, and the turn is persisted so the
+		// archival transcript stays complete.
+		result := "U0001F5DC️ 会话历史已压缩（" + strconv.Itoa(len(hist)) + " 条消息 → 摘要）：\n\n" + summary
+		r.mu.Lock()
+		r.histories[sessionID] = []*schema.Message{
+			schema.UserMessage("/compact"),
+			schema.AssistantMessage(result, nil),
+		}
+		r.mu.Unlock()
+		if r.sink != nil {
+			// Persist directly (recordTurn would append the exchange AGAIN on
+			// top of the just-replaced memory).
+			r.sink.RecordTurn(sessionID, "/compact", result)
+		}
+		return result, nil
+
+	case "summary":
+		summary, err := r.summarizeHistory(ctx, providerID, model, hist)
+		if err != nil {
+			return "", err
+		}
+		result := "U0001F4CC 会话摘要：\n\n" + summary
+		r.recordTurn(sessionID, "/summary", result)
+		return result, nil
+
+	case "token":
+		messages := len(hist)
+		turns := messages / 2
+		chars := 0
+		tokens := 0
+		for _, m := range hist {
+			chars += len(m.Content)
+			tokens += estimateTokens(m.Content)
+		}
+		result := "U0001F4CA 会话统计（当前上下文）\n" +
+			"- 消息：" + strconv.Itoa(messages) + " 条\n" +
+			"- 轮次：" + strconv.Itoa(turns) + " 轮\n" +
+			"- 上下文字符：" + strconv.Itoa(chars) + "\n" +
+			"- 估算 token：≈" + strconv.Itoa(tokens) + "（估算值，非计费口径）"
+		r.recordTurn(sessionID, "/token", result)
+		return result, nil
+
+	case "clear":
+		r.ClearHistory(sessionID)
+		result := "U0001F9F9 会话记忆已清空，开始新话题。"
+		r.recordTurn(sessionID, "/clear", result)
+		return result, nil
+
+	default:
+		return "", fmt.Errorf("未知指令 %q（可用：/compact /token /summary /clear）", command)
+	}
+}
+
+// summarizeHistory distills the session transcript into a compact context
+// summary via a one-shot LLM call.
+func (r *Runtime) summarizeHistory(ctx context.Context, providerID, model string, hist []*schema.Message) (string, error) {
+	if len(hist) == 0 {
+		return "", fmt.Errorf("会话还没有可压缩的内容")
+	}
+	var b strings.Builder
+	for _, m := range hist {
+		role := "助手"
+		if m.Role == "user" {
+			role = "用户"
+		}
+		fmt.Fprintf(&b, "[%s]\n%s\n\n", role, m.Content)
+	}
+	if b.Len() > transcriptCharBudget {
+		// Keep the tail — recent turns carry the live context.
+		b.Reset()
+		b.WriteString("[较早轮次已省略]\n\n")
+		for _, m := range hist[max(0, len(hist)-6):] {
+			role := "助手"
+			if m.Role == "user" {
+				role = "用户"
+			}
+			fmt.Fprintf(&b, "[%s]\n%s\n\n", role, m.Content)
+		}
+	}
+
+	ep, err := r.llm.ResolveLLM(providerID, model)
+	if err != nil {
+		return "", err
+	}
+	apiKey := ep.APIKey
+	if apiKey == "" {
+		apiKey = "local-no-key"
+	}
+	chatModel, err := openaimodel.NewChatModel(ctx, &openaimodel.ChatModelConfig{
+		BaseURL: ep.BaseURL,
+		APIKey:  apiKey,
+		Model:   ep.Model,
+	})
+	if err != nil {
+		return "", fmt.Errorf("create chat model: %w", err)
+	}
+
+	sys := "你是运维会话压缩器。把这段 AI 运维助手的对话压缩为供后续对话使用的上下文摘要：" +
+		"保留用户目标、已执行的关键操作及结果、重要结论与数据、未决问题。" +
+		"不编造未出现的信息；中文输出；不超过 300 字；直接输出摘要正文。"
+
+	resp, err := chatModel.Generate(ctx, []*schema.Message{
+		schema.SystemMessage(sys),
+		schema.UserMessage(b.String()),
+	})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(resp.Content), nil
+}
+
+// estimateTokens is a coarse context-size estimate (NOT a billing figure):
+// CJK text runs ≈0.7 tokens per character, other scripts ≈4 characters per
+// token.
+func estimateTokens(s string) int {
+	cjk, other := 0, 0
+	for _, r := range s {
+		if unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hangul, r) {
+			cjk++
+		} else {
+			other++
+		}
+	}
+	t := int(float64(cjk)*0.7 + float64(other)/4.0)
+	if s != "" && t < 1 {
+		t = 1
+	}
+	return t
+}
+
+func (r *Runtime) buildResolver() CredsResolver {
+	return func(sessionID string) (domain.Host, domain.Credentials, error) {
 		host, ok := r.sshMgr.HostOfSession(sessionID)
 		if !ok {
 			return domain.Host{}, domain.Credentials{}, errors.New("session not found")

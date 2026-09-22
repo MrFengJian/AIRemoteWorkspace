@@ -41,7 +41,11 @@ export const agentApi = {
   saveSkill: (name: string, content: string) => AgentService.SaveSkill(name, content),
   /** Delete a skill (builtins stay dismissed across restarts). */
   deleteSkill: (name: string) => AgentService.DeleteSkill(name),
-  /** Distill a conversation into a SKILL.md draft (preview before saving). */
+  /** Built-in quick command (⚡ /compact /token /summary /clear): app action
+   *  on the session; command + result are recorded into the history. */
+  runCommand: (sessionID: string, providerID: string, model: string, command: string) =>
+    AgentService.RunCommand(sessionID, providerID, model, command),
+    /** Distill a conversation into a SKILL.md draft (preview before saving). */
   draftScenario: (conversationID: string, providerID: string, model: string) =>
     AgentService.DraftScenario(conversationID, providerID, model),
   /** The session's current persisted conversation (report source transcript). */

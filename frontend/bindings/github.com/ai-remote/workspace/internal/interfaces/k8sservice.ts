@@ -10,7 +10,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -35,7 +35,9 @@ export function DeletePod(sessionID: string, $namespace: string, name: string): 
  * GetClusterInfo returns the panel overview (versions, context, counters).
  */
 export function GetClusterInfo(sessionID: string): $CancellablePromise<domain$0.K8sClusterInfo> {
-    return $Call.ByID(1624512585, sessionID);
+    return $Call.ByID(1624512585, sessionID).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
 /**
@@ -57,44 +59,56 @@ export function GetResourceYAML(sessionID: string, kind: string, $namespace: str
 /**
  * ListEvents returns recent events, newest first.
  */
-export function ListEvents(sessionID: string, $namespace: string): $CancellablePromise<domain$0.K8sEvent[] | null> {
-    return $Call.ByID(468827386, sessionID, $namespace);
+export function ListEvents(sessionID: string, $namespace: string): $CancellablePromise<domain$0.K8sEvent[]> {
+    return $Call.ByID(468827386, sessionID, $namespace).then(($result: any) => {
+        return $$createType2($result);
+    });
 }
 
 /**
  * ListNamespaces returns the namespaces for the panel's scope picker.
  */
-export function ListNamespaces(sessionID: string): $CancellablePromise<domain$0.K8sNamespace[] | null> {
-    return $Call.ByID(2512034963, sessionID);
+export function ListNamespaces(sessionID: string): $CancellablePromise<domain$0.K8sNamespace[]> {
+    return $Call.ByID(2512034963, sessionID).then(($result: any) => {
+        return $$createType4($result);
+    });
 }
 
 /**
  * ListNodes returns the cluster nodes (read-only).
  */
-export function ListNodes(sessionID: string): $CancellablePromise<domain$0.K8sNode[] | null> {
-    return $Call.ByID(1026463924, sessionID);
+export function ListNodes(sessionID: string): $CancellablePromise<domain$0.K8sNode[]> {
+    return $Call.ByID(1026463924, sessionID).then(($result: any) => {
+        return $$createType6($result);
+    });
 }
 
 /**
  * ListPods returns the pod rows for the namespace scope.
  */
-export function ListPods(sessionID: string, $namespace: string): $CancellablePromise<domain$0.K8sPod[] | null> {
-    return $Call.ByID(2414153711, sessionID, $namespace);
+export function ListPods(sessionID: string, $namespace: string): $CancellablePromise<domain$0.K8sPod[]> {
+    return $Call.ByID(2414153711, sessionID, $namespace).then(($result: any) => {
+        return $$createType8($result);
+    });
 }
 
 /**
  * ListServices returns the service rows for the namespace scope.
  */
-export function ListServices(sessionID: string, $namespace: string): $CancellablePromise<domain$0.K8sServiceInfo[] | null> {
-    return $Call.ByID(706378611, sessionID, $namespace);
+export function ListServices(sessionID: string, $namespace: string): $CancellablePromise<domain$0.K8sServiceInfo[]> {
+    return $Call.ByID(706378611, sessionID, $namespace).then(($result: any) => {
+        return $$createType10($result);
+    });
 }
 
 /**
  * ListWorkloads returns one workload kind's rows (deployments/statefulsets/
  * daemonsets). An empty namespace means all namespaces.
  */
-export function ListWorkloads(sessionID: string, kind: string, $namespace: string): $CancellablePromise<domain$0.K8sWorkload[] | null> {
-    return $Call.ByID(1804329619, sessionID, kind, $namespace);
+export function ListWorkloads(sessionID: string, kind: string, $namespace: string): $CancellablePromise<domain$0.K8sWorkload[]> {
+    return $Call.ByID(1804329619, sessionID, kind, $namespace).then(($result: any) => {
+        return $$createType12($result);
+    });
 }
 
 /**
@@ -104,3 +118,18 @@ export function ListWorkloads(sessionID: string, kind: string, $namespace: strin
 export function WorkloadAction(sessionID: string, kind: string, $namespace: string, name: string, action: string, replicas: number): $CancellablePromise<string> {
     return $Call.ByID(2208583336, sessionID, kind, $namespace, name, action, replicas);
 }
+
+// Private type creation functions
+const $$createType0 = domain$0.K8sClusterInfo.createFrom;
+const $$createType1 = domain$0.K8sEvent.createFrom;
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = domain$0.K8sNamespace.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = domain$0.K8sNode.createFrom;
+const $$createType6 = $Create.Array($$createType5);
+const $$createType7 = domain$0.K8sPod.createFrom;
+const $$createType8 = $Create.Array($$createType7);
+const $$createType9 = domain$0.K8sServiceInfo.createFrom;
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = domain$0.K8sWorkload.createFrom;
+const $$createType12 = $Create.Array($$createType11);

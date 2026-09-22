@@ -44,6 +44,9 @@ interface AgentState {
   setPolicy: (sessionID: string, policy: SessionPolicy) => void;
   setExpert: (sessionID: string, expertID: string) => void;
   appendToLast: (sessionID: string, text: string) => void;
+  /** Set (replace) the trailing assistant message content — used by the
+   *  quick-command runner to fill the seeded empty bubble with the result. */
+  setTrailingContent: (sessionID: string, text: string) => void;
   setStreaming: (sessionID: string, v: boolean) => void;
   /** Attach a tool execution result to its step (matched by call id; an empty
    *  callId targets the newest still-running step). */
@@ -107,6 +110,17 @@ export const useAgentStore = create<AgentState>((set) => ({
           [sessionID]: [...hist, { id: nextMessageId++, role: "assistant", content: text }],
         },
       };
+    }),
+
+  setTrailingContent: (sessionID, text) =>
+    set((s) => {
+      const hist = s.histories[sessionID] ?? [];
+      if (hist.length === 0) return s;
+      const last = hist[hist.length - 1];
+      if (last.role !== "assistant") return s;
+      const updated = [...hist];
+      updated[updated.length - 1] = { ...last, content: text };
+      return { histories: { ...s.histories, [sessionID]: updated } };
     }),
 
   setStreaming: (sessionID, v) => set((s) => ({ streaming: { ...s.streaming, [sessionID]: v } })),
