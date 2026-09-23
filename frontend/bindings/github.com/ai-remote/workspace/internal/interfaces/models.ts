@@ -3,48 +3,21 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Create as $Create } from "@wailsio/runtime";
-
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
 import * as domain$0 from "../domain/models.js";
 
 /**
  * ContextPathDTO is one entry of an @-mention directory listing.
  */
-export class ContextPathDTO {
+export interface ContextPathDTO {
     "name": string;
     "isDir": boolean;
     "size": number;
-
-    /** Creates a new ContextPathDTO instance. */
-    constructor($$source: Partial<ContextPathDTO> = {}) {
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("isDir" in $$source)) {
-            this["isDir"] = false;
-        }
-        if (!("size" in $$source)) {
-            this["size"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ContextPathDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ContextPathDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new ContextPathDTO($$parsedSource as Partial<ContextPathDTO>);
-    }
 }
 
 /**
  * ConversationDTO is a persisted agent conversation for the history list.
  */
-export class ConversationDTO {
+export interface ConversationDTO {
     "id": string;
     "hostId": string;
     "hostName": string;
@@ -53,133 +26,44 @@ export class ConversationDTO {
     "expertName"?: string;
     "updatedAt": string;
     "messageCount": number;
-
-    /** Creates a new ConversationDTO instance. */
-    constructor($$source: Partial<ConversationDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("hostId" in $$source)) {
-            this["hostId"] = "";
-        }
-        if (!("hostName" in $$source)) {
-            this["hostName"] = "";
-        }
-        if (!("title" in $$source)) {
-            this["title"] = "";
-        }
-        if (!("updatedAt" in $$source)) {
-            this["updatedAt"] = "";
-        }
-        if (!("messageCount" in $$source)) {
-            this["messageCount"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ConversationDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ConversationDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new ConversationDTO($$parsedSource as Partial<ConversationDTO>);
-    }
 }
 
 /**
  * ConversationMessageDTO is one persisted user/assistant message.
  */
-export class ConversationMessageDTO {
+export interface ConversationMessageDTO {
     /**
      * "user" | "assistant"
      */
     "role": string;
     "content": string;
-
-    /** Creates a new ConversationMessageDTO instance. */
-    constructor($$source: Partial<ConversationMessageDTO> = {}) {
-        if (!("role" in $$source)) {
-            this["role"] = "";
-        }
-        if (!("content" in $$source)) {
-            this["content"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ConversationMessageDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ConversationMessageDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new ConversationMessageDTO($$parsedSource as Partial<ConversationMessageDTO>);
-    }
 }
 
 /**
  * CredentialsDTO carries connect-time secret material supplied by the UI.
  * Never persisted.
  */
-export class CredentialsDTO {
+export interface CredentialsDTO {
     "password"?: string;
     "keyPath"?: string;
     "keyPassphrase"?: string;
     "useAgent"?: boolean;
-
-    /** Creates a new CredentialsDTO instance. */
-    constructor($$source: Partial<CredentialsDTO> = {}) {
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new CredentialsDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): CredentialsDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new CredentialsDTO($$parsedSource as Partial<CredentialsDTO>);
-    }
 }
 
 /**
  * DataDirInfoDTO describes the current data directory.
  */
-export class DataDirInfoDTO {
+export interface DataDirInfoDTO {
     "path": string;
     "isDefault": boolean;
     "totalBytes": number;
-
-    /** Creates a new DataDirInfoDTO instance. */
-    constructor($$source: Partial<DataDirInfoDTO> = {}) {
-        if (!("path" in $$source)) {
-            this["path"] = "";
-        }
-        if (!("isDefault" in $$source)) {
-            this["isDefault"] = false;
-        }
-        if (!("totalBytes" in $$source)) {
-            this["totalBytes"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new DataDirInfoDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): DataDirInfoDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new DataDirInfoDTO($$parsedSource as Partial<DataDirInfoDTO>);
-    }
 }
 
 /**
  * ExpertDTO mirrors domain.Expert for the frontend (ops-expert roster
  * management and the chat-side persona pickers).
  */
-export class ExpertDTO {
+export interface ExpertDTO {
     "id": string;
     "name": string;
     "role": string;
@@ -188,114 +72,25 @@ export class ExpertDTO {
     "description": string;
     "systemPrompt": string;
     "heartbeat": string;
-    "allowedTools": string[];
-    "skillRefs": string[];
+    "allowedTools": string[] | null;
+    "skillRefs": string[] | null;
     "providerId": string;
     "model": string;
     "policy": string;
     "temperature": number;
     "maxSteps": number;
     "openingMessage": string;
-    "suggestedPrompts": string[];
+    "suggestedPrompts": string[] | null;
     "autoSnapshot": boolean;
     "builtin": boolean;
     "enabled": boolean;
     "sortOrder": number;
-
-    /** Creates a new ExpertDTO instance. */
-    constructor($$source: Partial<ExpertDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("role" in $$source)) {
-            this["role"] = "";
-        }
-        if (!("icon" in $$source)) {
-            this["icon"] = "";
-        }
-        if (!("color" in $$source)) {
-            this["color"] = "";
-        }
-        if (!("description" in $$source)) {
-            this["description"] = "";
-        }
-        if (!("systemPrompt" in $$source)) {
-            this["systemPrompt"] = "";
-        }
-        if (!("heartbeat" in $$source)) {
-            this["heartbeat"] = "";
-        }
-        if (!("allowedTools" in $$source)) {
-            this["allowedTools"] = [];
-        }
-        if (!("skillRefs" in $$source)) {
-            this["skillRefs"] = [];
-        }
-        if (!("providerId" in $$source)) {
-            this["providerId"] = "";
-        }
-        if (!("model" in $$source)) {
-            this["model"] = "";
-        }
-        if (!("policy" in $$source)) {
-            this["policy"] = "";
-        }
-        if (!("temperature" in $$source)) {
-            this["temperature"] = 0;
-        }
-        if (!("maxSteps" in $$source)) {
-            this["maxSteps"] = 0;
-        }
-        if (!("openingMessage" in $$source)) {
-            this["openingMessage"] = "";
-        }
-        if (!("suggestedPrompts" in $$source)) {
-            this["suggestedPrompts"] = [];
-        }
-        if (!("autoSnapshot" in $$source)) {
-            this["autoSnapshot"] = false;
-        }
-        if (!("builtin" in $$source)) {
-            this["builtin"] = false;
-        }
-        if (!("enabled" in $$source)) {
-            this["enabled"] = false;
-        }
-        if (!("sortOrder" in $$source)) {
-            this["sortOrder"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ExpertDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ExpertDTO {
-        const $$createField8_0 = $$createType0;
-        const $$createField9_0 = $$createType0;
-        const $$createField16_0 = $$createType0;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("allowedTools" in $$parsedSource) {
-            $$parsedSource["allowedTools"] = $$createField8_0($$parsedSource["allowedTools"]);
-        }
-        if ("skillRefs" in $$parsedSource) {
-            $$parsedSource["skillRefs"] = $$createField9_0($$parsedSource["skillRefs"]);
-        }
-        if ("suggestedPrompts" in $$parsedSource) {
-            $$parsedSource["suggestedPrompts"] = $$createField16_0($$parsedSource["suggestedPrompts"]);
-        }
-        return new ExpertDTO($$parsedSource as Partial<ExpertDTO>);
-    }
 }
 
 /**
  * ExpertExportResultDTO reports what an export wrote.
  */
-export class ExpertExportResultDTO {
+export interface ExpertExportResultDTO {
     /**
      * Path is the zip file actually written (".zip" appended when missing).
      */
@@ -304,38 +99,14 @@ export class ExpertExportResultDTO {
     /**
      * Skills lists the bound skill packs included in the package.
      */
-    "skills": string[];
-
-    /** Creates a new ExpertExportResultDTO instance. */
-    constructor($$source: Partial<ExpertExportResultDTO> = {}) {
-        if (!("path" in $$source)) {
-            this["path"] = "";
-        }
-        if (!("skills" in $$source)) {
-            this["skills"] = [];
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ExpertExportResultDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ExpertExportResultDTO {
-        const $$createField1_0 = $$createType0;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("skills" in $$parsedSource) {
-            $$parsedSource["skills"] = $$createField1_0($$parsedSource["skills"]);
-        }
-        return new ExpertExportResultDTO($$parsedSource as Partial<ExpertExportResultDTO>);
-    }
+    "skills": string[] | null;
 }
 
 /**
  * FaultReportDTO mirrors domain.FaultReport for the frontend: host-attached
  * incident reports tracked on the 故障报告 page.
  */
-export class FaultReportDTO {
+export interface FaultReportDTO {
     "id": string;
     "hostId": string;
     "hostName": string;
@@ -346,47 +117,6 @@ export class FaultReportDTO {
     "conversationId"?: string;
     "createdAt": string;
     "updatedAt": string;
-
-    /** Creates a new FaultReportDTO instance. */
-    constructor($$source: Partial<FaultReportDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("hostId" in $$source)) {
-            this["hostId"] = "";
-        }
-        if (!("hostName" in $$source)) {
-            this["hostName"] = "";
-        }
-        if (!("title" in $$source)) {
-            this["title"] = "";
-        }
-        if (!("severity" in $$source)) {
-            this["severity"] = "";
-        }
-        if (!("status" in $$source)) {
-            this["status"] = "";
-        }
-        if (!("body" in $$source)) {
-            this["body"] = "";
-        }
-        if (!("createdAt" in $$source)) {
-            this["createdAt"] = "";
-        }
-        if (!("updatedAt" in $$source)) {
-            this["updatedAt"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new FaultReportDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): FaultReportDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new FaultReportDTO($$parsedSource as Partial<FaultReportDTO>);
-    }
 }
 
 /**
@@ -394,115 +124,37 @@ export class FaultReportDTO {
  * title + severity + markdown body, previewed by the user before saving to
  * the host-attached report list.
  */
-export class FaultReportDraftDTO {
+export interface FaultReportDraftDTO {
     "title": string;
     "severity": string;
     "body": string;
-
-    /** Creates a new FaultReportDraftDTO instance. */
-    constructor($$source: Partial<FaultReportDraftDTO> = {}) {
-        if (!("title" in $$source)) {
-            this["title"] = "";
-        }
-        if (!("severity" in $$source)) {
-            this["severity"] = "";
-        }
-        if (!("body" in $$source)) {
-            this["body"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new FaultReportDraftDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): FaultReportDraftDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new FaultReportDraftDTO($$parsedSource as Partial<FaultReportDraftDTO>);
-    }
 }
 
 /**
  * FaultReportFilterDTO narrows ListReports; empty fields = no constraint.
  */
-export class FaultReportFilterDTO {
+export interface FaultReportFilterDTO {
     "hostId": string;
     "severity": string;
     "status": string;
     "keyword": string;
-
-    /** Creates a new FaultReportFilterDTO instance. */
-    constructor($$source: Partial<FaultReportFilterDTO> = {}) {
-        if (!("hostId" in $$source)) {
-            this["hostId"] = "";
-        }
-        if (!("severity" in $$source)) {
-            this["severity"] = "";
-        }
-        if (!("status" in $$source)) {
-            this["status"] = "";
-        }
-        if (!("keyword" in $$source)) {
-            this["keyword"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new FaultReportFilterDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): FaultReportFilterDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new FaultReportFilterDTO($$parsedSource as Partial<FaultReportFilterDTO>);
-    }
 }
 
 /**
  * FileEntryDTO is the frontend-facing remote filesystem entry.
  */
-export class FileEntryDTO {
+export interface FileEntryDTO {
     "name": string;
     "size": number;
     "mode": string;
     "modTime": string;
     "isDir": boolean;
-
-    /** Creates a new FileEntryDTO instance. */
-    constructor($$source: Partial<FileEntryDTO> = {}) {
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("size" in $$source)) {
-            this["size"] = 0;
-        }
-        if (!("mode" in $$source)) {
-            this["mode"] = "";
-        }
-        if (!("modTime" in $$source)) {
-            this["modTime"] = "";
-        }
-        if (!("isDir" in $$source)) {
-            this["isDir"] = false;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new FileEntryDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): FileEntryDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new FileEntryDTO($$parsedSource as Partial<FileEntryDTO>);
-    }
 }
 
 /**
  * GenerateKeyRequestDTO is the generate/import payload from the frontend.
  */
-export class GenerateKeyRequestDTO {
+export interface GenerateKeyRequestDTO {
     "name": string;
 
     /**
@@ -512,35 +164,6 @@ export class GenerateKeyRequestDTO {
     "bits": number;
     "passphrase": string;
     "comment": string;
-
-    /** Creates a new GenerateKeyRequestDTO instance. */
-    constructor($$source: Partial<GenerateKeyRequestDTO> = {}) {
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("algorithm" in $$source)) {
-            this["algorithm"] = "";
-        }
-        if (!("bits" in $$source)) {
-            this["bits"] = 0;
-        }
-        if (!("passphrase" in $$source)) {
-            this["passphrase"] = "";
-        }
-        if (!("comment" in $$source)) {
-            this["comment"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new GenerateKeyRequestDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): GenerateKeyRequestDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new GenerateKeyRequestDTO($$parsedSource as Partial<GenerateKeyRequestDTO>);
-    }
 }
 
 /**
@@ -548,7 +171,7 @@ export class GenerateKeyRequestDTO {
  * but exposes authType as a plain string and omits internal timestamps that
  * the UI doesn't need.
  */
-export class HostDTO {
+export interface HostDTO {
     "id": string;
     "name": string;
     "host": string;
@@ -573,7 +196,7 @@ export class HostDTO {
      */
     "terminalFontSize": number;
     "group": string;
-    "tags": string[];
+    "tags": string[] | null;
 
     /**
      * detected distro id; read-only, never editable
@@ -590,12 +213,12 @@ export class HostDTO {
     /**
      * SSH tunnel rules (host settings form; several allowed per host).
      */
-    "tunnels": domain$0.TunnelConfig[];
+    "tunnels": domain$0.TunnelConfig[] | null;
 
     /**
      * Login script (expect 序列): run when a session opens on this host.
      */
-    "loginScript"?: domain$0.LoginStep[];
+    "loginScript"?: domain$0.LoginStep[] | null;
 
     /**
      * Terminal encoding of the remote side ("" / "utf-8" | "gbk" | …).
@@ -606,90 +229,12 @@ export class HostDTO {
      * Pre-SSH reachability (jump host / HTTP / SOCKS5); nil = direct.
      */
     "proxy"?: domain$0.ProxyConfig | null;
-
-    /** Creates a new HostDTO instance. */
-    constructor($$source: Partial<HostDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("host" in $$source)) {
-            this["host"] = "";
-        }
-        if (!("port" in $$source)) {
-            this["port"] = 0;
-        }
-        if (!("username" in $$source)) {
-            this["username"] = "";
-        }
-        if (!("authType" in $$source)) {
-            this["authType"] = "";
-        }
-        if (!("hasRememberedSecret" in $$source)) {
-            this["hasRememberedSecret"] = false;
-        }
-        if (!("terminalTheme" in $$source)) {
-            this["terminalTheme"] = "";
-        }
-        if (!("terminalFont" in $$source)) {
-            this["terminalFont"] = "";
-        }
-        if (!("terminalFontSize" in $$source)) {
-            this["terminalFontSize"] = 0;
-        }
-        if (!("group" in $$source)) {
-            this["group"] = "";
-        }
-        if (!("tags" in $$source)) {
-            this["tags"] = [];
-        }
-        if (!("os" in $$source)) {
-            this["os"] = "";
-        }
-        if (!("agentProviderId" in $$source)) {
-            this["agentProviderId"] = "";
-        }
-        if (!("agentModel" in $$source)) {
-            this["agentModel"] = "";
-        }
-        if (!("tunnels" in $$source)) {
-            this["tunnels"] = [];
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new HostDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): HostDTO {
-        const $$createField12_0 = $$createType0;
-        const $$createField16_0 = $$createType2;
-        const $$createField17_0 = $$createType4;
-        const $$createField19_0 = $$createType6;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("tags" in $$parsedSource) {
-            $$parsedSource["tags"] = $$createField12_0($$parsedSource["tags"]);
-        }
-        if ("tunnels" in $$parsedSource) {
-            $$parsedSource["tunnels"] = $$createField16_0($$parsedSource["tunnels"]);
-        }
-        if ("loginScript" in $$parsedSource) {
-            $$parsedSource["loginScript"] = $$createField17_0($$parsedSource["loginScript"]);
-        }
-        if ("proxy" in $$parsedSource) {
-            $$parsedSource["proxy"] = $$createField19_0($$parsedSource["proxy"]);
-        }
-        return new HostDTO($$parsedSource as Partial<HostDTO>);
-    }
 }
 
 /**
  * HostInputDTO is what the frontend sends to create/update a host.
  */
-export class HostInputDTO {
+export interface HostInputDTO {
     "name": string;
     "host": string;
     "port": number;
@@ -700,9 +245,9 @@ export class HostInputDTO {
     "terminalFont": string;
     "terminalFontSize": number;
     "group": string;
-    "tags": string[];
-    "tunnels": domain$0.TunnelConfig[];
-    "loginScript"?: domain$0.LoginStep[];
+    "tags": string[] | null;
+    "tunnels": domain$0.TunnelConfig[] | null;
+    "loginScript"?: domain$0.LoginStep[] | null;
     "terminalEncoding"?: string;
 
     /**
@@ -718,131 +263,28 @@ export class HostInputDTO {
      */
     "proxyPassword"?: string;
     "clearProxyPassword"?: boolean;
-
-    /** Creates a new HostInputDTO instance. */
-    constructor($$source: Partial<HostInputDTO> = {}) {
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("host" in $$source)) {
-            this["host"] = "";
-        }
-        if (!("port" in $$source)) {
-            this["port"] = 0;
-        }
-        if (!("username" in $$source)) {
-            this["username"] = "";
-        }
-        if (!("authType" in $$source)) {
-            this["authType"] = "";
-        }
-        if (!("terminalTheme" in $$source)) {
-            this["terminalTheme"] = "";
-        }
-        if (!("terminalFont" in $$source)) {
-            this["terminalFont"] = "";
-        }
-        if (!("terminalFontSize" in $$source)) {
-            this["terminalFontSize"] = 0;
-        }
-        if (!("group" in $$source)) {
-            this["group"] = "";
-        }
-        if (!("tags" in $$source)) {
-            this["tags"] = [];
-        }
-        if (!("tunnels" in $$source)) {
-            this["tunnels"] = [];
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new HostInputDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): HostInputDTO {
-        const $$createField10_0 = $$createType0;
-        const $$createField11_0 = $$createType2;
-        const $$createField12_0 = $$createType4;
-        const $$createField14_0 = $$createType6;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("tags" in $$parsedSource) {
-            $$parsedSource["tags"] = $$createField10_0($$parsedSource["tags"]);
-        }
-        if ("tunnels" in $$parsedSource) {
-            $$parsedSource["tunnels"] = $$createField11_0($$parsedSource["tunnels"]);
-        }
-        if ("loginScript" in $$parsedSource) {
-            $$parsedSource["loginScript"] = $$createField12_0($$parsedSource["loginScript"]);
-        }
-        if ("proxy" in $$parsedSource) {
-            $$parsedSource["proxy"] = $$createField14_0($$parsedSource["proxy"]);
-        }
-        return new HostInputDTO($$parsedSource as Partial<HostInputDTO>);
-    }
 }
 
 /**
  * ImportKeyRequestDTO is the import payload from the frontend.
  */
-export class ImportKeyRequestDTO {
+export interface ImportKeyRequestDTO {
     "name": string;
     "path": string;
     "passphrase": string;
-
-    /** Creates a new ImportKeyRequestDTO instance. */
-    constructor($$source: Partial<ImportKeyRequestDTO> = {}) {
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("path" in $$source)) {
-            this["path"] = "";
-        }
-        if (!("passphrase" in $$source)) {
-            this["passphrase"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ImportKeyRequestDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ImportKeyRequestDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new ImportKeyRequestDTO($$parsedSource as Partial<ImportKeyRequestDTO>);
-    }
 }
 
 /**
  * LocalIPResult carries the machine's primary local IP address.
  */
-export class LocalIPResult {
+export interface LocalIPResult {
     "ip": string;
-
-    /** Creates a new LocalIPResult instance. */
-    constructor($$source: Partial<LocalIPResult> = {}) {
-        if (!("ip" in $$source)) {
-            this["ip"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new LocalIPResult instance from a string or object.
-     */
-    static createFrom($$source: any = {}): LocalIPResult {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new LocalIPResult($$parsedSource as Partial<LocalIPResult>);
-    }
 }
 
 /**
  * ManagedKeyDTO mirrors application.ManagedKey for the frontend.
  */
-export class ManagedKeyDTO {
+export interface ManagedKeyDTO {
     "id": string;
     "name": string;
     "algorithm": string;
@@ -850,95 +292,24 @@ export class ManagedKeyDTO {
     "comment": string;
     "encrypted": boolean;
     "createdAt": string;
-
-    /** Creates a new ManagedKeyDTO instance. */
-    constructor($$source: Partial<ManagedKeyDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("algorithm" in $$source)) {
-            this["algorithm"] = "";
-        }
-        if (!("fingerprint" in $$source)) {
-            this["fingerprint"] = "";
-        }
-        if (!("comment" in $$source)) {
-            this["comment"] = "";
-        }
-        if (!("encrypted" in $$source)) {
-            this["encrypted"] = false;
-        }
-        if (!("createdAt" in $$source)) {
-            this["createdAt"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ManagedKeyDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ManagedKeyDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new ManagedKeyDTO($$parsedSource as Partial<ManagedKeyDTO>);
-    }
 }
 
 /**
  * ModelProviderDTO carries a provider to the frontend — never the API key.
  */
-export class ModelProviderDTO {
+export interface ModelProviderDTO {
     "id": string;
     "name": string;
     "baseUrl": string;
-    "models": string[];
+    "models": string[] | null;
     "enabled": boolean;
     "hasApiKey": boolean;
-
-    /** Creates a new ModelProviderDTO instance. */
-    constructor($$source: Partial<ModelProviderDTO> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("baseUrl" in $$source)) {
-            this["baseUrl"] = "";
-        }
-        if (!("models" in $$source)) {
-            this["models"] = [];
-        }
-        if (!("enabled" in $$source)) {
-            this["enabled"] = false;
-        }
-        if (!("hasApiKey" in $$source)) {
-            this["hasApiKey"] = false;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ModelProviderDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ModelProviderDTO {
-        const $$createField3_0 = $$createType0;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("models" in $$parsedSource) {
-            $$parsedSource["models"] = $$createField3_0($$parsedSource["models"]);
-        }
-        return new ModelProviderDTO($$parsedSource as Partial<ModelProviderDTO>);
-    }
 }
 
 /**
  * OpenSessionRequest carries what the frontend needs to start a terminal.
  */
-export class OpenSessionRequest {
+export interface OpenSessionRequest {
     "hostId": string;
     "creds": CredentialsDTO;
     "size": PtySizeDTO;
@@ -949,92 +320,21 @@ export class OpenSessionRequest {
      * call is in flight (the session id doesn't exist until it returns).
      */
     "connectId": string;
-
-    /** Creates a new OpenSessionRequest instance. */
-    constructor($$source: Partial<OpenSessionRequest> = {}) {
-        if (!("hostId" in $$source)) {
-            this["hostId"] = "";
-        }
-        if (!("creds" in $$source)) {
-            this["creds"] = (new CredentialsDTO());
-        }
-        if (!("size" in $$source)) {
-            this["size"] = (new PtySizeDTO());
-        }
-        if (!("connectId" in $$source)) {
-            this["connectId"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new OpenSessionRequest instance from a string or object.
-     */
-    static createFrom($$source: any = {}): OpenSessionRequest {
-        const $$createField1_0 = $$createType7;
-        const $$createField2_0 = $$createType8;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("creds" in $$parsedSource) {
-            $$parsedSource["creds"] = $$createField1_0($$parsedSource["creds"]);
-        }
-        if ("size" in $$parsedSource) {
-            $$parsedSource["size"] = $$createField2_0($$parsedSource["size"]);
-        }
-        return new OpenSessionRequest($$parsedSource as Partial<OpenSessionRequest>);
-    }
 }
 
 /**
  * OpenSessionResult returns the new session id to the frontend.
  */
-export class OpenSessionResult {
+export interface OpenSessionResult {
     "sessionId": string;
-
-    /** Creates a new OpenSessionResult instance. */
-    constructor($$source: Partial<OpenSessionResult> = {}) {
-        if (!("sessionId" in $$source)) {
-            this["sessionId"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new OpenSessionResult instance from a string or object.
-     */
-    static createFrom($$source: any = {}): OpenSessionResult {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new OpenSessionResult($$parsedSource as Partial<OpenSessionResult>);
-    }
 }
 
 /**
  * PtySizeDTO is the initial terminal dimensions.
  */
-export class PtySizeDTO {
+export interface PtySizeDTO {
     "cols": number;
     "rows": number;
-
-    /** Creates a new PtySizeDTO instance. */
-    constructor($$source: Partial<PtySizeDTO> = {}) {
-        if (!("cols" in $$source)) {
-            this["cols"] = 0;
-        }
-        if (!("rows" in $$source)) {
-            this["rows"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new PtySizeDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): PtySizeDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new PtySizeDTO($$parsedSource as Partial<PtySizeDTO>);
-    }
 }
 
 /**
@@ -1042,84 +342,28 @@ export class PtySizeDTO {
  * The secret values are deliberately NOT returned — the vault is read at
  * connect time on the backend, never shipped to the frontend.
  */
-export class RememberedCredentialsDTO {
+export interface RememberedCredentialsDTO {
     "hasPassword": boolean;
     "hasPassphrase": boolean;
-
-    /** Creates a new RememberedCredentialsDTO instance. */
-    constructor($$source: Partial<RememberedCredentialsDTO> = {}) {
-        if (!("hasPassword" in $$source)) {
-            this["hasPassword"] = false;
-        }
-        if (!("hasPassphrase" in $$source)) {
-            this["hasPassphrase"] = false;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new RememberedCredentialsDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): RememberedCredentialsDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new RememberedCredentialsDTO($$parsedSource as Partial<RememberedCredentialsDTO>);
-    }
 }
 
 /**
  * SaveProviderInput is what the frontend sends to create/update a provider.
  */
-export class SaveProviderInput {
+export interface SaveProviderInput {
     /**
      * empty = create
      */
     "id": string;
     "name": string;
     "baseUrl": string;
-    "models": string[];
+    "models": string[] | null;
     "enabled": boolean;
 
     /**
      * empty = keep existing; " " = clear
      */
     "apiKey": string;
-
-    /** Creates a new SaveProviderInput instance. */
-    constructor($$source: Partial<SaveProviderInput> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("baseUrl" in $$source)) {
-            this["baseUrl"] = "";
-        }
-        if (!("models" in $$source)) {
-            this["models"] = [];
-        }
-        if (!("enabled" in $$source)) {
-            this["enabled"] = false;
-        }
-        if (!("apiKey" in $$source)) {
-            this["apiKey"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SaveProviderInput instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SaveProviderInput {
-        const $$createField3_0 = $$createType0;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("models" in $$parsedSource) {
-            $$parsedSource["models"] = $$createField3_0($$parsedSource["models"]);
-        }
-        return new SaveProviderInput($$parsedSource as Partial<SaveProviderInput>);
-    }
 }
 
 /**
@@ -1127,33 +371,10 @@ export class SaveProviderInput {
  * the conversation transcript distilled into SKILL.md content, plus the
  * name/description parsed out of its frontmatter for the preview form.
  */
-export class ScenarioDraftDTO {
+export interface ScenarioDraftDTO {
     "name": string;
     "description": string;
     "content": string;
-
-    /** Creates a new ScenarioDraftDTO instance. */
-    constructor($$source: Partial<ScenarioDraftDTO> = {}) {
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("description" in $$source)) {
-            this["description"] = "";
-        }
-        if (!("content" in $$source)) {
-            this["content"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ScenarioDraftDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ScenarioDraftDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new ScenarioDraftDTO($$parsedSource as Partial<ScenarioDraftDTO>);
-    }
 }
 
 /**
@@ -1161,57 +382,17 @@ export class ScenarioDraftDTO {
  * (⚡ / slash): the command plus its assistant-facing result text. Both are
  * already recorded into the conversation history by the runtime.
  */
-export class SessionCommandResultDTO {
+export interface SessionCommandResultDTO {
     "command": string;
     "result": string;
-
-    /** Creates a new SessionCommandResultDTO instance. */
-    constructor($$source: Partial<SessionCommandResultDTO> = {}) {
-        if (!("command" in $$source)) {
-            this["command"] = "";
-        }
-        if (!("result" in $$source)) {
-            this["result"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SessionCommandResultDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SessionCommandResultDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new SessionCommandResultDTO($$parsedSource as Partial<SessionCommandResultDTO>);
-    }
 }
 
 /**
  * SessionLogInfoDTO reports whether a session is being recorded and where.
  */
-export class SessionLogInfoDTO {
+export interface SessionLogInfoDTO {
     "enabled": boolean;
     "path": string;
-
-    /** Creates a new SessionLogInfoDTO instance. */
-    constructor($$source: Partial<SessionLogInfoDTO> = {}) {
-        if (!("enabled" in $$source)) {
-            this["enabled"] = false;
-        }
-        if (!("path" in $$source)) {
-            this["path"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SessionLogInfoDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SessionLogInfoDTO {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new SessionLogInfoDTO($$parsedSource as Partial<SessionLogInfoDTO>);
-    }
 }
 
 /**
@@ -1219,108 +400,38 @@ export class SessionLogInfoDTO {
  * the scenario manager. Content is only filled by GetSkill (editor use);
  * Files lists a directory-form pack's bundled files (scripts/references).
  */
-export class SkillDTO {
+export interface SkillDTO {
     "name": string;
     "description": string;
     "content"?: string;
-    "files"?: string[];
+    "files"?: string[] | null;
     "builtin"?: boolean;
-
-    /** Creates a new SkillDTO instance. */
-    constructor($$source: Partial<SkillDTO> = {}) {
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("description" in $$source)) {
-            this["description"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SkillDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SkillDTO {
-        const $$createField3_0 = $$createType0;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("files" in $$parsedSource) {
-            $$parsedSource["files"] = $$createField3_0($$parsedSource["files"]);
-        }
-        return new SkillDTO($$parsedSource as Partial<SkillDTO>);
-    }
 }
 
 /**
  * SystemInfoResult mirrors what the frontend StatusBar displays.
  * Field names become the TS property names in generated bindings.
  */
-export class SystemInfoResult {
+export interface SystemInfoResult {
     "appName": string;
     "version": string;
     "platform": string;
     "goVersion": string;
-
-    /** Creates a new SystemInfoResult instance. */
-    constructor($$source: Partial<SystemInfoResult> = {}) {
-        if (!("appName" in $$source)) {
-            this["appName"] = "";
-        }
-        if (!("version" in $$source)) {
-            this["version"] = "";
-        }
-        if (!("platform" in $$source)) {
-            this["platform"] = "";
-        }
-        if (!("goVersion" in $$source)) {
-            this["goVersion"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SystemInfoResult instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SystemInfoResult {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new SystemInfoResult($$parsedSource as Partial<SystemInfoResult>);
-    }
 }
 
 /**
  * TestConnectionResult reports a connection attempt outcome to the UI.
  */
-export class TestConnectionResult {
+export interface TestConnectionResult {
     "ok": boolean;
     "msg": string;
-
-    /** Creates a new TestConnectionResult instance. */
-    constructor($$source: Partial<TestConnectionResult> = {}) {
-        if (!("ok" in $$source)) {
-            this["ok"] = false;
-        }
-        if (!("msg" in $$source)) {
-            this["msg"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new TestConnectionResult instance from a string or object.
-     */
-    static createFrom($$source: any = {}): TestConnectionResult {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new TestConnectionResult($$parsedSource as Partial<TestConnectionResult>);
-    }
 }
 
 /**
  * TestProviderInput addresses a provider for testing / model fetching. Empty
  * BaseURL or APIKey with an ID present falls back to the stored values.
  */
-export class TestProviderInput {
+export interface TestProviderInput {
     "id": string;
     "baseUrl": string;
     "apiKey": string;
@@ -1329,38 +440,12 @@ export class TestProviderInput {
      * optional; defaults to the first recorded model
      */
     "model": string;
-
-    /** Creates a new TestProviderInput instance. */
-    constructor($$source: Partial<TestProviderInput> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("baseUrl" in $$source)) {
-            this["baseUrl"] = "";
-        }
-        if (!("apiKey" in $$source)) {
-            this["apiKey"] = "";
-        }
-        if (!("model" in $$source)) {
-            this["model"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new TestProviderInput instance from a string or object.
-     */
-    static createFrom($$source: any = {}): TestProviderInput {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new TestProviderInput($$parsedSource as Partial<TestProviderInput>);
-    }
 }
 
 /**
  * TunnelStatusDTO mirrors domain.TunnelStatus for the frontend.
  */
-export class TunnelStatusDTO {
+export interface TunnelStatusDTO {
     "hostId": string;
     "hostName": string;
 
@@ -1372,51 +457,4 @@ export class TunnelStatusDTO {
     "state": string;
     "lastError"?: string;
     "retries": number;
-
-    /** Creates a new TunnelStatusDTO instance. */
-    constructor($$source: Partial<TunnelStatusDTO> = {}) {
-        if (!("hostId" in $$source)) {
-            this["hostId"] = "";
-        }
-        if (!("hostName" in $$source)) {
-            this["hostName"] = "";
-        }
-        if (!("key" in $$source)) {
-            this["key"] = "";
-        }
-        if (!("config" in $$source)) {
-            this["config"] = (new domain$0.TunnelConfig());
-        }
-        if (!("state" in $$source)) {
-            this["state"] = "";
-        }
-        if (!("retries" in $$source)) {
-            this["retries"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new TunnelStatusDTO instance from a string or object.
-     */
-    static createFrom($$source: any = {}): TunnelStatusDTO {
-        const $$createField3_0 = $$createType1;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("config" in $$parsedSource) {
-            $$parsedSource["config"] = $$createField3_0($$parsedSource["config"]);
-        }
-        return new TunnelStatusDTO($$parsedSource as Partial<TunnelStatusDTO>);
-    }
 }
-
-// Private type creation functions
-const $$createType0 = $Create.Array($Create.Any);
-const $$createType1 = domain$0.TunnelConfig.createFrom;
-const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = domain$0.LoginStep.createFrom;
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = domain$0.ProxyConfig.createFrom;
-const $$createType6 = $Create.Nullable($$createType5);
-const $$createType7 = CredentialsDTO.createFrom;
-const $$createType8 = PtySizeDTO.createFrom;

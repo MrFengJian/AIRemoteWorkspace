@@ -10,7 +10,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -20,32 +20,19 @@ import * as domain$0 from "../domain/models.js";
  * GetOverview returns the host overview snapshot for a live SSH session.
  */
 export function GetOverview(sessionID: string): $CancellablePromise<domain$0.MonitorOverview> {
-    return $Call.ByID(725328748, sessionID).then(($result: any) => {
-        return $$createType0($result);
-    });
+    return $Call.ByID(725328748, sessionID);
 }
 
 /**
  * GetPorts returns the listening-socket list for a live SSH session.
  */
-export function GetPorts(sessionID: string): $CancellablePromise<domain$0.MonitorPort[]> {
-    return $Call.ByID(2889349069, sessionID).then(($result: any) => {
-        return $$createType2($result);
-    });
+export function GetPorts(sessionID: string): $CancellablePromise<domain$0.MonitorPort[] | null> {
+    return $Call.ByID(2889349069, sessionID);
 }
 
 /**
  * GetProcesses returns the live process list for a live SSH session.
  */
-export function GetProcesses(sessionID: string): $CancellablePromise<domain$0.MonitorProcess[]> {
-    return $Call.ByID(1596473676, sessionID).then(($result: any) => {
-        return $$createType4($result);
-    });
+export function GetProcesses(sessionID: string): $CancellablePromise<domain$0.MonitorProcess[] | null> {
+    return $Call.ByID(1596473676, sessionID);
 }
-
-// Private type creation functions
-const $$createType0 = domain$0.MonitorOverview.createFrom;
-const $$createType1 = domain$0.MonitorPort.createFrom;
-const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = domain$0.MonitorProcess.createFrom;
-const $$createType4 = $Create.Array($$createType3);

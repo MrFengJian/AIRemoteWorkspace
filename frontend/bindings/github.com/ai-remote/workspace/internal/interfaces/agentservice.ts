@@ -10,7 +10,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -26,9 +26,7 @@ import * as $models from "./models.js";
  * the session has no conversation yet.
  */
 export function ActiveConversation(sessionID: string): $CancellablePromise<$models.ConversationDTO> {
-    return $Call.ByID(3240583923, sessionID).then(($result: any) => {
-        return $$createType0($result);
-    });
+    return $Call.ByID(3240583923, sessionID);
 }
 
 /**
@@ -79,9 +77,7 @@ export function DeleteSkill(name: string): $CancellablePromise<void> {
  * after the user confirms/edits (host context is attached on save).
  */
 export function DraftFaultReport(conversationID: string, providerID: string, model: string): $CancellablePromise<$models.FaultReportDraftDTO> {
-    return $Call.ByID(1396658669, conversationID, providerID, model).then(($result: any) => {
-        return $$createType1($result);
-    });
+    return $Call.ByID(1396658669, conversationID, providerID, model);
 }
 
 /**
@@ -92,9 +88,7 @@ export function DraftFaultReport(conversationID: string, providerID: string, mod
  * previews it and calls SaveSkill after the user confirms/edits.
  */
 export function DraftScenario(conversationID: string, providerID: string, model: string): $CancellablePromise<$models.ScenarioDraftDTO> {
-    return $Call.ByID(2640901155, conversationID, providerID, model).then(($result: any) => {
-        return $$createType2($result);
-    });
+    return $Call.ByID(2640901155, conversationID, providerID, model);
 }
 
 /**
@@ -110,49 +104,39 @@ export function EmitApproval(req: application$0.ApprovalRequest): $CancellablePr
  * GetConversationMessages returns a conversation's user/assistant messages
  * in order.
  */
-export function GetConversationMessages(conversationID: string): $CancellablePromise<$models.ConversationMessageDTO[]> {
-    return $Call.ByID(4084462485, conversationID).then(($result: any) => {
-        return $$createType4($result);
-    });
+export function GetConversationMessages(conversationID: string): $CancellablePromise<$models.ConversationMessageDTO[] | null> {
+    return $Call.ByID(4084462485, conversationID);
 }
 
 /**
  * GetSkill returns one skill including its markdown body (scenario editor).
  */
 export function GetSkill(name: string): $CancellablePromise<$models.SkillDTO> {
-    return $Call.ByID(1318065623, name).then(($result: any) => {
-        return $$createType5($result);
-    });
+    return $Call.ByID(1318065623, name);
 }
 
 /**
  * ListContextPaths lists a directory for the @-completion popup (remote
  * session → SFTP listing; local session → disk listing).
  */
-export function ListContextPaths(sessionID: string, dir: string): $CancellablePromise<$models.ContextPathDTO[]> {
-    return $Call.ByID(2029077267, sessionID, dir).then(($result: any) => {
-        return $$createType7($result);
-    });
+export function ListContextPaths(sessionID: string, dir: string): $CancellablePromise<$models.ContextPathDTO[] | null> {
+    return $Call.ByID(2029077267, sessionID, dir);
 }
 
 /**
  * ListConversations returns all persisted agent conversations (newest
  * first); the frontend filters by host.
  */
-export function ListConversations(): $CancellablePromise<$models.ConversationDTO[]> {
-    return $Call.ByID(4124442514).then(($result: any) => {
-        return $$createType8($result);
-    });
+export function ListConversations(): $CancellablePromise<$models.ConversationDTO[] | null> {
+    return $Call.ByID(4124442514);
 }
 
 /**
  * ListSkills returns the metadata of every available skill (the `/` picker
  * and the scenario manager list).
  */
-export function ListSkills(): $CancellablePromise<$models.SkillDTO[]> {
-    return $Call.ByID(1215304444).then(($result: any) => {
-        return $$createType9($result);
-    });
+export function ListSkills(): $CancellablePromise<$models.SkillDTO[] | null> {
+    return $Call.ByID(1215304444);
 }
 
 /**
@@ -172,9 +156,7 @@ export function ResumeConversation(sessionID: string, conversationID: string): $
  * text is never sent to the LLM.
  */
 export function RunCommand(sessionID: string, providerID: string, model: string, command: string): $CancellablePromise<$models.SessionCommandResultDTO> {
-    return $Call.ByID(21299824, sessionID, providerID, model, command).then(($result: any) => {
-        return $$createType10($result);
-    });
+    return $Call.ByID(21299824, sessionID, providerID, model, command);
 }
 
 /**
@@ -208,25 +190,13 @@ export function SetSessionPolicy(sessionID: string, policy: string): $Cancellabl
  * model. expertID ("" = general assistant) selects the ops-expert
  * persona; an AutoSnapshot expert injects a fresh health snapshot on its
  * first turn. Output flows via events:
- *   agent:<sessionID>:chunk    — incremental LLM text
- *   agent:<sessionID>:toolcall — tool invocation start (id/tool/args)
- *   agent:<sessionID>:toolend  — tool invocation result (id/result)
- *   agent:<sessionID>:done     — chat completed
- *   agent:<sessionID>:error    — chat failed
+ * 
+ * 	agent:<sessionID>:chunk    — incremental LLM text
+ * 	agent:<sessionID>:toolcall — tool invocation start (id/tool/args)
+ * 	agent:<sessionID>:toolend  — tool invocation result (id/result)
+ * 	agent:<sessionID>:done     — chat completed
+ * 	agent:<sessionID>:error    — chat failed
  */
 export function StartChat(sessionID: string, providerID: string, model: string, expertID: string, message: string): $CancellablePromise<void> {
     return $Call.ByID(960310724, sessionID, providerID, model, expertID, message);
 }
-
-// Private type creation functions
-const $$createType0 = $models.ConversationDTO.createFrom;
-const $$createType1 = $models.FaultReportDraftDTO.createFrom;
-const $$createType2 = $models.ScenarioDraftDTO.createFrom;
-const $$createType3 = $models.ConversationMessageDTO.createFrom;
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = $models.SkillDTO.createFrom;
-const $$createType6 = $models.ContextPathDTO.createFrom;
-const $$createType7 = $Create.Array($$createType6);
-const $$createType8 = $Create.Array($$createType0);
-const $$createType9 = $Create.Array($$createType5);
-const $$createType10 = $models.SessionCommandResultDTO.createFrom;

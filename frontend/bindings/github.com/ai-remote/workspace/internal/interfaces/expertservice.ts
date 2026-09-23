@@ -10,7 +10,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -29,18 +29,14 @@ export function DeleteExpert(id: string): $CancellablePromise<void> {
  * included) into a zip the user can archive or share.
  */
 export function ExportExpert(id: string, zipPath: string): $CancellablePromise<$models.ExpertExportResultDTO> {
-    return $Call.ByID(3522528793, id, zipPath).then(($result: any) => {
-        return $$createType0($result);
-    });
+    return $Call.ByID(3522528793, id, zipPath);
 }
 
 /**
  * GetExpert returns one expert including its full persona prompt (editor use).
  */
 export function GetExpert(id: string): $CancellablePromise<$models.ExpertDTO> {
-    return $Call.ByID(3615544669, id).then(($result: any) => {
-        return $$createType1($result);
-    });
+    return $Call.ByID(3615544669, id);
 }
 
 /**
@@ -49,18 +45,14 @@ export function GetExpert(id: string): $CancellablePromise<$models.ExpertDTO> {
  * are installed, replacing same-name packs.
  */
 export function ImportExpert(zipPath: string): $CancellablePromise<$models.ExpertDTO> {
-    return $Call.ByID(3828834170, zipPath).then(($result: any) => {
-        return $$createType1($result);
-    });
+    return $Call.ByID(3828834170, zipPath);
 }
 
 /**
  * ListExperts returns the visible roster (dismissed builtins hidden).
  */
-export function ListExperts(): $CancellablePromise<$models.ExpertDTO[]> {
-    return $Call.ByID(1029338028).then(($result: any) => {
-        return $$createType2($result);
-    });
+export function ListExperts(): $CancellablePromise<$models.ExpertDTO[] | null> {
+    return $Call.ByID(1029338028);
 }
 
 /**
@@ -68,12 +60,5 @@ export function ListExperts(): $CancellablePromise<$models.ExpertDTO[]> {
  * (ids/flags are assigned server-side).
  */
 export function SaveExpert(e: $models.ExpertDTO): $CancellablePromise<$models.ExpertDTO> {
-    return $Call.ByID(2156068894, e).then(($result: any) => {
-        return $$createType1($result);
-    });
+    return $Call.ByID(2156068894, e);
 }
-
-// Private type creation functions
-const $$createType0 = $models.ExpertExportResultDTO.createFrom;
-const $$createType1 = $models.ExpertDTO.createFrom;
-const $$createType2 = $Create.Array($$createType1);

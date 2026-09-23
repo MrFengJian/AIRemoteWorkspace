@@ -36,7 +36,7 @@ export {
     WindowService
 };
 
-export {
+export type {
     ContextPathDTO,
     ConversationDTO,
     ConversationMessageDTO,
