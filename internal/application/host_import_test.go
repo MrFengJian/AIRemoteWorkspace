@@ -115,7 +115,8 @@ func TestParseXshellFolderMapsGroups(t *testing.T) {
 
 // sampleMoba mirrors a real .mxtsessions export: three SSH bookmarks in a
 // subfolder, one with an identity file (MobaXterm escapes the drive as
-// _CurrentDrive_), plus a VNC line to be skipped.
+// _CurrentDrive_), a nested bookmark under the "User sessions" root label,
+// plus a VNC line to be skipped.
 const sampleMoba = `[Bookmarks]
 SubRep=
 ImgNum=42
@@ -128,6 +129,12 @@ edge-01=#109#0%10.20.0.1%22%ops%-1%-1%%%22%%0%0%0%%%-%0%-1%
 edge-02=#109#0%10.20.0.2%2022%ops%-1%-1%%%22%%0%0%0%%%-%0%-1%
 keyhost=#109#0%10.20.0.3%22%deploy%-1%-1%%%22%%0%0%0%%%-%0%_CurrentDrive_\Users\me\keys\id_rsa%-1%
 vnc-box=#128#5%10.20.0.9%5900%%%
+
+[Bookmarks_2]
+Private=1
+SubRep=User sessions\Nested
+ImgNum=41
+deep-01=#109#0%10.20.0.4%22%ops%-1%
 `
 
 func TestParseMobaXterm(t *testing.T) {
@@ -135,8 +142,8 @@ func TestParseMobaXterm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 3 {
-		t.Fatalf("want 3 SSH hosts (VNC skipped), got %d: %+v", len(got), got)
+	if len(got) != 4 {
+		t.Fatalf("want 4 SSH hosts (VNC skipped), got %d: %+v", len(got), got)
 	}
 	byName := map[string]ImportedHost{}
 	for _, h := range got {
@@ -155,6 +162,11 @@ func TestParseMobaXterm(t *testing.T) {
 	if h3 := byName["keyhost"]; h3.AuthType != domain.AuthKey ||
 		!strings.HasSuffix(h3.KeyPath, `C:\Users\me\keys\id_rsa`) {
 		t.Fatalf("unexpected keyhost: %+v", h3)
+	}
+	// Nested folder structure must survive: "User sessions" is MobaXterm's
+	// root label and must not become a group level.
+	if h4 := byName["deep-01"]; h4.Group != "Nested" {
+		t.Fatalf(`nested group should be "Nested" (root label stripped), got %q`, h4.Group)
 	}
 }
 

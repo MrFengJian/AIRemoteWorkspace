@@ -405,7 +405,15 @@ func parseMobaXterm(path string) ([]ImportedHost, error) {
 		group := ""
 		for _, kv := range sec.keys {
 			if strings.EqualFold(kv[0], "SubRep") {
-				group = strings.ReplaceAll(filepath.ToSlash(kv[1]), "\\", "/")
+				// "User sessions" is MobaXterm's label for the root — not a
+				// real folder; nested folders arrive as "F1\F2" paths.
+				group = strings.TrimPrefix(
+					strings.ReplaceAll(filepath.ToSlash(kv[1]), "\\", "/"),
+					"User sessions/",
+				)
+				if group == "User sessions" {
+					group = ""
+				}
 				break
 			}
 		}

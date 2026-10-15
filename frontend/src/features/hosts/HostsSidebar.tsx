@@ -30,12 +30,32 @@ import { cn } from "@/lib/utils";
 
 /**
  * HostsSidebar — the Xshell-style session manager living inside the terminal
- * workspace: searchable, grouped host list with live connection state.
+ * workspace: searchable, nested-grouped host list with live connection state.
  * Single-click activates the host's open tab (or connects); the context menu
  * forces a new tab / edits / deletes. Host CRUD lives entirely here — there
  * is no standalone hosts page anymore. Collapsible via onClose to give the
  * terminal area more room.
+ *
+ * Groups are paths ("a/b" nests b under a): imported Xshell / MobaXterm
+ * folder structures therefore render as a real directory tree.
  */
+
+/** One node of the sidebar's group tree ("a/b" → child node b under a). */
+type GroupNode = {
+  /** Display name — the last path segment (or the localised "ungrouped"). */
+  name: string;
+  /** Full group path; "" for the ungrouped pseudo-node. */
+  path: string;
+  hosts: HostDTO[];
+  children: GroupNode[];
+};
+
+/** Total hosts under a node, including its whole subtree. */
+function subtreeHostCount(node: GroupNode): number {
+  let n = node.hosts.length;
+  for (const c of node.children) n += subtreeHostCount(c);
+  return n;
+}
 export function HostsSidebar({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const { data: hosts, isLoading } = useHosts();
@@ -43,6 +63,12 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [menu, setMenu] = useState<{ host: HostDTO; x: number; y: number } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+
+  // While searching, matching hosts must stay visible — force every tree
+  // level open regardless of the user's collapse state.
+  const isSearching = query.trim().length > 0;
+  const toggleGroup = (path: string) =>
+    setCollapsed((c) => ({ ...c, [path]: !(c[path] === true) }));
 
   const openEditor = useHostsUIStore((s) => s.openEditor);
   const openTerminal = useOpenTerminal();
@@ -66,22 +92,44 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
     );
   }, [hosts, query]);
 
-  // Group the filtered hosts; deterministic order production → stage → test
-  // → custom (alpha) → none.
-  const grouped = useMemo(() => {
-    const map = new Map<string, HostDTO[]>();
+  // Build the group tree from each host's group path ("a/b" nests b under
+  // a) — imported Xshell / MobaXterm folder structures render as a real
+  // tree. Ordering per level: production → stage → test → custom (alpha);
+  // ungrouped hosts stay at the root, last.
+  const groupTree = useMemo(() => {
+    const nodes = new Map<string, GroupNode>();
+    const roots: GroupNode[] = [];
+    const ensure = (path: string): GroupNode => {
+      const existing = nodes.get(path);
+      if (existing) return existing;
+      const cut = path.lastIndexOf("/");
+      const parent = cut >= 0 ? ensure(path.slice(0, cut)) : null;
+      const node: GroupNode = {
+        name: cut >= 0 ? path.slice(cut + 1) : path,
+        path,
+        hosts: [],
+        children: [],
+      };
+      nodes.set(path, node);
+      if (parent) parent.children.push(node);
+      else roots.push(node);
+      return node;
+    };
     for (const h of filtered) {
-      const key = h.group || "";
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(h);
+      if (h.group) ensure(h.group).hosts.push(h);
     }
     const order = ["production", "stage", "test"];
-    const keys = [...map.keys()].sort((a, b) => {
-      const ia = a === "" ? 99 : order.indexOf(a) >= 0 ? order.indexOf(a) : 50;
-      const ib = b === "" ? 99 : order.indexOf(b) >= 0 ? order.indexOf(b) : 50;
-      return ia - ib || a.localeCompare(b);
-    });
-    return keys.map((k) => ({ group: k, hosts: map.get(k)! }));
+    const byName = (a: GroupNode, b: GroupNode) => {
+      const ia = order.indexOf(a.name) >= 0 ? order.indexOf(a.name) : 50;
+      const ib = order.indexOf(b.name) >= 0 ? order.indexOf(b.name) : 50;
+      return ia - ib || a.name.localeCompare(b.name);
+    };
+    const sortLevel = (list: GroupNode[]) => {
+      list.sort(byName);
+      for (const n of list) sortLevel(n.children);
+    };
+    sortLevel(roots);
+    return { roots, ungrouped: filtered.filter((h) => !h.group) };
   }, [filtered]);
 
   /** Latest live (connected/connecting) session for a host, if any. */
@@ -256,48 +304,52 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
             {t("hosts.noMatch", { query })}
           </p>
         ) : (
-          grouped.map(({ group, hosts: groupHosts }) => {
-            const isCollapsed = collapsed[group] === true;
-            return (
-              <div key={group} className="mb-0.5">
-                <button
-                  type="button"
-                  onClick={() => setCollapsed((c) => ({ ...c, [group]: !isCollapsed }))}
-                  aria-expanded={!isCollapsed}
-                  className="flex w-full items-center gap-1.5 rounded-[var(--radius)] px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
-                >
-                  <ChevronRight
-                    className={cn("h-3 w-3 transition-transform", !isCollapsed && "rotate-90")}
-                  />
-                  <Folder className="h-3 w-3 text-primary" />
-                  <span className="truncate">
-                    {group === "" ? t("hosts.ungrouped") : group}
-                  </span>
-                  <span className="ml-auto text-[10px] opacity-60">{groupHosts.length}</span>
-                </button>
-                {!isCollapsed && (
-                  <ul className="mt-0.5 flex flex-col gap-0.5">
-                    {groupHosts.map((host) => (
-                      <HostRow
-                        key={host.id}
-                        host={host}
-                        status={hostStatus(host.id)}
-                        onActivate={() => activateOrConnect(host)}
-                        onForceConnect={() => forceConnect(host)}
-                        onOpenSftp={() => openSftp(host)}
-                        onEdit={() => openEditor(host)}
-                        onDelete={() => handleDelete(host)}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          setMenu({ host, x: e.clientX, y: e.clientY });
-                        }}
-                      />
-                    ))}
-                  </ul>
-                )}
-              </div>
-            );
-          })
+          <>
+            {groupTree.roots.map((node) => (
+              <GroupSection
+                key={node.path}
+                node={node}
+                depth={0}
+                expandAll={isSearching}
+                collapsed={collapsed}
+                onToggleCollapse={toggleGroup}
+                hostStatus={hostStatus}
+                onActivate={activateOrConnect}
+                onForceConnect={forceConnect}
+                onOpenSftp={openSftp}
+                onEdit={openEditor}
+                onDelete={handleDelete}
+                onContextMenu={(host, e) => {
+                  e.preventDefault();
+                  setMenu({ host, x: e.clientX, y: e.clientY });
+                }}
+              />
+            ))}
+            {groupTree.ungrouped.length > 0 && (
+              <GroupSection
+                node={{
+                  name: t("hosts.ungrouped"),
+                  path: "",
+                  hosts: groupTree.ungrouped,
+                  children: [],
+                }}
+                depth={0}
+                expandAll={isSearching}
+                collapsed={collapsed}
+                onToggleCollapse={toggleGroup}
+                hostStatus={hostStatus}
+                onActivate={activateOrConnect}
+                onForceConnect={forceConnect}
+                onOpenSftp={openSftp}
+                onEdit={openEditor}
+                onDelete={handleDelete}
+                onContextMenu={(host, e) => {
+                  e.preventDefault();
+                  setMenu({ host, x: e.clientX, y: e.clientY });
+                }}
+              />
+            )}
+          </>
         )}
       </div>
 
@@ -337,6 +389,97 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
       {/* Import from other SSH clients (Xshell / MobaXterm / PuTTY / ssh config) */}
       <ImportHostsDialog open={importOpen} onOpenChange={setImportOpen} />
     </aside>
+  );
+}
+
+/**
+ * GroupSection renders one node of the group tree: a collapsible folder
+ * header, its direct hosts, then child sections (indenting one level per
+ * depth). expandAll forces the section open while a search filter is active.
+ */
+function GroupSection({
+  node,
+  depth,
+  expandAll,
+  collapsed,
+  onToggleCollapse,
+  hostStatus,
+  onActivate,
+  onForceConnect,
+  onOpenSftp,
+  onEdit,
+  onDelete,
+  onContextMenu,
+}: {
+  node: GroupNode;
+  depth: number;
+  expandAll: boolean;
+  collapsed: Record<string, boolean>;
+  onToggleCollapse: (path: string) => void;
+  hostStatus: (hostID: string) => "connected" | "connecting" | null;
+  onActivate: (host: HostDTO) => void;
+  onForceConnect: (host: HostDTO) => void;
+  onOpenSftp: (host: HostDTO) => void;
+  onEdit: (host: HostDTO) => void;
+  onDelete: (host: HostDTO) => void;
+  onContextMenu: (host: HostDTO, e: React.MouseEvent) => void;
+}) {
+  const isCollapsed = !expandAll && collapsed[node.path] === true;
+  return (
+    <div className="mb-0.5">
+      <button
+        type="button"
+        onClick={() => onToggleCollapse(node.path)}
+        aria-expanded={!isCollapsed}
+        style={{ paddingLeft: 8 + depth * 12 }}
+        className="flex w-full items-center gap-1.5 rounded-[var(--radius)] py-1 pr-2 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+      >
+        <ChevronRight
+          className={cn("h-3 w-3 shrink-0 transition-transform", !isCollapsed && "rotate-90")}
+        />
+        <Folder className="h-3 w-3 shrink-0 text-primary" />
+        <span className="truncate" title={node.path || undefined}>
+          {node.name}
+        </span>
+        <span className="ml-auto text-[10px] opacity-60">{subtreeHostCount(node)}</span>
+      </button>
+      {!isCollapsed && (
+        <div style={{ paddingLeft: depth === 0 ? 0 : 12 }}>
+          <ul className="mt-0.5 flex flex-col gap-0.5">
+            {node.hosts.map((host) => (
+              <HostRow
+                key={host.id}
+                host={host}
+                status={hostStatus(host.id)}
+                onActivate={() => onActivate(host)}
+                onForceConnect={() => onForceConnect(host)}
+                onOpenSftp={() => onOpenSftp(host)}
+                onEdit={() => onEdit(host)}
+                onDelete={() => onDelete(host)}
+                onContextMenu={(e) => onContextMenu(host, e)}
+              />
+            ))}
+          </ul>
+          {node.children.map((child) => (
+            <GroupSection
+              key={child.path}
+              node={child}
+              depth={depth + 1}
+              expandAll={expandAll}
+              collapsed={collapsed}
+              onToggleCollapse={onToggleCollapse}
+              hostStatus={hostStatus}
+              onActivate={onActivate}
+              onForceConnect={onForceConnect}
+              onOpenSftp={onOpenSftp}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onContextMenu={onContextMenu}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
