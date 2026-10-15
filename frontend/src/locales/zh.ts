@@ -121,11 +121,20 @@ export const zh = {
       source_mobaxterm: "MobaXterm（.mxtsessions 文件）",
       source_putty: "PuTTY（注册表会话，仅 Windows）",
       source_sshconfig: "SSH Config（~/.ssh/config）",
-      pick: "选择文件",
+      pick: "浏览…",
+      pickDir: "选择目录…",
       parse: "解析",
-      pickTitle: "选择会话文件或目录",
-      puttyHint: "PuTTY 会话保存在 Windows 注册表（含公钥路径；.ppk 密钥需先转换为 OpenSSH 格式）。",
-      sshConfigHint: "留空使用 ~/.ssh/config；也可以解析显式指定的其他 config 文件。",
+      autoScan: "自动扫描",
+      pickDirTitle: "选择 Xshell 会话目录",
+      pickFileTitle: "选择会话文件",
+      hint_xshell:
+        "「自动扫描」定位「文档\\NetSarang Computer\\<版本>\\Xshell\\Sessions」（多版本取最新）并递归导入全部会话，目录结构保留为分组树；「选择目录…」用于自定义的会话位置。",
+      hint_mobaxterm:
+        "「自动扫描」定位 %APPDATA%\\MobaXterm\\MobaXterm.ini（安装版的会话即存于此）；便携版请「浏览…」选择其 MobaXterm.ini 或 .mxtsessions 导出文件。",
+      hint_putty:
+        "PuTTY 会话保存在 Windows 注册表（含公钥路径；.ppk 密钥需先转换为 OpenSSH 格式）。",
+      hint_sshconfig:
+        "解析 ~/.ssh/config；通配符与 Match 块跳过，Host * 的默认值会继承。",
       found: "解析到 {{count}} 台主机",
       empty: "未找到可导入的 SSH 会话。",
       invalidRow: "缺少用户名",

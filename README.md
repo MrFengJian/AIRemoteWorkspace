@@ -19,7 +19,7 @@ Go 原生（Wails v3 + React）的跨平台桌面应用，把 **SSH / Terminal /
 ## 核心特性
 
 - 🔌 **SSH Workspace** — 多 Host 管理、稳定终端（xterm.js + PTY）：分屏与同步键入、断线自动重连、重启后会话恢复、会话日志落盘、登录脚本、终端编码切换（UTF-8 / GBK / Big5）、跳板/代理、窗口失焦系统通知
-- 📥 **主机导入** — 从其他 SSH 客户端一键迁移主机设置：Xshell（.xsh 文件/目录，UTF-16/GBK 编码自适应）、MobaXterm（.mxtsessions）、PuTTY（Windows 注册表）与 SSH config（~/.ssh/config，通配符跳过、`Host *` 默认值继承）；Xshell/MobaXterm 的目录结构原样保留为主机侧栏的嵌套分组树；解析预览勾选导入，按 主机+端口+用户名 去重；密码等凭据一律不导入
+- 📥 **主机导入** — 从其他 SSH 客户端一键迁移主机设置：Xshell（自动定位会话目录递归导入全部主机，也支持自定义目录/单个 .xsh，UTF-16/GBK 编码自适应）、MobaXterm（自动定位 MobaXterm.ini，也支持 .mxtsessions 导出与目录遍历）、PuTTY（Windows 注册表）与 SSH config（~/.ssh/config，通配符跳过、`Host *` 默认值继承）；Xshell/MobaXterm 的目录结构原样保留为主机侧栏的嵌套分组树；解析预览勾选导入，按 主机+端口+用户名 去重；密码等凭据一律不导入
 - 🖥️ **本地终端** — 跨平台本地 PTY（PowerShell / PowerShell 7 / CMD / Git Bash / WSL 按实例 / bash / zsh 按可用性检测），不走 SSH
 - 📁 **SFTP 文件管理** — 浏览、上传、下载
 - 📊 **主机监控** — 概览 / 进程 / 端口三个视图，基于 `/proc` 与系统原生工具采集，远程主机零依赖

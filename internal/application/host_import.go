@@ -285,10 +285,23 @@ func getINI(secs []iniSection, section, key string) string {
 
 // --- Xshell (.xsh) --------------------------------------------------------
 
-// parseXshell reads one .xsh session file or a folder of them (Xshell's
-// Sessions directory — subfolders become host groups). Only SSH sessions are
-// imported; telnet / serial / sftp profiles are silently skipped.
+// parseXshell reads one .xsh session file or a folder of them. An empty path
+// auto-detects Xshell's own Sessions directory (newest version wins) and
+// imports everything in it — the usual "migrate all of Xshell" flow.
+// Subfolders become host groups; only SSH sessions are imported, telnet /
+// serial / sftp profiles are silently skipped.
 func parseXshell(path string) ([]ImportedHost, error) {
+	if strings.TrimSpace(path) == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		dir, err := detectXshellSessionsDir(home)
+		if err != nil {
+			return nil, err
+		}
+		path = dir
+	}
 	st, err := os.Stat(path)
 	if err != nil {
 		return nil, err
@@ -339,6 +352,72 @@ func parseXshell(path string) ([]ImportedHost, error) {
 	return out, nil
 }
 
+// detectXshellSessionsDir locates Xshell's Sessions directory under
+// home/Documents and returns the first candidate that actually contains .xsh
+// files: "NetSarang Computer/<version>/Xshell/Sessions" (v6+; the highest
+// version wins, numeric before lexical) falling back to the v5 layout
+// "NetSarang/Xshell/Sessions". Custom session locations need the manual
+// folder picker.
+func detectXshellSessionsDir(home string) (string, error) {
+	docs := filepath.Join(home, "Documents")
+	var candidates []string
+	if netsarang := filepath.Join(docs, "NetSarang Computer"); dirExists(netsarang) {
+		if entries, err := os.ReadDir(netsarang); err == nil {
+			vers := make([]string, 0, len(entries))
+			for _, e := range entries {
+				if e.IsDir() {
+					vers = append(vers, e.Name())
+				}
+			}
+			sort.Slice(vers, func(i, j int) bool {
+				vi, iok := strconv.Atoi(vers[i])
+				vj, jok := strconv.Atoi(vers[j])
+				switch {
+				case iok == nil && jok == nil:
+					return vi > vj // newest version first
+				case iok == nil:
+					return true // numeric names before others
+				case jok == nil:
+					return false
+				default:
+					return vers[i] > vers[j]
+				}
+			})
+			for _, v := range vers {
+				candidates = append(candidates, filepath.Join(netsarang, v, "Xshell", "Sessions"))
+			}
+		}
+	}
+	candidates = append(candidates, filepath.Join(docs, "NetSarang", "Xshell", "Sessions"))
+	for _, dir := range candidates {
+		if hasXshFiles(dir) {
+			return dir, nil
+		}
+	}
+	return "", errors.New("Xshell sessions directory not found (Documents/NetSarang Computer/<version>/Xshell/Sessions) — pick the session folder manually")
+}
+
+// hasXshFiles reports whether dir holds at least one .xsh file (recursively).
+func hasXshFiles(dir string) bool {
+	found := false
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d == nil {
+			return fs.SkipAll // unreadable → treat as empty
+		}
+		if !d.IsDir() && strings.EqualFold(filepath.Ext(p), ".xsh") {
+			found = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return found
+}
+
+func dirExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && st.IsDir()
+}
+
 // parseXshellFile extracts one session. ok is false for non-SSH protocols.
 func parseXshellFile(path string) (ImportedHost, bool) {
 	text, err := readTextFile(path)
@@ -374,28 +453,83 @@ func parseXshellFile(path string) (ImportedHost, bool) {
 	return h, h.Host != ""
 }
 
-// --- MobaXterm (.mxtsessions) ----------------------------------------------
+// --- MobaXterm (.mxtsessions / MobaXterm.ini) -------------------------------
 
-// parseMobaXterm reads a .mxtsessions bookmark export (the [Bookmarks] /
-// [Bookmarks_N] sections also match MobaXterm.ini, so picking that file
-// works too). Session lines look like:
+// parseMobaXterm reads MobaXterm sessions. An empty path auto-detects the
+// installed edition's session store (%APPDATA%/MobaXterm/MobaXterm.ini); a
+// directory is walked for .mxtsessions exports and MobaXterm.ini (portable
+// installs keep the ini next to the exe); a file is parsed as-is. Session
+// lines look like:
 //
 //	Name=#109#0%host%port%user%…%-fields…%#MobaFont%…#0##-1
 //
 // The first %-group's leading number is the session type (0 = SSH); field
 // indices inside the group: 1 host, 2 port, 3 user, 14 identity file.
 func parseMobaXterm(path string) ([]ImportedHost, error) {
-	if st, err := os.Stat(path); err != nil || st.IsDir() {
-		if err == nil {
-			return nil, fmt.Errorf("%s: please pick a .mxtsessions file, not a folder", filepath.Base(path))
+	if strings.TrimSpace(path) == "" {
+		cfg, err := os.UserConfigDir()
+		if err != nil {
+			return nil, err
 		}
-		return nil, err
+		path = filepath.Join(cfg, "MobaXterm", "MobaXterm.ini")
+		if !fileExists(path) {
+			return nil, errors.New("MobaXterm.ini not found (%APPDATA%/MobaXterm) — pick the .mxtsessions export manually")
+		}
 	}
-	text, err := readTextFile(path)
+	st, err := os.Stat(path)
 	if err != nil {
 		return nil, err
 	}
+	if !st.IsDir() {
+		text, err := readTextFile(path)
+		if err != nil {
+			return nil, err
+		}
+		out := parseMobaText(text)
+		if len(out) == 0 {
+			return nil, errors.New("no SSH sessions found in the file")
+		}
+		return out, nil
+	}
+	// Directory: collect every bookmark-bearing file beneath it.
+	var files []string
+	err = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if strings.EqualFold(d.Name(), "MobaXterm.ini") || strings.EqualFold(filepath.Ext(p), ".mxtsessions") {
+			files = append(files, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		return nil, errors.New("no .mxtsessions exports or MobaXterm.ini found in the folder")
+	}
+	sort.Strings(files)
+	var out []ImportedHost
+	for _, f := range files {
+		text, err := readTextFile(f)
+		if err != nil {
+			continue // one unreadable file must not sink the batch
+		}
+		out = append(out, parseMobaText(text)...)
+	}
+	if len(out) == 0 {
+		return nil, errors.New("no importable SSH sessions found in the folder")
+	}
+	return out, nil
+}
 
+// parseMobaText extracts SSH sessions from the [Bookmarks] / [Bookmarks_N]
+// sections of a MobaXterm bookmark file (.mxtsessions export or MobaXterm.ini
+// — same layout).
+func parseMobaText(text string) []ImportedHost {
 	var out []ImportedHost
 	for _, sec := range parseINI(text) {
 		if !strings.EqualFold(sec.name, "Bookmarks") &&
@@ -429,10 +563,12 @@ func parseMobaXterm(path string) ([]ImportedHost, error) {
 			out = append(out, h)
 		}
 	}
-	if len(out) == 0 {
-		return nil, errors.New("no SSH sessions found in the .mxtsessions file")
-	}
-	return out, nil
+	return out
+}
+
+func fileExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
 }
 
 // parseMobaSession decodes one bookmark line. ok is false for non-SSH types

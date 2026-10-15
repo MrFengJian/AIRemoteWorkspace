@@ -209,7 +209,7 @@
   - [x] 命名空间选择器；kubectl 缺失 / 集群不可达分级降级提示
   - [x] 安全：kind/action 白名单 + 资源名 DNS-1123 校验（防 flag 注入）；danger.go 补 kubectl 变更动词分级
 - [x] 主机导入（从其他 SSH 客户端迁移，`application/host_import.go` + Wails `ParseHostImport`/`ImportHosts`）
-  - [x] 来源：Xshell（.xsh 文件/目录，UTF-16 LE/BE、BOM-UTF-8、GBK 自适应解码；仅 SSH 协议，子目录→分组）、MobaXterm（.mxtsessions，仅 SSH 类型，SubRep→分组、身份文件路径含 `_CurrentDrive_` 反转义、根标签 User sessions 归一化）、PuTTY（Windows 注册表，非 Windows 报提示）、SSH config（缺省 ~/.ssh/config；通配/取反/Match 块跳过，`Host *` 作为全局默认继承）
+  - [x] 来源：Xshell（自动定位 Sessions 目录递归导入：`文档/NetSarang Computer/<版本>/Xshell/Sessions` 多版本取最新、v5 布局回退；也支持自定义目录与单个 .xsh；UTF-16 LE/BE、BOM-UTF-8、GBK 自适应解码；仅 SSH 协议，子目录→分组）、MobaXterm（自动定位 %APPDATA% MobaXterm.ini；也支持 .mxtsessions 导出与目录遍历（收集 .mxtsessions + MobaXterm.ini）；仅 SSH 类型，SubRep→分组、身份文件路径含 `_CurrentDrive_` 反转义、根标签 User sessions 归一化）、PuTTY（Windows 注册表，非 Windows 报提示）、SSH config（缺省 ~/.ssh/config；通配/取反/Match 块跳过，`Host *` 作为全局默认继承）
   - [x] 目录结构保留：分组值为路径语义（a/b），主机侧栏按路径渲染为嵌套分组树（逐级折叠、搜索时强制展开、计数含子树）；编辑表单对路径分组落入自定义输入
   - [x] 仅连接设置：密码/密钥材料一律不导入；密钥引用映射为 key 认证（Xshell 密钥在专有库中无路径，留空待用户补）
   - [x] 流程：解析预览（缺用户名行禁选）→ 勾选导入 → 按 主机+端口+用户名 与现有名册去重（批内同样去重）；导入结果计数（成功/跳过/失败）

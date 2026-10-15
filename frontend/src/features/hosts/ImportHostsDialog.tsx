@@ -84,24 +84,28 @@ export function ImportHostsDialog({
     }
   };
 
-  /** Pick + parse a session file / folder. Sources without a path
-   *  (putty: registry; sshconfig default) parse immediately. */
-  const pickAndParse = async () => {
-    if (source === "putty" || source === "sshconfig") {
-      setPickedPath("");
-      await runParse("");
-      return;
-    }
-    const picked = await Dialogs.OpenFile({
-      CanChooseFiles: true,
-      // Xshell exports are usually a whole Sessions folder.
-      CanChooseDirectories: source === "xshell",
-      Title: t("hosts.import.pickTitle"),
-    });
+  /** Browse for a session location manually. On Windows the file and folder
+   *  pickers are mutually exclusive (wails forces a folder-only dialog), so
+   *  the dialog type follows the source: xshell → its Sessions folder,
+   *  mobaxterm → a .mxtsessions export / MobaXterm.ini file. */
+  const browseAndParse = async () => {
+    const picked = await Dialogs.OpenFile(
+      source === "xshell"
+        ? { CanChooseDirectories: true, Title: t("hosts.import.pickDirTitle") }
+        : { CanChooseFiles: true, Title: t("hosts.import.pickFileTitle") },
+    );
     if (!picked) return;
     const path = Array.isArray(picked) ? picked[0] : picked;
     setPickedPath(path);
     await runParse(path);
+  };
+
+  /** Auto-detect the tool's default session store and traverse all of it
+   *  (xshell: newest Sessions dir; mobaxterm: %APPDATA% MobaXterm.ini;
+   *  putty: registry; sshconfig: ~/.ssh/config). */
+  const autoParse = async () => {
+    setPickedPath("");
+    await runParse("");
   };
 
   const toggle = (index: number, on: boolean) => {
@@ -140,23 +144,48 @@ export function ImportHostsDialog({
     }
   };
 
-  const parseButton = (
-    <Button
-      size="sm"
-      variant="outline"
-      disabled={busy !== null}
-      onClick={() => void pickAndParse()}
-    >
-      {busy === "parsing" ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-      ) : (
-        <FolderInput className="h-3.5 w-3.5" />
-      )}
-      {source === "putty" || source === "sshconfig"
-        ? t("hosts.import.parse")
-        : t("hosts.import.pick")}
-    </Button>
-  );
+  const parseButtons =
+    source === "xshell" || source === "mobaxterm" ? (
+      <>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy !== null}
+          onClick={() => void browseAndParse()}
+        >
+          {source === "xshell"
+            ? t("hosts.import.pickDir")
+            : t("hosts.import.pick")}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy !== null}
+          onClick={() => void autoParse()}
+        >
+          {busy === "parsing" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <FolderInput className="h-3.5 w-3.5" />
+          )}
+          {t("hosts.import.autoScan")}
+        </Button>
+      </>
+    ) : (
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={busy !== null}
+        onClick={() => void autoParse()}
+      >
+        {busy === "parsing" ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <FolderInput className="h-3.5 w-3.5" />
+        )}
+        {t("hosts.import.parse")}
+      </Button>
+    );
 
   return (
     <Dialog
@@ -194,16 +223,12 @@ export function ImportHostsDialog({
                 ))}
               </Select>
             </label>
-            {parseButton}
+            {parseButtons}
           </div>
 
-          {(source === "putty" || source === "sshconfig") && (
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
-              {source === "putty"
-                ? t("hosts.import.puttyHint")
-                : t("hosts.import.sshConfigHint")}
-            </p>
-          )}
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            {t(`hosts.import.hint_${source}`)}
+          </p>
 
           {rows && rows.length > 0 && (
             <div className="flex flex-col gap-1.5">

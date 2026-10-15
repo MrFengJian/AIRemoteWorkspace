@@ -121,13 +121,20 @@ export const en = {
       source_mobaxterm: "MobaXterm (.mxtsessions file)",
       source_putty: "PuTTY (registry sessions, Windows only)",
       source_sshconfig: "SSH config (~/.ssh/config)",
-      pick: "Choose File",
+      pick: "Browse…",
+      pickDir: "Choose Folder…",
       parse: "Parse",
-      pickTitle: "Choose a session file or folder",
-      puttyHint:
+      autoScan: "Auto-scan",
+      pickDirTitle: "Choose the Xshell sessions folder",
+      pickFileTitle: "Choose a session file",
+      hint_xshell:
+        '"Auto-scan" locates Documents\\NetSarang Computer\\<version>\\Xshell\\Sessions (newest version wins) and imports every session in it, preserving the folder structure as a group tree; "Choose Folder…" for a custom location.',
+      hint_mobaxterm:
+        '"Auto-scan" locates %APPDATA%\\MobaXterm\\MobaXterm.ini (where the installed edition keeps its sessions); for portable installs, browse for its MobaXterm.ini or a .mxtsessions export.',
+      hint_putty:
         "PuTTY sessions live in the Windows registry (public-key paths included; convert .ppk keys to OpenSSH format before use).",
-      sshConfigHint:
-        "Leave empty to use ~/.ssh/config, or pick an explicit config file to parse.",
+      hint_sshconfig:
+        "Parses ~/.ssh/config; wildcard and Match blocks are skipped, and Host * defaults are inherited.",
       found: "Found {{count}} hosts",
       empty: "No importable SSH sessions found.",
       invalidRow: "missing username",

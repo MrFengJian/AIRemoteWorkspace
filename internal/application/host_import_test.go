@@ -113,6 +113,93 @@ func TestParseXshellFolderMapsGroups(t *testing.T) {
 	}
 }
 
+func TestDetectXshellSessionsDir(t *testing.T) {
+	home := t.TempDir()
+	if _, err := detectXshellSessionsDir(home); err == nil {
+		t.Fatal("expected not-found error on empty home")
+	}
+
+	// v6+ layout with two versions — the newest (8) must win.
+	for _, ver := range []string{"7", "8"} {
+		dir := filepath.Join(home, "Documents", "NetSarang Computer", ver, "Xshell", "Sessions", "prod")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "h.xsh"), []byte(sampleXsh), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := detectXshellSessionsDir(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(filepath.ToSlash(got), "NetSarang Computer/8/Xshell/Sessions") {
+		t.Fatalf("newest version must win, got %q", got)
+	}
+
+	// An empty v8 falls back to the populated v7.
+	if err := os.Remove(filepath.Join(home, "Documents", "NetSarang Computer", "8", "Xshell", "Sessions", "prod", "h.xsh")); err != nil {
+		t.Fatal(err)
+	}
+	got, err = detectXshellSessionsDir(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(filepath.ToSlash(got), "/7/") {
+		t.Fatalf("empty newest version must fall back to v7, got %q", got)
+	}
+
+	// v5 layout fallback.
+	v5 := filepath.Join(home, "Documents", "NetSarang", "Xshell", "Sessions")
+	if err := os.MkdirAll(v5, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(v5, "old.xsh"), []byte(sampleXshUTF16), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(home, "Documents", "NetSarang Computer")); err != nil {
+		t.Fatal(err)
+	}
+	got, err = detectXshellSessionsDir(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.ToSlash(got) != filepath.ToSlash(v5) {
+		t.Fatalf("v5 layout fallback expected, got %q", got)
+	}
+}
+
+func TestParseMobaXtermDirectoryWalk(t *testing.T) {
+	dir := t.TempDir()
+	exp := strings.Replace(sampleMoba, `SubRep=Producers\Edge`, "SubRep=Exported", 1)
+	if err := os.WriteFile(filepath.Join(dir, "export.mxtsessions"), []byte(exp), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ini := "[Bookmarks]\nSubRep=\nImgNum=42\n\n[Bookmarks_1]\nPrivate=1\nSubRep=IniFolder\nImgNum=41\nini-host=#109#0%10.30.0.1%22%ops%-1%\n"
+	if err := os.WriteFile(filepath.Join(dir, "MobaXterm.ini"), []byte(ini), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := parseMobaXterm(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]ImportedHost{}
+	for _, h := range got {
+		byName[h.Name] = h
+	}
+	if h, ok := byName["edge-01"]; !ok || h.Group != "Exported" {
+		t.Fatalf("export file not walked: %+v", byName)
+	}
+	if h, ok := byName["ini-host"]; !ok || h.Group != "IniFolder" || h.Host != "10.30.0.1" {
+		t.Fatalf("MobaXterm.ini not parsed: %+v", byName)
+	}
+
+	// A directory with nothing bookmark-shaped must report clearly.
+	if _, err := parseMobaXterm(t.TempDir()); err == nil {
+		t.Fatal("expected error for empty directory")
+	}
+}
+
 // sampleMoba mirrors a real .mxtsessions export: three SSH bookmarks in a
 // subfolder, one with an identity file (MobaXterm escapes the drive as
 // _CurrentDrive_), a nested bookmark under the "User sessions" root label,
