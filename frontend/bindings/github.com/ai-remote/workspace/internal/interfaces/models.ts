@@ -266,12 +266,44 @@ export interface HostInputDTO {
 }
 
 /**
+ * ImportHostsResultDTO reports the outcome of an import batch.
+ */
+export interface ImportHostsResultDTO {
+    "imported": number;
+
+    /**
+     * already existed (same host + port + username)
+     */
+    "skipped": number;
+
+    /**
+     * rows missing required fields
+     */
+    "failed": number;
+}
+
+/**
  * ImportKeyRequestDTO is the import payload from the frontend.
  */
 export interface ImportKeyRequestDTO {
     "name": string;
     "path": string;
     "passphrase": string;
+}
+
+/**
+ * ImportedHostDTO is one parsed candidate host in the import preview. Only
+ * connection settings — never secrets.
+ */
+export interface ImportedHostDTO {
+    "index": number;
+    "name": string;
+    "host": string;
+    "port": number;
+    "username": string;
+    "authType": string;
+    "keyPath"?: string;
+    "group"?: string;
 }
 
 /**

@@ -111,6 +111,7 @@ func main() {
 	// Application services.
 	configSvc := application.NewConfigService(configRepo)
 	hostSvc := application.NewHostService(hostRepo, connManager, hostKeyRepo, secretSvc)
+	hostImportSvc := application.NewHostImportService(hostSvc)
 	monitorSvc := application.NewMonitorService(connManager)
 	dockerSvc := application.NewDockerService(connManager)
 	// K8s panel: kubectl CLI driven over the same dual channel (SSH exec for
@@ -203,7 +204,7 @@ func main() {
 	} else {
 		log.Printf("config load for mcp startup: %v", err)
 	}
-	hostService := interfaces.NewHostService(hostSvc, tunnelMgr)
+	hostService := interfaces.NewHostService(hostSvc, hostImportSvc, tunnelMgr)
 	keyManagerSvc := application.NewKeyManagerService(dataDirSvc)
 	keyManagerService := interfaces.NewKeyManagerService(keyManagerSvc)
 	localPtyMgr := localpty.NewManager()

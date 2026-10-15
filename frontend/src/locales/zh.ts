@@ -112,6 +112,28 @@ export const zh = {
     },
     deleteConfirm: '删除主机 "{{name}}"？同时会清除已记住的密码。',
     deleteTitle: "删除主机",
+    import: {
+      title: "导入主机",
+      description:
+        "从其他 SSH 工具导入主机设置。不导入密码等凭据——导入的主机首次连接时输入即可。",
+      source: "来源",
+      source_xshell: "Xshell（.xsh 会话文件或目录）",
+      source_mobaxterm: "MobaXterm（.mxtsessions 文件）",
+      source_putty: "PuTTY（注册表会话，仅 Windows）",
+      source_sshconfig: "SSH Config（~/.ssh/config）",
+      pick: "选择文件",
+      parse: "解析",
+      pickTitle: "选择会话文件或目录",
+      puttyHint: "PuTTY 会话保存在 Windows 注册表（含公钥路径；.ppk 密钥需先转换为 OpenSSH 格式）。",
+      sshConfigHint: "留空使用 ~/.ssh/config；也可以解析显式指定的其他 config 文件。",
+      found: "解析到 {{count}} 台主机",
+      empty: "未找到可导入的 SSH 会话。",
+      invalidRow: "缺少用户名",
+      selectAll: "全选",
+      importSelected: "导入所选（{{count}}）",
+      done: "已导入 {{imported}} 台主机；跳过已存在 {{skipped}} 台；无法导入 {{failed}} 台。",
+      parseFailed: "解析失败",
+    },
   },
 
   // ── 主机表单 ────────────────────────────────────────────────

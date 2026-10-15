@@ -607,6 +607,9 @@ secret_ref
 - 删除 Host
 - 测试连接
 - 保存配置
+- 从其他客户端导入（Xshell .xsh / MobaXterm .mxtsessions / PuTTY 注册表 / SSH config）：
+  解析预览 + 勾选导入 + 主机端口用户名去重；凭据（密码/密钥材料）一律不导入，
+  `application/host_import.go`，Wails 侧 `ParseHostImport`/`ImportHosts`
 
 模型：
 

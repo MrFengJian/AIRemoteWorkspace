@@ -2,6 +2,7 @@ package interfaces
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	wailsapp "github.com/wailsapp/wails/v3/pkg/application"
@@ -81,13 +82,16 @@ type CredentialsDTO struct {
 // HostService exposes host CRUD + connection testing to the frontend.
 type HostService struct {
 	svc     *appsvc.HostService
+	imports *appsvc.HostImportService
 	tunnels *ssh.TunnelManager
 }
 
 // NewHostService wires the Wails HostService to its application port.
-// tunnels (may be nil) is synced with tunnel config changes on update/delete.
-func NewHostService(svc *appsvc.HostService, tunnels *ssh.TunnelManager) *HostService {
-	return &HostService{svc: svc, tunnels: tunnels}
+// imports (may be nil) serves the "import hosts from other SSH clients"
+// preview + confirm flow; tunnels (may be nil) is synced with tunnel config
+// changes on update/delete.
+func NewHostService(svc *appsvc.HostService, imports *appsvc.HostImportService, tunnels *ssh.TunnelManager) *HostService {
+	return &HostService{svc: svc, imports: imports, tunnels: tunnels}
 }
 
 // ServiceName lets Wails register the service under a stable name.
@@ -351,6 +355,74 @@ func (h *HostService) SaveCredentials(hostID string, creds CredentialsDTO, remem
 		}
 	}
 	return nil
+}
+
+// --- host import (from Xshell / MobaXterm / PuTTY / SSH config) -------------
+
+// ImportedHostDTO is one parsed candidate host in the import preview. Only
+// connection settings — never secrets.
+type ImportedHostDTO struct {
+	Index    int    `json:"index"`
+	Name     string `json:"name"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	AuthType string `json:"authType"`
+	KeyPath  string `json:"keyPath,omitempty"`
+	Group    string `json:"group,omitempty"`
+}
+
+// ImportHostsResultDTO reports the outcome of an import batch.
+type ImportHostsResultDTO struct {
+	Imported int `json:"imported"`
+	Skipped  int `json:"skipped"` // already existed (same host + port + username)
+	Failed   int `json:"failed"`  // rows missing required fields
+}
+
+// ParseHostImport parses sessions from another SSH client for the preview
+// dialog. path is the .xsh file / Sessions folder, the .mxtsessions file or
+// an explicit ssh config; empty path + sshconfig uses ~/.ssh/config, and
+// putty reads the Windows registry (path unused).
+func (h *HostService) ParseHostImport(source, path string) ([]ImportedHostDTO, error) {
+	if h.imports == nil {
+		return nil, errors.New("host import not available")
+	}
+	parsed, err := h.imports.ParseImportSource(source, path)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ImportedHostDTO, 0, len(parsed))
+	for i, p := range parsed {
+		out = append(out, ImportedHostDTO{
+			Index:    i,
+			Name:     p.Name,
+			Host:     p.Host,
+			Port:     p.Port,
+			Username: p.Username,
+			AuthType: string(p.AuthType),
+			KeyPath:  p.KeyPath,
+			Group:    p.Group,
+		})
+	}
+	return out, nil
+}
+
+// ImportHosts creates the selected parsed hosts (same source/path as the
+// preview; indexes refer to the preview rows). Existing hosts (same host +
+// port + username) are skipped, never duplicated.
+func (h *HostService) ImportHosts(source, path string, indexes []int) (ImportHostsResultDTO, error) {
+	if h.imports == nil {
+		return ImportHostsResultDTO{}, errors.New("host import not available")
+	}
+	summary, err := h.imports.Import(source, path, indexes)
+	if err != nil {
+		return ImportHostsResultDTO{}, err
+	}
+	return ImportHostsResultDTO{
+		Imported: summary.Imported,
+		Skipped:  summary.Skipped,
+		Failed:   summary.Failed,
+	}, nil
 }
 
 // hostNotFoundMsg is reserved for future stable error messaging to the UI.

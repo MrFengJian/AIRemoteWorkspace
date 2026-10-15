@@ -19,6 +19,7 @@ It does not replace traditional SSH clients — it lets AI do real ops and diagn
 ## Core Features
 
 - 🔌 **SSH Workspace** — multi-host management with a rock-solid terminal (xterm.js + PTY): split panes with broadcast input, auto-reconnect on drop, session restore after restart, session logging, login scripts, terminal encoding switching (UTF-8 / GBK / Big5), jump hosts / proxies, system notifications on unfocused completion
+- 📥 **Host Import** — migrate host settings from other SSH clients in one go: Xshell (.xsh files/folders, UTF-16/GBK auto-detected), MobaXterm (.mxtsessions), PuTTY (Windows registry) and SSH config (~/.ssh/config, wildcards skipped, `Host *` defaults inherited); preview, tick and import with host+port+username dedup — passwords and other credentials are never imported
 - 🖥️ **Local Terminal** — cross-platform local PTY (PowerShell / PowerShell 7 / CMD / Git Bash / WSL per-distro / bash / zsh, detected by availability) — no SSH involved
 - 📁 **SFTP File Manager** — browse, upload, download
 - 📊 **Host Monitoring** — overview / processes / ports views, collected via `/proc` and native tools with zero remote dependencies

@@ -44,10 +44,29 @@ export function GetRememberedCredentials(hostID: string): $CancellablePromise<$m
 }
 
 /**
+ * ImportHosts creates the selected parsed hosts (same source/path as the
+ * preview; indexes refer to the preview rows). Existing hosts (same host +
+ * port + username) are skipped, never duplicated.
+ */
+export function ImportHosts(source: string, path: string, indexes: number[] | null): $CancellablePromise<$models.ImportHostsResultDTO> {
+    return $Call.ByID(151417863, source, path, indexes);
+}
+
+/**
  * ListHosts returns all stored hosts.
  */
 export function ListHosts(): $CancellablePromise<$models.HostDTO[] | null> {
     return $Call.ByID(910715712);
+}
+
+/**
+ * ParseHostImport parses sessions from another SSH client for the preview
+ * dialog. path is the .xsh file / Sessions folder, the .mxtsessions file or
+ * an explicit ssh config; empty path + sshconfig uses ~/.ssh/config, and
+ * putty reads the Windows registry (path unused).
+ */
+export function ParseHostImport(source: string, path: string): $CancellablePromise<$models.ImportedHostDTO[] | null> {
+    return $Call.ByID(764228203, source, path);
 }
 
 /**

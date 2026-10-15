@@ -112,6 +112,30 @@ export const en = {
     },
     deleteConfirm: 'Delete host "{{name}}"? This also clears any remembered password.',
     deleteTitle: "Delete host",
+    import: {
+      title: "Import Hosts",
+      description:
+        "Import host settings from another SSH client. Passwords and other credentials are not imported — enter them on first connect.",
+      source: "Source",
+      source_xshell: "Xshell (.xsh session files or folder)",
+      source_mobaxterm: "MobaXterm (.mxtsessions file)",
+      source_putty: "PuTTY (registry sessions, Windows only)",
+      source_sshconfig: "SSH config (~/.ssh/config)",
+      pick: "Choose File",
+      parse: "Parse",
+      pickTitle: "Choose a session file or folder",
+      puttyHint:
+        "PuTTY sessions live in the Windows registry (public-key paths included; convert .ppk keys to OpenSSH format before use).",
+      sshConfigHint:
+        "Leave empty to use ~/.ssh/config, or pick an explicit config file to parse.",
+      found: "Found {{count}} hosts",
+      empty: "No importable SSH sessions found.",
+      invalidRow: "missing username",
+      selectAll: "Select all",
+      importSelected: "Import selected ({{count}})",
+      done: "Imported {{imported}} hosts; skipped {{skipped}} existing; {{failed}} not importable.",
+      parseFailed: "Parse failed",
+    },
   },
 
   // ── Host form ───────────────────────────────────────────────

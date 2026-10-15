@@ -7,6 +7,7 @@ import {
   Pencil,
   Trash2,
   Folder,
+  FolderInput,
   FolderTree,
   ChevronRight,
   Monitor,
@@ -20,6 +21,7 @@ import { useHosts, useOpenTerminal, useOpenLocalTerminal, useDeleteHost } from "
 import { hostsApi, type HostDTO } from "@/features/hosts/api";
 import { osInfo } from "@/features/hosts/osIcons";
 import { useHostsUIStore } from "@/features/hosts/store";
+import { ImportHostsDialog } from "@/features/hosts/ImportHostsDialog";
 import { useTerminalStore } from "@/features/terminal/terminal.store";
 import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabMenu";
 import { useConfirm } from "@/lib/useConfirm";
@@ -40,6 +42,7 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [menu, setMenu] = useState<{ host: HostDTO; x: number; y: number } | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const openEditor = useHostsUIStore((s) => s.openEditor);
   const openTerminal = useOpenTerminal();
@@ -208,6 +211,16 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
         >
           <Plus className="h-4 w-4" />
         </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0"
+          onClick={() => setImportOpen(true)}
+          aria-label={t("hosts.import.title")}
+          title={t("hosts.import.title")}
+        >
+          <FolderInput className="h-4 w-4" />
+        </Button>
         <button
           type="button"
           onClick={onClose}
@@ -229,9 +242,14 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
           <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
             <Server className="h-6 w-6 text-muted-foreground" />
             <p className="text-xs text-muted-foreground">{t("hosts.sidebarEmpty")}</p>
-            <Button variant="outline" size="sm" onClick={() => openEditor("new")}>
-              <Plus className="h-3.5 w-3.5" /> {t("hosts.addHost")}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => openEditor("new")}>
+                <Plus className="h-3.5 w-3.5" /> {t("hosts.addHost")}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+                <FolderInput className="h-3.5 w-3.5" /> {t("hosts.import.title")}
+              </Button>
+            </div>
           </div>
         ) : filtered.length === 0 ? (
           <p className="px-3 py-8 text-center text-xs text-muted-foreground">
@@ -315,6 +333,9 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
           items={buildMenuItems(menu.host)}
         />
       )}
+
+      {/* Import from other SSH clients (Xshell / MobaXterm / PuTTY / ssh config) */}
+      <ImportHostsDialog open={importOpen} onOpenChange={setImportOpen} />
     </aside>
   );
 }

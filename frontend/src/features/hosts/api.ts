@@ -11,6 +11,8 @@ import {
   type CredentialsDTO,
   type TestConnectionResult,
   type RememberedCredentialsDTO,
+  type ImportedHostDTO,
+  type ImportHostsResultDTO,
 } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
 
 export type {
@@ -19,6 +21,8 @@ export type {
   CredentialsDTO,
   TestConnectionResult,
   RememberedCredentialsDTO,
+  ImportedHostDTO,
+  ImportHostsResultDTO,
 };
 
 export const hostsApi = {
@@ -35,7 +39,17 @@ export const hostsApi = {
     HostService.GetRememberedCredentials(hostId),
   /** Open the standalone dual-pane SFTP window for the host. */
   openSftpWindow: (hostId: string) => WindowService.OpenSftpWindow(hostId),
+  /** Import from other SSH clients: preview parsed sessions, then import the
+   *  selected indexes (settings only — passwords/keys are never imported). */
+  parseImport: (source: string, path: string) =>
+    HostService.ParseHostImport(source, path),
+  importHosts: (source: string, path: string, indexes: number[]) =>
+    HostService.ImportHosts(source, path, indexes),
 };
+
+/** Import sources match the application-layer constants on the backend. */
+export const IMPORT_SOURCES = ["xshell", "mobaxterm", "putty", "sshconfig"] as const;
+export type ImportSource = (typeof IMPORT_SOURCES)[number];
 
 /** Auth type values match domain.AuthType on the backend. Labels are
  *  localised via hosts.authType.* keys. */
