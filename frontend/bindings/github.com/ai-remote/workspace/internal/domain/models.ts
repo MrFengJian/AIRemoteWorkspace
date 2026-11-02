@@ -159,6 +159,273 @@ export interface AppConfig {
      * external AI agents over streamable HTTP on 127.0.0.1.
      */
     "mcp": MCPConfig;
+
+    /**
+     * 应用部署（应用目录）设置：目录更新源仓库等。
+     */
+    "apps": AppsConfig;
+}
+
+/**
+ * AppCredential 是面板登录凭证的一个字段。Secret 字段存 OS 钥匙串，
+ * 非密码字段（如用户名）随安装记录存 SQLite。
+ */
+export interface AppCredential {
+    "key": string;
+    "label": string;
+    "secret"?: boolean;
+
+    /**
+     * Default 是未保存凭证时的默认值（如固定用户名 admin）。
+     */
+    "default"?: string;
+}
+
+/**
+ * AppInput 是部署前需要用户提供的参数。Type: text | secret | number。
+ */
+export interface AppInput {
+    "key": string;
+    "label": string;
+    "type"?: string;
+    "required"?: boolean;
+    "placeholder"?: string;
+
+    /**
+     * Validate 目前仅支持 "min=N"（最短长度，用于密码类输入）。
+     */
+    "validate"?: string;
+
+    /**
+     * CredentialKey 非空时，该输入值在安装成功后自动保存为应用面板登录凭证
+     * 的这一字段（如 adminPassword → password），用户无需再次手填。
+     */
+    "credentialKey"?: string;
+}
+
+/**
+ * AppInstall 固化安装流程：检测 → 步骤 → 验证。
+ */
+export interface AppInstall {
+    /**
+     * Detect 已安装检测命令：输出 yes = 已安装，其余 = 未安装。
+     */
+    "detect": string;
+
+    /**
+     * Notice 安装前提示（展示在向导参数页，如"将覆盖已有安装"）。
+     */
+    "notice"?: string;
+    "inputs"?: AppInput[] | null;
+    "steps": DeployStep[] | null;
+
+    /**
+     * Verify 安装后验证命令（退出码 0 = 成功）。
+     */
+    "verify"?: string;
+}
+
+/**
+ * AppOps 统一操作集：UI 每个按钮/指标一一映射到这里的具体命令。
+ */
+export interface AppOps {
+    "start"?: string;
+    "stop"?: string;
+    "restart"?: string;
+
+    /**
+     * Status 状态聚合脚本：输出标准化 KEY=VALUE 契约（见 ParseHostAppStatus）。
+     */
+    "status": string;
+
+    /**
+     * Logs 日志命令，模板变量 {{.lines}}（默认 200）。
+     */
+    "logs": string;
+
+    /**
+     * OpenPort 开放端口命令，模板变量 {{.port}}。
+     */
+    "openPort"?: string;
+    "version"?: string;
+    "update"?: string;
+    "uninstall"?: DeployStep[] | null;
+}
+
+/**
+ * AppPanel 描述应用的 Web 面板与登录凭证。无 Web 面板的应用整个字段为空，
+ * UI 隐藏"打开面板/登录凭证"。
+ */
+export interface AppPanel {
+    /**
+     * URL 面板地址模板，可用变量 {{.host}}（主机地址）与 {{.port}}。
+     */
+    "url"?: string;
+    "port"?: number;
+    "healthPath"?: string;
+    "credentials"?: AppCredential[] | null;
+}
+
+/**
+ * AppSpec 是单个应用的操作手册（app.json 反序列化目标）。所有应用实现几乎
+ * 相同的操作集；模板占位符 {{.key}} 在执行前渲染，值一律经 shell 引用转义。
+ */
+export interface AppSpec {
+    "schemaVersion": number;
+
+    /**
+     * slug，目录唯一键
+     */
+    "id": string;
+    "name": string;
+    "description": string;
+
+    /**
+     * 官网（GitHub 等）
+     */
+    "website": string;
+
+    /**
+     * 应用目录内的图标文件名
+     */
+    "icon"?: string;
+    "tags"?: string[] | null;
+
+    /**
+     * 条目版本（种子覆盖判断）
+     */
+    "catalogVersion": number;
+    "install": AppInstall;
+    "ops": AppOps;
+    "panel"?: AppPanel | null;
+}
+
+/**
+ * AppsConfig 是应用部署功能的用户设置。
+ */
+export interface AppsConfig {
+    /**
+     * CatalogRepo 是应用目录更新源的 GitHub 仓库（"owner/repo"）。
+     * 空值由服务层回退到 DefaultCatalogRepo。
+     */
+    "catalogRepo": string;
+}
+
+/**
+ * CatalogEntry = AppSpec + 目录来源（列表接口返回）。
+ */
+export interface CatalogEntry {
+    "spec": AppSpec;
+
+    /**
+     * builtin | custom
+     */
+    "source": string;
+}
+
+/**
+ * CatalogMeta 记录数据目录中应用目录的来源与版本。
+ */
+export interface CatalogMeta {
+    /**
+     * builtin | release | main
+     */
+    "source": string;
+    "repo": string;
+    "version": number;
+
+    /**
+     * release tag 或 commit sha
+     */
+    "ref"?: string;
+    "syncedAt": string;
+}
+
+/**
+ * CatalogUpdateCheck 是一次更新检查的结果。
+ */
+export interface CatalogUpdateCheck {
+    /**
+     * release | main
+     */
+    "source": string;
+    "repo": string;
+    "currentVersion": number;
+    "latestVersion": number;
+    "updateAvailable": boolean;
+
+    /**
+     * tag 名或 commit sha
+     */
+    "ref"?: string;
+    "notes"?: string;
+}
+
+/**
+ * DeployStep 是一步固化命令。Risk 仅用于 UI 展示与确认页提示。
+ */
+export interface DeployStep {
+    "name": string;
+    "command": string;
+
+    /**
+     * 0 = 默认 600s
+     */
+    "timeoutSec"?: number;
+
+    /**
+     * write | high
+     */
+    "risk"?: string;
+}
+
+/**
+ * DeployStepRun 是一步的执行结果。Command 是渲染后（变量已替换为实际值）
+ * 的最终命令，随步骤落库并在安装面板展示；Output 截断至 16KB 并脱敏。
+ */
+export interface DeployStepRun {
+    "stepId": string;
+    "name": string;
+    "command"?: string;
+    "status": string;
+    "exitCode": number;
+    "output"?: string;
+    "error"?: string;
+    "startedAt": string;
+    "finishedAt"?: string | null;
+}
+
+/**
+ * DeployTask 是一次部署任务的执行记录（含每步输出）。
+ */
+export interface DeployTask {
+    "id": string;
+    "hostId": string;
+    "sessionId"?: string;
+    "appId": string;
+
+    /**
+     * install | uninstall | update
+     */
+    "kind": string;
+    "status": string;
+    "steps": DeployStepRun[] | null;
+    "startedAt": string;
+    "finishedAt"?: string | null;
+    "lastError"?: string;
+}
+
+/**
+ * DeployTaskEvent 是推送到前端的任务事件（Wails 事件 "apps:task"）。
+ */
+export interface DeployTaskEvent {
+    "taskId": string;
+    "hostId": string;
+    "appId": string;
+    "kind": string;
+    "status": string;
+    "step"?: DeployStepRun | null;
+    "lastError"?: string;
 }
 
 /**
@@ -323,6 +590,53 @@ export interface HighlightRule {
      * cyan/blue/purple/pink).
      */
     "color": string;
+}
+
+/**
+ * HostAppStatus 是 ops.status 契约解析后的统一数据集（面板三卡+时长/内存）。
+ */
+export interface HostAppStatus {
+    /**
+     * running | stopped | failed | unknown
+     */
+    "state": string;
+    "pid": number;
+    "port": number;
+    "listening": boolean;
+    "uptimeSec": number;
+    "memKb": number;
+
+    /**
+     * ok | fail | unknown
+     */
+    "health": string;
+    "version": string;
+
+    /**
+     * Raw 保留原始脚本输出，排障时展示。
+     */
+    "raw"?: string;
+}
+
+/**
+ * Installation 记录某应用在某台主机上的安装情况（本地数据库）。
+ */
+export interface Installation {
+    "id": string;
+    "hostId": string;
+    "appId": string;
+
+    /**
+     * installing | installed | failed
+     */
+    "status": string;
+    "appVersion"?: string;
+    "serviceUnit"?: string;
+    "port"?: number;
+    "installDir"?: string;
+    "lastError"?: string;
+    "installedAt": string;
+    "updatedAt": string;
 }
 
 /**

@@ -17,6 +17,7 @@ import {
   Check,
   Container,
   Monitor,
+  Package,
   PanelLeftOpen,
   Network,
   Ship,
@@ -41,6 +42,7 @@ import { MonitorView } from "@/features/monitor/MonitorView";
 import { DockerView } from "@/features/docker/DockerView";
 import { K8sView } from "@/features/k8s/K8sView";
 import { TunnelPanel } from "@/features/tunnel/TunnelPanel";
+import { AppsPanel } from "@/features/apps/AppsPanel";
 import { useOpenTerminal, useOpenLocalTerminal, useHosts } from "@/features/hosts/hooks";
 import { useHostsUIStore } from "@/features/hosts/store";
 import { HostsSidebar } from "@/features/hosts/HostsSidebar";
@@ -119,7 +121,10 @@ export function TerminalView() {
 
   // Right panel visibility + active tab (SFTP / Agent / Monitor / Tunnel share one panel).
   const [rightOpen, setRightOpen] = useState(false);
-  const [rightTab, setRightTab] = useState<"sftp" | "agent" | "monitor" | "docker" | "k8s" | "tunnel">("agent");
+  const [rightTab, setRightTab] = useState<
+    "sftp" | "agent" | "monitor" | "docker" | "k8s" | "tunnel" | "apps"
+  >("agent");
+  const pendingApp = useUIStore((s) => s.pendingApp);
   const [copied, setCopied] = useState(false);
   // Hosts sidebar collapsed state — persisted so the preference survives
   // restarts; collapsing gives the terminal area more room.
@@ -185,6 +190,13 @@ export function TerminalView() {
     queryKey: ["local-shell-preference"],
     queryFn: () => ConfigService.GetAppConfig().then((c) => c.localShell ?? ""),
   });
+
+  // 应用管理页的跳转意图：自动展开右侧"应用"面板（面板内消费具体意图）。
+  useEffect(() => {
+    if (!pendingApp) return;
+    openPanel("apps");
+  }, [pendingApp]);
+
   const [shellMenuOpen, setShellMenuOpen] = useState(false);
   const shellMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -208,7 +220,19 @@ export function TerminalView() {
   // Per-tab split ratio (first pane's share, 0–1) and the right panel width,
   // both draggable. Kept locally: TerminalView stays mounted for the app run.
   const [splitRatios, setSplitRatios] = useState<Record<string, number>>({});
+  // 右面板宽度：展开时默认伸张到当前窗口允许的最大宽度（见 openPanel）。
   const [panelWidth, setPanelWidth] = useState(320);
+
+  /** 面板最大宽度：侧栏 56px + 终端区至少保留 360px，且不超过 720px。 */
+  const maxPanelWidth = () =>
+    Math.max(240, Math.min(720, window.innerWidth - 56 - 360));
+
+  /** 展开右面板：无宽度记忆时直接伸张到最大允许宽度。 */
+  const openPanel = (tab: typeof rightTab) => {
+    setRightTab(tab);
+    setPanelWidth(maxPanelWidth());
+    setRightOpen(true);
+  };
 
   /** Drag handler for the split divider; adjusts the first pane's share. */
   const startSplitDrag = (
@@ -235,14 +259,14 @@ export function TerminalView() {
     window.addEventListener("pointerup", onUp);
   };
 
-  /** Drag handler for the right panel's left edge (width 240–560px). */
+  /** Drag handler for the right panel's left edge (240px – maxPanelWidth). */
   const startPanelDrag = (e: React.PointerEvent) => {
     e.preventDefault();
-    const windowWidth = window.innerWidth;
+    const maxW = maxPanelWidth();
     const onMove = (ev: PointerEvent) => {
       // The sidebar (56px) + terminal area sit left of the panel; clamp by
       // viewport so the terminal never collapses.
-      const width = Math.min(560, Math.max(240, windowWidth - ev.clientX));
+      const width = Math.min(maxW, Math.max(240, window.innerWidth - ev.clientX));
       setPanelWidth(width);
     };
     const onUp = () => {
@@ -630,42 +654,27 @@ export function TerminalView() {
     "view.toggleSftp": inTerminal(() => {
       if (!activeSession || isLocalSession(activeSession)) return;
       if (rightOpen && rightTab === "sftp") setRightOpen(false);
-      else {
-        setRightTab("sftp");
-        setRightOpen(true);
-      }
+      else openPanel("sftp");
     }),
     "view.toggleAgent": inTerminal(() => {
       if (!activeSession) return;
       if (rightOpen && rightTab === "agent") setRightOpen(false);
-      else {
-        setRightTab("agent");
-        setRightOpen(true);
-      }
+      else openPanel("agent");
     }),
     "view.toggleMonitor": inTerminal(() => {
       if (!activeSession) return;
       if (rightOpen && rightTab === "monitor") setRightOpen(false);
-      else {
-        setRightTab("monitor");
-        setRightOpen(true);
-      }
+      else openPanel("monitor");
     }),
     "view.toggleDocker": inTerminal(() => {
       if (!activeSession) return;
       if (rightOpen && rightTab === "docker") setRightOpen(false);
-      else {
-        setRightTab("docker");
-        setRightOpen(true);
-      }
+      else openPanel("docker");
     }),
     "view.toggleK8s": inTerminal(() => {
       if (!activeSession) return;
       if (rightOpen && rightTab === "k8s") setRightOpen(false);
-      else {
-        setRightTab("k8s");
-        setRightOpen(true);
-      }
+      else openPanel("k8s");
     }),
     "view.toggleSidebar": inTerminal(() => toggleSidebar()),
     "view.toggleQuickBar": inTerminal(() => toggleQuickBar()),
@@ -874,10 +883,7 @@ export function TerminalView() {
               onClick={() => {
                 if (rightOpen && rightTab === "sftp") {
                   setRightOpen(false);
-                } else {
-                  setRightTab("sftp");
-                  setRightOpen(true);
-                }
+                } else openPanel("sftp");
               }}
               title={activeSession && isLocalSession(activeSession) ? t("terminal.sftpNeedsHost") : t("terminal.toggleSftp")}
               className={cn(
@@ -919,10 +925,7 @@ export function TerminalView() {
               onClick={() => {
                 if (rightOpen && rightTab === "agent") {
                   setRightOpen(false);
-                } else {
-                  setRightTab("agent");
-                  setRightOpen(true);
-                }
+                } else openPanel("agent");
               }}
               title={t("terminal.toggleAgent")}
               className={cn(
@@ -943,10 +946,7 @@ export function TerminalView() {
               onClick={() => {
                 if (rightOpen && rightTab === "monitor") {
                   setRightOpen(false);
-                } else {
-                  setRightTab("monitor");
-                  setRightOpen(true);
-                }
+                } else openPanel("monitor");
               }}
               title={t("monitor.title")}
               className={cn(
@@ -967,10 +967,7 @@ export function TerminalView() {
               onClick={() => {
                 if (rightOpen && rightTab === "docker") {
                   setRightOpen(false);
-                } else {
-                  setRightTab("docker");
-                  setRightOpen(true);
-                }
+                } else openPanel("docker");
               }}
               title={t("docker.title")}
               className={cn(
@@ -991,10 +988,7 @@ export function TerminalView() {
               onClick={() => {
                 if (rightOpen && rightTab === "k8s") {
                   setRightOpen(false);
-                } else {
-                  setRightTab("k8s");
-                  setRightOpen(true);
-                }
+                } else openPanel("k8s");
               }}
               title={t("k8s.title")}
               className={cn(
@@ -1007,6 +1001,27 @@ export function TerminalView() {
             >
               <Ship className="h-4 w-4" />
             </button>
+            {/* Apps toggle — deploy/manage apps on the session's host; local
+                terminals have nothing to deploy to. */}
+            <button
+              type="button"
+              disabled={activeSession ? isLocalSession(activeSession) : false}
+              onClick={() => {
+                if (rightOpen && rightTab === "apps") {
+                  setRightOpen(false);
+                } else openPanel("apps");
+              }}
+              title={t("nav.apps")}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
+                "disabled:pointer-events-none disabled:opacity-40",
+                rightOpen && rightTab === "apps"
+                  ? "bg-accent text-primary"
+                  : "text-muted-foreground hover:bg-accent/50",
+              )}
+            >
+              <Package className="h-4 w-4" />
+            </button>
             {/* Tunnel toggle — like SFTP, SSH tunnels are per host, so local
                 sessions have nothing to show. */}
             <button
@@ -1015,14 +1030,10 @@ export function TerminalView() {
               onClick={() => {
                 if (rightOpen && rightTab === "tunnel") {
                   setRightOpen(false);
-                } else {
-                  setRightTab("tunnel");
-                  setRightOpen(true);
-                }
+                } else openPanel("tunnel");
               }}
               title={t("tunnel.title")}
-              className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
+              className={cn(                "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
                 "disabled:pointer-events-none disabled:opacity-40",
                 rightOpen && rightTab === "tunnel"
                   ? "bg-accent text-primary"
@@ -1234,6 +1245,20 @@ export function TerminalView() {
               </button>
               <button
                 type="button"
+                onClick={() => setRightTab("apps")}
+                title={t("nav.apps")}
+                aria-label={t("nav.apps")}
+                className={cn(
+                  "flex h-7 w-7 items-center justify-center rounded-[var(--radius)] transition-colors",
+                  rightTab === "apps"
+                    ? "bg-accent text-primary"
+                    : "text-muted-foreground hover:bg-accent/50",
+                )}
+              >
+                <Package className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
                 onClick={() => setRightTab("tunnel")}
                 title={t("tunnel.title")}
                 aria-label={t("tunnel.title")}
@@ -1274,6 +1299,10 @@ export function TerminalView() {
                 />
               ) : rightTab === "k8s" ? (
                 <K8sView
+                  embeddedSessionID={activeSession.id}
+                />
+              ) : rightTab === "apps" ? (
+                <AppsPanel
                   embeddedSessionID={activeSession.id}
                 />
               ) : rightTab === "tunnel" ? (

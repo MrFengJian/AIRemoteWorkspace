@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "octop",
+  "name": "Octop",
+  "description": "腾讯开源的自托管多用户多智能体 AI 助手：单进程部署，内置 Web 面板、智能体管理与 IM 渠道接入。",
+  "website": "https://github.com/TencentCloud/Octop",
+  "icon": "icon.svg",
+  "tags": [
+    "ai-assistant",
+    "multi-agent",
+    "web-panel"
+  ],
+  "catalogVersion": 1,
+  "install": {
+    "detect": "command -v octop >/dev/null 2>&1 && echo yes || echo no",
+    "notice": "初始化会创建数据库与管理员账号；如主机上已有 Octop 安装（~/.octop 目录），请先备份并手动清理该目录。",
+    "inputs": [
+      {
+        "key": "adminPassword",
+        "label": "管理员初始密码",
+        "type": "secret",
+        "required": true,
+        "placeholder": "至少 8 位，建议字母+数字",
+        "validate": "min=8",
+        "credentialKey": "password"
+      }
+    ],
+    "steps": [
+      {
+        "name": "下载并安装 Octop（官方一键脚本）",
+        "command": "curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash",
+        "timeoutSec": 900,
+        "risk": "write"
+      },
+      {
+        "name": "初始化（数据库、JWT 与管理员账号）",
+        "command": "octop init --admin-username admin --admin-password {{.adminPassword}} --yes",
+        "timeoutSec": 180,
+        "risk": "write"
+      },
+      {
+        "name": "注册 systemd 服务、清理启动限流并监听 0.0.0.0",
+        "command": "octop service start 2>/dev/null || true\nif [ -f \"$HOME/.config/systemd/user/octop.service\" ]; then S=\"--user\"; else S=\"\"; fi\nif [ \"$S\" = \"--user\" ]; then\n  D=\"$HOME/.config/systemd/user/octop.service.d\"\n  mkdir -p \"$D\"\n  printf '[Service]\\nEnvironment=OCTOP_BIND_HOST=0.0.0.0\\n' | tee \"$D/10-bind.conf\" >/dev/null\n  systemctl --user daemon-reload\nelif [ -f /etc/systemd/system/octop.service ] && sudo -n true 2>/dev/null; then\n  sudo mkdir -p /etc/systemd/system/octop.service.d\n  printf '[Service]\\nEnvironment=OCTOP_BIND_HOST=0.0.0.0\\n' | sudo tee /etc/systemd/system/octop.service.d/10-bind.conf >/dev/null\n  sudo systemctl daemon-reload\nelse\n  echo '未找到 octop.service 且无免密 sudo，跳过 0.0.0.0 绑定配置'\nfi\noctop service stop >/dev/null 2>&1 || true\nsystemctl $S reset-failed octop.service 2>/dev/null || true\nif command -v fuser >/dev/null 2>&1 && fuser 8088/tcp >/dev/null 2>&1; then\n  echo '端口 8088 被残留进程占用，清理中…'\n  fuser -k 8088/tcp 2>/dev/null || true\n  sleep 1\nfi\nif ! octop service start; then\n  echo '--- octop.service 最近日志 ---'\n  journalctl $S -u octop -n 40 --no-pager 2>/dev/null || true\n  tail -n 40 \"$HOME/.octop/logs/\"*.log 2>/dev/null || true\n  exit 1\nfi",
+        "timeoutSec": 180,
+        "risk": "write"
+      }
+    ],
+    "verify": "sleep 3; curl -fsS -m 8 http://127.0.0.1:8088/api/health >/dev/null 2>&1 && echo ok"
+  },
+  "ops": {
+    "start": "export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"\nif [ -f \"$HOME/.config/systemd/user/octop.service\" ]; then S=\"--user\"; else S=\"\"; fi\nsystemctl $S reset-failed octop.service 2>/dev/null || true\noctop service start",
+    "stop": "export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"\noctop service stop",
+    "restart": "export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"\nif [ -f \"$HOME/.config/systemd/user/octop.service\" ]; then S=\"--user\"; else S=\"\"; fi\nsystemctl $S reset-failed octop.service 2>/dev/null || true\noctop service restart",
+    "status": "export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"\nif [ -f \"$HOME/.config/systemd/user/octop.service\" ]; then S=\"--user\"; else S=\"\"; fi\nraw=$(systemctl $S is-active octop 2>/dev/null)\nhealth=fail\nif curl -fsS -m 5 http://127.0.0.1:8088/api/health >/dev/null 2>&1; then health=ok; fi\n# 健康接口优先：服务可能不以 unit 方式运行（前台/容器），健康即视为运行中\nif [ \"$health\" = ok ] || [ \"$raw\" = active ]; then st=running\nelif [ \"$raw\" = activating ]; then st=running\nelif [ \"$raw\" = failed ]; then st=failed\nelse st=stopped; fi\npid=$(systemctl $S show -p MainPID --value octop 2>/dev/null)\n[ \"$pid\" = \"0\" ] && pid=\nif [ -z \"$pid\" ] && command -v pgrep >/dev/null 2>&1; then pid=$(pgrep -f \"[o]ctop\" | head -n1); fi\nup=0; mem=0\nif [ -n \"$pid\" ]; then\n  up=$(ps -o etimes= -p \"$pid\" 2>/dev/null | tr -d \" \")\n  mem=$(ps -o rss= -p \"$pid\" 2>/dev/null | tr -d \" \")\nfi\nif ss -tln 2>/dev/null | grep -q \":8088 \"; then listening=yes; else listening=no; fi\necho \"STATUS=$st\"\necho \"PID=${pid:-0}\"\necho \"PORT=8088\"\necho \"UPTIME_SEC=${up:-0}\"\necho \"MEM_KB=${mem:-0}\"\necho \"LISTENING=$listening\"\necho \"HEALTH=$health\"\necho \"VERSION=$(octop --version 2>/dev/null | head -n1)\"",
+    "logs": "export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"\nif [ -f \"$HOME/.config/systemd/user/octop.service\" ]; then J=\"--user\"; else J=\"\"; fi\njournalctl $J -u octop -n {{.lines}} --no-pager 2>/dev/null || tail -n {{.lines}} $HOME/.octop/logs/*.log 2>/dev/null",
+    "openPort": "S=\"\"; sudo -n true 2>/dev/null && S=\"sudo -n\"\np={{.port}}; if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then $S firewall-cmd --permanent --add-port=$p/tcp >/dev/null && $S firewall-cmd --reload >/dev/null && echo \"firewalld: opened $p/tcp\"; elif command -v ufw >/dev/null 2>&1; then $S ufw allow $p/tcp && echo \"ufw: opened $p/tcp\"; elif command -v iptables >/dev/null 2>&1; then $S iptables -C INPUT -p tcp --dport $p -j ACCEPT 2>/dev/null || $S iptables -I INPUT -p tcp --dport $p -j ACCEPT; echo \"iptables: opened $p/tcp\"; else echo '未找到 firewalld/ufw/iptables，请在云安全组手动放行'; fi",
+    "version": "octop --version 2>/dev/null | head -n1",
+    "update": "octop update || exit 1\nif [ -f \"$HOME/.config/systemd/user/octop.service\" ]; then S=\"--user\"; else S=\"\"; fi\nsystemctl $S reset-failed octop.service 2>/dev/null || true\noctop service restart",
+    "uninstall": [
+      {
+        "name": "停止并注销用户态 systemd 服务（兼容系统态）",
+        "command": "octop service stop 2>/dev/null || true\nsystemctl --user disable --now octop.service 2>/dev/null || true\nrm -f \"$HOME/.config/systemd/user/octop.service\"\nrm -rf \"$HOME/.config/systemd/user/octop.service.d\"\nsystemctl --user daemon-reload 2>/dev/null || true\nsudo -n systemctl disable --now octop.service 2>/dev/null || true\nsudo -n rm -f /etc/systemd/system/octop.service 2>/dev/null || true\nsudo -n rm -rf /etc/systemd/system/octop.service.d 2>/dev/null || true\nsudo -n systemctl daemon-reload 2>/dev/null || true",
+        "timeoutSec": 120,
+        "risk": "high"
+      },
+      {
+        "name": "卸载程序（保留 ~/.octop 数据目录）",
+        "command": "command -v pipx >/dev/null 2>&1 && pipx uninstall octop 2>/dev/null || pip uninstall -y octop 2>/dev/null || true",
+        "timeoutSec": 120,
+        "risk": "high"
+      }
+    ]
+  },
+  "panel": {
+    "url": "http://{{.host}}:8088",
+    "port": 8088,
+    "healthPath": "/api/health",
+    "credentials": [
+      {
+        "key": "username",
+        "label": "用户名",
+        "secret": false,
+        "default": "admin"
+      },
+      {
+        "key": "password",
+        "label": "密码",
+        "secret": true
+      }
+    ]
+  }
+}

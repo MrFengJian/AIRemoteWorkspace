@@ -47,11 +47,13 @@ type HostSource interface {
 }
 
 // SessionManager is the subset of the SSH manager the MCP tools need.
-// *ssh.Manager satisfies it.
+// *ssh.Manager satisfies it. ConnectedHosts backs the list_hosts status
+// filter (all sessions — terminal and MCP — share the manager).
 type SessionManager interface {
 	OpenSession(ctx context.Context, host domain.Host, creds domain.Credentials, cols, rows int, events application.SessionEvents) (sessionID string, err error)
 	ExecInSessionCtx(ctx context.Context, sessionID, cmd string) (string, error)
 	Close(sessionID string) error
+	ConnectedHosts() map[string]bool
 }
 
 // SftpFileOps is the remote-file subset of the SFTP manager (same shape the
@@ -85,10 +87,10 @@ type Server struct {
 	mcp  *mcp.Server
 	auth http.Handler // auth middleware wrapped around the MCP handler
 
-	mu    sync.Mutex
-	cfg   domain.MCPConfig  // effective config (normalized; holds the token)
-	srv   *http.Server      // non-nil while running
-	err   string            // last start failure, "" when running/stopped clean
+	mu       sync.Mutex
+	cfg      domain.MCPConfig  // effective config (normalized; holds the token)
+	srv      *http.Server      // non-nil while running
+	err      string            // last start failure, "" when running/stopped clean
 	sessions map[string]string // hostID → SSH session owned by this server
 }
 

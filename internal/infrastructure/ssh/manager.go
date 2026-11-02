@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	cryptossh "golang.org/x/crypto/ssh"
 
 	"github.com/ai-remote/workspace/internal/application"
 	"github.com/ai-remote/workspace/internal/domain"
@@ -446,6 +448,88 @@ func (m *Manager) execSession(ctx context.Context, sessionID, cmd string, stdin 
 		<-done
 		return "", ctx.Err()
 	}
+}
+
+// ExecInSessionStream runs cmd on the connection backing sessionID and
+// STREAMS its combined output to onChunk as it arrives (used by the app
+// deploy panel: long installers show live progress instead of buffering
+// until completion). Returns the full combined output; err carries
+// *ssh.ExitError for non-zero exits (same semantics as ExecInSessionCtx) or
+// ctx.Err() after the timeout watchdog kills the remote command.
+func (m *Manager) ExecInSessionStream(ctx context.Context, sessionID, cmd string, onChunk func(string)) (string, int, error) {
+	ms, ok := m.session(sessionID)
+	if !ok {
+		return "", -1, errSessionNotFound(sessionID)
+	}
+	sess, err := ms.currentClient().NewSession()
+	if err != nil {
+		return "", -1, fmt.Errorf("new exec session: %w", err)
+	}
+	defer sess.Close()
+
+	var buf bytes.Buffer
+	if onChunk != nil {
+		sess.Stdout = io.MultiWriter(&buf, streamWriter(onChunk))
+		sess.Stderr = io.MultiWriter(&buf, streamWriter(onChunk))
+	} else {
+		sess.Stdout = &buf
+		sess.Stderr = &buf
+	}
+
+	if err := sess.Start(cmd); err != nil {
+		return "", -1, fmt.Errorf("start: %w", err)
+	}
+	type waitResult struct {
+		err error
+	}
+	done := make(chan waitResult, 1)
+	go func() {
+		done <- waitResult{sess.Wait()}
+	}()
+	select {
+	case r := <-done:
+		code := 0
+		if r.err != nil {
+			var exitErr *cryptossh.ExitError
+			if errors.As(r.err, &exitErr) {
+				code = exitErr.ExitStatus()
+			} else {
+				return buf.String(), -1, fmt.Errorf("远程执行失败: %w", r.err)
+			}
+		}
+		return buf.String(), code, r.err
+	case <-ctx.Done():
+		// Closing the session kills the remote command; wait for the wait
+		// goroutine so the session isn't used after Close returns.
+		_ = sess.Close()
+		<-done
+		return buf.String(), -1, ctx.Err()
+	}
+}
+
+// streamWriter adapts a callback to an io.Writer (SSH delivers output in
+// packet-sized writes; the caller throttles event emission).
+type streamWriter func(string)
+
+func (w streamWriter) Write(p []byte) (int, error) {
+	w(string(p))
+	return len(p), nil
+}
+
+// ConnectedHosts returns the distinct set of host IDs that currently have at
+// least one live session (terminal, MCP, or otherwise — all sessions share
+// this manager). Host-less local sessions are excluded. Used by the MCP
+// list_hosts filter and anywhere a connected/not-connected view is needed.
+func (m *Manager) ConnectedHosts() map[string]bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make(map[string]bool)
+	for _, ms := range m.sessions {
+		if id := ms.host.ID; id != "" {
+			out[id] = true
+		}
+	}
+	return out
 }
 
 // HostOfSession returns the domain.Host associated with a session.

@@ -14,9 +14,9 @@ type AppConfig struct {
 	// to these; they are also where the appearance dialog persists changes
 	// made in a LOCAL terminal tab (no host record to write to).
 	// "" / 0 = built-in defaults (cobalt2 / Cascadia stack / 13px).
-	TerminalTheme     string `json:"terminalTheme"`
-	TerminalFont      string `json:"terminalFont"`
-	TerminalFontSize  int    `json:"terminalFontSize"`
+	TerminalTheme    string `json:"terminalTheme"`
+	TerminalFont     string `json:"terminalFont"`
+	TerminalFontSize int    `json:"terminalFontSize"`
 	// Terminal content highlighting (http/https links, ERROR/WARN keywords).
 	// Inverted flags: an older settings row without the fields keeps both
 	// highlights enabled — the out-of-box default.
@@ -28,7 +28,7 @@ type AppConfig struct {
 	// Quick command bar entries (Xshell 风格的快速命令): user-defined
 	// scripts that one click types into the bar's target terminal sessions.
 	QuickCommands []QuickCommand `json:"quickCommands,omitempty"`
-	LLM               LLMConfig    `json:"llm"` // AI agent provider config (API key in SecretStore)
+	LLM           LLMConfig      `json:"llm"` // AI agent provider config (API key in SecretStore)
 	// Keyboard shortcut overrides (Xshell-style). Key = command id
 	// ("terminal.copy"), value = binding string ("Ctrl+Shift+C"). Only entries
 	// the user changed from the default are stored; nil/empty = all defaults.
@@ -58,7 +58,20 @@ type AppConfig struct {
 	// Local MCP server (Phase 6) exposing host/SSH/SFTP capabilities to
 	// external AI agents over streamable HTTP on 127.0.0.1.
 	MCP MCPConfig `json:"mcp"`
+	// 应用部署（应用目录）设置：目录更新源仓库等。
+	Apps AppsConfig `json:"apps"`
 }
+
+// AppsConfig 是应用部署功能的用户设置。
+type AppsConfig struct {
+	// CatalogRepo 是应用目录更新源的 GitHub 仓库（"owner/repo"）。
+	// 空值由服务层回退到 DefaultCatalogRepo。
+	CatalogRepo string `json:"catalogRepo"`
+}
+
+// DefaultCatalogRepo 是应用目录更新源的默认仓库（release 资产 catalog.zip
+// 与 main 分支 apps/catalog/ 路径约定见 docs/APP_CATALOG.md）。
+const DefaultCatalogRepo = "MrFengJian/AIRemoteWorkspace"
 
 // MCPConfig configures the local MCP server. External agents (Claude, Codex,
 // Cursor) connect to http://127.0.0.1:<port>/mcp with the bearer Token; every
@@ -200,7 +213,7 @@ func DefaultConfig() AppConfig {
 			BaseURL: "https://api.openai.com/v1",
 			Model:   "gpt-4o",
 		},
-		MiddleClickAction: "pasteSelection",
+		MiddleClickAction:      "pasteSelection",
 		MonitorIntervalSeconds: 60,
 		Agent: AgentConfig{
 			MaxSteps:          100,

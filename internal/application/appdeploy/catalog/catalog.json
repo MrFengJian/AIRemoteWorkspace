@@ -1,0 +1,29 @@
+{
+  "catalogVersion": 1,
+  "apps": [
+    {
+      "id": "octop",
+      "name": "Octop",
+      "description": "腾讯开源的自托管多用户多智能体 AI 助手：单进程部署，内置 Web 面板、智能体管理与 IM 渠道接入。",
+      "website": "https://github.com/TencentCloud/Octop",
+      "icon": "icon.svg",
+      "tags": ["ai-assistant", "multi-agent", "web-panel"]
+    },
+    {
+      "id": "openclaw",
+      "name": "OpenClaw",
+      "description": "开源个人 AI 助理运行时：跑在你自己的服务器上，通过 WhatsApp/Telegram/Discord/Slack 等渠道与你交互，内置 Web 控制台。",
+      "website": "https://github.com/openclaw/openclaw",
+      "icon": "icon.svg",
+      "tags": ["ai-assistant", "gateway", "control-ui"]
+    },
+    {
+      "id": "hermes",
+      "name": "Hermes Agent",
+      "description": "Nous Research 开源的自进化 AI 智能体：7×24 运行在自己的服务器上，可接入 Telegram/Discord/WhatsApp 等消息网关，从经验中沉淀技能。",
+      "website": "https://github.com/NousResearch/hermes-agent",
+      "icon": "icon.svg",
+      "tags": ["ai-agent", "gateway"]
+    }
+  ]
+}

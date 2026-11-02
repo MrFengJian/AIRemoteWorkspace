@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"log"
 	"path/filepath"
 	"runtime"
@@ -11,6 +12,7 @@ import (
 	wailsapp "github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/ai-remote/workspace/internal/application"
+	appdeploy "github.com/ai-remote/workspace/internal/application/appdeploy"
 	"github.com/ai-remote/workspace/internal/domain"
 	"github.com/ai-remote/workspace/internal/infrastructure/agent"
 	"github.com/ai-remote/workspace/internal/infrastructure/localpty"
@@ -26,7 +28,7 @@ import (
 // the UI and, later, the MCP system_info tool.
 const (
 	appName    = "AI Remote Workspace"
-	appVersion = "1.1.1"
+	appVersion = "1.2.0"
 	// appDirName is the single directory name used under xdg.DataHome /
 	// xdg.ConfigHome (database + skills + the data-dir pointer file).
 	appDirName = "ai-remote-workspace"
@@ -42,6 +44,8 @@ func init() {
 	// Register the `time` event with a string payload so Wails generates a
 	// typed TS API for it. The StatusBar subscribes via Events.On("time").
 	wailsapp.RegisterEvent[string]("time")
+	// 应用部署任务进度（步骤状态/输出摘要）。
+	wailsapp.RegisterEvent[domain.DeployTaskEvent]("apps:task")
 }
 
 func main() {
@@ -128,6 +132,50 @@ func main() {
 	// ModelProviderService takes the provider repo + legacy config repo (both
 	// implemented by ConfigRepo) and the vault for per-provider API keys.
 	providerSvc := application.NewModelProviderService(configRepo, configRepo, secretSvc)
+
+	// 应用部署（应用目录）：内置目录随二进制分发，启动时种子解压到
+	// <data>/apps/catalog；部署/控制走会话通道，总览轮询走一次性连接。
+	appsDir := filepath.Join(dataDir, "apps")
+	appDeployRepo := sqlite.NewAppDeployRepo(store)
+	// 磁盘目录来源（builtin/release/main）决定种子覆盖策略：GitHub 更新过的
+	// 目录不被旧二进制降级，内置来源的同版本内容漂移则随二进制更新。
+	catalogSource := ""
+	if meta, err := appDeployRepo.GetCatalogMeta(); err == nil {
+		catalogSource = meta.Source
+	}
+	if err := appdeploy.SeedBuiltinCatalog(appsDir, catalogSource); err != nil {
+		log.Printf("seed builtin app catalog: %v", err)
+	} else if appdeploy.LastSeedWasOverwrite() {
+		log.Printf("app catalog seeded/updated from binary (disk source: %q)", catalogSource)
+	}
+	appDeploySvc := appdeploy.NewService(appsDir, appDeployRepo, connManager,
+		ssh.NewOneShotRunner(
+			keyStore,
+			func(h domain.Host) (*domain.SshRoute, error) {
+				if sshRoutes == nil {
+					return nil, nil
+				}
+				return sshRoutes.RouteFor(h)
+			},
+			func(hostID string) (domain.Host, domain.Credentials, error) {
+				h, err := hostSvc.Get(hostID)
+				if err != nil {
+					return domain.Host{}, domain.Credentials{}, err
+				}
+				creds, err := hostSvc.ResolveCredentials(h, domain.Credentials{})
+				return h, creds, err
+			},
+		),
+		hostSvc, panelCredentialStore{secretSvc}, nil,
+		func() string {
+			cfg, err := configSvc.GetAppConfig()
+			if err != nil {
+				return ""
+			}
+			return cfg.Apps.CatalogRepo
+		},
+		connManager)
+
 	// Agent conversation persistence (chat history, resumable).
 	convRepo := sqlite.NewConversationRepo(store)
 	convSvc := application.NewConversationService(convRepo, connManager)
@@ -160,6 +208,7 @@ func main() {
 		skillSvc.SetDir(filepath.Join(newDataDir, "skills"))
 		skillSvc.SetExpertsRoot(filepath.Join(newDataDir, "experts"))
 		expertSvc.SetDir(filepath.Join(newDataDir, "experts"))
+		appDeploySvc.SetAppsDir(filepath.Join(newDataDir, "apps"))
 	})
 	permGate := application.NewPermissionGate(nil)
 	// monitorSvc doubles as the diagnosis snapshot source (deterministic
@@ -241,6 +290,7 @@ func main() {
 	agentService := interfaces.NewAgentService(agentRuntime, permGate, convSvc, skillSvc, expertSvc)
 	mcpService := interfaces.NewMCPService(mcpServer)
 	faultReportService := interfaces.NewFaultReportService(faultSvc)
+	appDeployService := interfaces.NewAppDeployService(appDeploySvc)
 
 	// Wire the approval emitter now that AgentService exists.
 	permGate.SetEmitter(agentService)
@@ -264,6 +314,7 @@ func main() {
 			wailsapp.NewService(expertService),
 			wailsapp.NewService(agentService),
 			wailsapp.NewService(faultReportService),
+			wailsapp.NewService(appDeployService),
 			wailsapp.NewService(mcpService),
 		},
 		Assets: wailsapp.AssetOptions{
@@ -320,4 +371,37 @@ type secretResolver struct{ inner *application.SecretService }
 
 func (r *secretResolver) GetHostSecret(hostID string, kind string) ([]byte, error) {
 	return r.inner.GetHostSecret(hostID, application.SecretKind(kind))
+}
+
+// panelCredentialStore adapts application.SecretService to the appdeploy
+// CredentialStore port: one OS-vault entry per host+app holding the whole
+// credential map as JSON (kind "app:<appID>").
+type panelCredentialStore struct{ inner *application.SecretService }
+
+func panelCredKind(appID string) application.SecretKind {
+	return application.SecretKind("app:" + appID)
+}
+
+func (p panelCredentialStore) SavePanelCredential(hostID, appID string, values map[string]string) error {
+	raw, err := json.Marshal(values)
+	if err != nil {
+		return err
+	}
+	return p.inner.SaveHostSecret(hostID, panelCredKind(appID), raw)
+}
+
+func (p panelCredentialStore) GetPanelCredential(hostID, appID string) (map[string]string, error) {
+	raw, err := p.inner.GetHostSecret(hostID, panelCredKind(appID))
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (p panelCredentialStore) DeletePanelCredential(hostID, appID string) error {
+	return p.inner.DeleteHostSecret(hostID, panelCredKind(appID))
 }

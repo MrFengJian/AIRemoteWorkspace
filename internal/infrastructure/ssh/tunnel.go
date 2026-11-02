@@ -92,6 +92,9 @@ type TunnelManager struct {
 	mu      sync.Mutex
 	emit    func(domain.TunnelStatus)
 	tunnels map[string]*tunnelSupervisor
+	// dynamic holds app-scoped one-click tunnels (appdeploy panel) — a
+	// separate namespace from the host's saved rules; Ensure() never touches
+	// them (see EnsureDynamic).
 	// manualStop records rules the user stopped from the panel
 	// (supKey → true). Ensure never auto-starts a marked rule, so session
 	// opens / splits / duplicates cannot silently resurrect a tunnel the
@@ -373,14 +376,14 @@ func (m *TunnelManager) SetEmitter(fn func(domain.TunnelStatus)) {
 // tunnelSupervisor runs one tunnel: listener + redial loop + connection
 // serving. All state changes flow through setStatus → manager.report.
 type tunnelSupervisor struct {
-	hostID     string
-	sshHost    string
-	sshPort    int
-	sshUser    string
-	config     domain.TunnelConfig
-	creds    domain.Credentials
-	dial     func(domain.Host, domain.Credentials) (channelDialer, error)
-	report   func(domain.TunnelStatus)
+	hostID  string
+	sshHost string
+	sshPort int
+	sshUser string
+	config  domain.TunnelConfig
+	creds   domain.Credentials
+	dial    func(domain.Host, domain.Credentials) (channelDialer, error)
+	report  func(domain.TunnelStatus)
 
 	// retryBackoffBase is a field (not const) so tests can shorten it.
 	retryBackoffBase time.Duration

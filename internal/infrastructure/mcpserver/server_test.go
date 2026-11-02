@@ -38,9 +38,10 @@ func (h *stubHosts) ResolveCredentials(host domain.Host, provided domain.Credent
 }
 
 type stubSSH struct {
-	opened  []string
-	closed  []string
-	execOut string
+	opened    []string
+	closed    []string
+	execOut   string
+	connected map[string]bool // ConnectedHosts result (nil = none)
 }
 
 func (m *stubSSH) OpenSession(_ context.Context, host domain.Host, _ domain.Credentials, _, _ int, _ application.SessionEvents) (string, error) {
@@ -56,6 +57,8 @@ func (m *stubSSH) Close(sessionID string) error {
 	m.closed = append(m.closed, sessionID)
 	return nil
 }
+
+func (m *stubSSH) ConnectedHosts() map[string]bool { return m.connected }
 
 type stubSFTP struct {
 	writtenPath string
@@ -123,7 +126,7 @@ func connect(t *testing.T, port int, token string) *mcp.ClientSession {
 	t.Helper()
 	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0"}, nil)
 	tr := &mcp.StreamableClientTransport{
-		Endpoint: fmt.Sprintf("http://127.0.0.1:%d/mcp", port),
+		Endpoint:   fmt.Sprintf("http://127.0.0.1:%d/mcp", port),
 		HTTPClient: &http.Client{Transport: authInjector{token: token}},
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -296,4 +299,77 @@ func textOf(t *testing.T, res *mcp.CallToolResult) string {
 		}
 	}
 	return b.String()
+}
+
+// TestListHostsFilters 覆盖 list_hosts 的 group/status 过滤与状态标注。
+func TestListHostsFilters(t *testing.T) {
+	free := freePort(t)
+	hosts := &stubHosts{hosts: []domain.Host{
+		{ID: "h1", Name: "web-01", Host: "10.0.0.5", Port: 22, Username: "root",
+			AuthType: domain.AuthPassword, Group: "production/web"},
+		{ID: "h2", Name: "db-01", Host: "10.0.0.6", Port: 22, Username: "root",
+			AuthType: domain.AuthPassword, Group: "production/db"},
+		{ID: "h3", Name: "dev-01", Host: "10.0.0.7", Port: 22, Username: "root",
+			AuthType: domain.AuthPassword, Group: "dev"},
+	}}
+	ssh := &stubSSH{execOut: "ok", connected: map[string]bool{"h1": true}}
+	s := New(Deps{
+		AppName: "AI Remote Workspace", AppVersion: "test",
+		Hosts: hosts, SSH: ssh, SFTP: &stubSFTP{}, Gate: &stubGate{},
+	})
+	s.ApplyConfig(domain.MCPConfig{Enabled: true, Port: free, Token: "tok123"})
+	t.Cleanup(s.Stop)
+	cs := connect(t, free, "tok123")
+
+	call := func(t *testing.T, args map[string]any) string {
+		t.Helper()
+		res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+			Name: "list_hosts", Arguments: args,
+		})
+		if err != nil {
+			t.Fatalf("list_hosts %v: %v", args, err)
+		}
+		return textOf(t, res)
+	}
+
+	// 无过滤：全部主机都带 status 标注。
+	all := call(t, nil)
+	for _, want := range []string{"web-01", "db-01", "dev-01", "status=connected", "status=disconnected", "group=production/web"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("all hosts output missing %q:\n%s", want, all)
+		}
+	}
+
+	// 分组子串过滤（大小写不敏感、支持嵌套路径前缀）。
+	prod := call(t, map[string]any{"group": "PRODUCTION"})
+	if !strings.Contains(prod, "web-01") || !strings.Contains(prod, "db-01") || strings.Contains(prod, "dev-01") {
+		t.Errorf("group=PRODUCTION output = %q, want only production hosts", prod)
+	}
+	web := call(t, map[string]any{"group": "production/web"})
+	if !strings.Contains(web, "web-01") || strings.Contains(web, "db-01") {
+		t.Errorf("group=production/web output = %q, want only web-01", web)
+	}
+
+	// 连接状态过滤：只有 h1 有活动会话。
+	conn := call(t, map[string]any{"status": "connected"})
+	if !strings.Contains(conn, "web-01") || strings.Contains(conn, "db-01") || strings.Contains(conn, "dev-01") {
+		t.Errorf("status=connected output = %q, want only web-01", conn)
+	}
+	disc := call(t, map[string]any{"status": "disconnected"})
+	if !strings.Contains(disc, "db-01") || strings.Contains(disc, "web-01") {
+		t.Errorf("status=disconnected output = %q, want db-01 but not web-01", disc)
+	}
+
+	// 组合过滤 + 非法状态值。
+	both := call(t, map[string]any{"group": "production", "status": "connected"})
+	if !strings.Contains(both, "web-01") || strings.Contains(both, "db-01") {
+		t.Errorf("combined filter output = %q, want only web-01", both)
+	}
+	if res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "list_hosts", Arguments: map[string]any{"status": "online"},
+	}); err != nil {
+		t.Fatalf("invalid status call: %v", err)
+	} else if !res.IsError || !strings.Contains(textOf(t, res), "connected") {
+		t.Errorf("invalid status = %+v, want tool error mentioning allowed values", res)
+	}
 }

@@ -29,11 +29,19 @@ func (s *Server) registerTools() {
 	// 1. list_hosts — discover targets (READ).
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "list_hosts",
-		Description: "List the SSH hosts configured in AI Remote Workspace. Returns id, name, address, username, auth type, group, OS and tags. Use a returned id (or exact name) to target the other tools.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
+		Description: "List the SSH hosts configured in AI Remote Workspace. Returns id, name, address, username, auth type, group, OS, tags and connection status. Optional filters: group (case-insensitive substring, supports nested paths like \"production/web\") and status (\"connected\" = host has a live session, \"disconnected\" = none). Use a returned id (or exact name) to target the other tools.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a listHostsArgs) (*mcp.CallToolResult, any, error) {
 		if err := s.gateCheck(ctx, domain.Host{ID: "mcp", Name: "workspace"}, "list_hosts", domain.PermissionRead, nil); err != nil {
 			return nil, nil, err
 		}
+		statusFilter := strings.ToLower(strings.TrimSpace(a.Status))
+		switch statusFilter {
+		case "", "connected", "disconnected":
+		default:
+			return nil, nil, fmt.Errorf("invalid status %q: use \"connected\" or \"disconnected\"", a.Status)
+		}
+		groupFilter := strings.ToLower(strings.TrimSpace(a.Group))
+		connected := s.deps.SSH.ConnectedHosts()
 		hosts, err := s.deps.Hosts.List()
 		if err != nil {
 			return nil, nil, fmt.Errorf("list hosts: %w", err)
@@ -42,8 +50,19 @@ func (s *Server) registerTools() {
 			return textResult("No hosts configured. Add one in the app first (Hosts view)."), nil, nil
 		}
 		var b strings.Builder
+		shown := 0
 		for _, h := range hosts {
-			fmt.Fprintf(&b, "- %s  %s@%s:%d  id=%s auth=%s", h.Name, h.Username, h.Host, h.Port, h.ID, h.AuthType)
+			state := "disconnected"
+			if connected[h.ID] {
+				state = "connected"
+			}
+			if statusFilter != "" && state != statusFilter {
+				continue
+			}
+			if groupFilter != "" && !strings.Contains(strings.ToLower(h.Group), groupFilter) {
+				continue
+			}
+			fmt.Fprintf(&b, "- %s  %s@%s:%d  id=%s auth=%s status=%s", h.Name, h.Username, h.Host, h.Port, h.ID, h.AuthType, state)
 			if h.Group != "" {
 				fmt.Fprintf(&b, " group=%s", h.Group)
 			}
@@ -54,6 +73,14 @@ func (s *Server) registerTools() {
 				fmt.Fprintf(&b, " tags=%s", strings.Join(h.Tags, ","))
 			}
 			b.WriteString("\n")
+			shown++
+		}
+		if shown == 0 {
+			hint := "No hosts match the given filters."
+			if statusFilter != "" || groupFilter != "" {
+				hint += " Retry without group/status, or list all hosts to see the available values."
+			}
+			return textResult(hint), nil, nil
 		}
 		return textResult(b.String()), nil, nil
 	})
@@ -213,6 +240,12 @@ func (s *Server) registerTools() {
 // omitempty are required) ---
 
 type noArgs struct{}
+
+// listHostsArgs are the optional filters of list_hosts (all empty = list all).
+type listHostsArgs struct {
+	Group  string `json:"group,omitempty" jsonschema:"filter by group name, case-insensitive substring (groups may be nested paths like production/web)"`
+	Status string `json:"status,omitempty" jsonschema:"filter by connection status: connected (host has a live session) or disconnected; omit for all"`
+}
 
 // hostArgs selects a host by id (preferred) or exact name.
 type hostArgs struct {

@@ -13,6 +13,7 @@ import { ConnectOverlay } from "@/features/hosts/ConnectOverlay";
 import { HostFormDialog } from "@/features/hosts/HostFormDialog";
 import { TerminalView } from "@/features/terminal/TerminalView";
 import { FaultsView } from "@/features/faults/FaultsView";
+import { AppsView } from "@/features/apps/AppsView";
 import { SettingsView } from "@/features/settings/SettingsView";
 import {
   useShortcutDispatcher,
@@ -68,6 +69,11 @@ export function AppShell() {
           <View active={activeView === "faults"}>
             <ErrorBoundary label={t("nav.faults")} resetLabel={t("common.retry")}>
               <FaultsView />
+            </ErrorBoundary>
+          </View>
+          <View active={activeView === "apps"}>
+            <ErrorBoundary label={t("nav.apps")} resetLabel={t("common.retry")}>
+              <AppsView />
             </ErrorBoundary>
           </View>
           <View active={activeView === "settings"}>

@@ -99,5 +99,8 @@ func (s *Store) migrate() error {
 		&conversationMessageModel{},
 		&expertModel{},
 		&faultReportModel{},
+		&appInstallationModel{},
+		&appDeployTaskModel{},
+		&appCatalogMetaModel{},
 	)
 }

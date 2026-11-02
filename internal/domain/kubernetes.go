@@ -13,17 +13,17 @@ type K8sClusterInfo struct {
 	ClientVersion string `json:"clientVersion"`
 	ServerVersion string `json:"serverVersion"`
 	// Context is the kubeconfig context kubectl resolves on the host.
-	Context     string `json:"context"`
-	NodesReady  int    `json:"nodesReady"`
-	NodesTotal  int    `json:"nodesTotal"`
-	PodsRunning   int `json:"podsRunning"`
-	PodsPending   int `json:"podsPending"`
-	PodsSucceeded int `json:"podsSucceeded"`
-	PodsFailed    int `json:"podsFailed"`
-	PodsUnknown   int `json:"podsUnknown"`
-	Deployments   int `json:"deployments"`
-	StatefulSets  int `json:"statefulSets"`
-	DaemonSets    int `json:"daemonSets"`
+	Context       string `json:"context"`
+	NodesReady    int    `json:"nodesReady"`
+	NodesTotal    int    `json:"nodesTotal"`
+	PodsRunning   int    `json:"podsRunning"`
+	PodsPending   int    `json:"podsPending"`
+	PodsSucceeded int    `json:"podsSucceeded"`
+	PodsFailed    int    `json:"podsFailed"`
+	PodsUnknown   int    `json:"podsUnknown"`
+	Deployments   int    `json:"deployments"`
+	StatefulSets  int    `json:"statefulSets"`
+	DaemonSets    int    `json:"daemonSets"`
 }
 
 // K8sNode is one cluster node (`kubectl get nodes -o json`), enriched with

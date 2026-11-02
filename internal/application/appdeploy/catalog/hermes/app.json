@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "id": "hermes",
+  "name": "Hermes Agent",
+  "description": "Nous Research 开源的自进化 AI 智能体：7×24 运行在自己的服务器上，可接入 Telegram/Discord/WhatsApp 等消息网关，从经验中沉淀技能。",
+  "website": "https://github.com/NousResearch/hermes-agent",
+  "icon": "icon.svg",
+  "tags": [
+    "ai-agent",
+    "gateway",
+    "web-dashboard"
+  ],
+  "catalogVersion": 1,
+  "install": {
+    "detect": "command -v hermes >/dev/null 2>&1 && echo yes || echo no",
+    "notice": "将以两个用户态 systemd 服务安装：网关（gateway）与 Web 控制台（dashboard，监听 0.0.0.0:9119，Basic Auth 认证）。请设置 dashboard 登录密码，强度自行保证；无需 sudo。若希望 SSH 退出后服务常驻，请手动执行一次 sudo loginctl enable-linger $USER。",
+    "inputs": [
+      {
+        "key": "dashboardPassword",
+        "label": "Dashboard 登录密码",
+        "type": "secret",
+        "required": true,
+        "placeholder": "至少 8 位，强度自行保证",
+        "validate": "min=8",
+        "credentialKey": "password"
+      }
+    ],
+    "steps": [
+      {
+        "name": "下载并安装 Hermes（官方脚本 --non-interactive，自动配置 Python/Node/ripgrep/FFmpeg）",
+        "command": "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive",
+        "timeoutSec": 900,
+        "risk": "write"
+      },
+      {
+        "name": "创建网关用户态服务（hermes-gateway，无需 sudo）",
+        "command": "U=\"$HOME/.config/systemd/user/hermes-gateway.service\"\nmkdir -p \"$(dirname \"$U\")\"\nHERMES_BIN=$(command -v hermes 2>/dev/null || echo \"$HOME/.local/bin/hermes\")\ncat > \"$U\" <<UNIT\n[Unit]\nDescription=Hermes Agent Gateway\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStart=$HERMES_BIN gateway run\nRestart=on-failure\nRestartSec=5\n\n[Install]\nWantedBy=default.target\nUNIT\nsystemctl --user daemon-reload\necho \"已创建 $U\"",
+        "timeoutSec": 60,
+        "risk": "write"
+      },
+      {
+        "name": "配置 dashboard 认证（~/.hermes/.env，密码与固定会话签名）",
+        "command": "mkdir -p \"$HOME/.hermes\"\ntouch \"$HOME/.hermes/.env\"\nchmod 600 \"$HOME/.hermes/.env\"\nsed -i '/^HERMES_DASHBOARD_BASIC_AUTH_/d' \"$HOME/.hermes/.env\"\n{\n  printf 'HERMES_DASHBOARD_BASIC_AUTH_USERNAME=%s\\n' 'admin'\n  printf 'HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=%s\\n' {{.dashboardPassword}}\n  printf 'HERMES_DASHBOARD_BASIC_AUTH_SECRET=%s\\n' \"$(openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64)\"\n} >> \"$HOME/.hermes/.env\"\necho '已写入 ~/.hermes/.env（用户名 admin + 密码 + 固定会话签名，权限 600）'",
+        "timeoutSec": 30,
+        "risk": "write"
+      },
+      {
+        "name": "创建 dashboard 用户态服务（监听 0.0.0.0:9119）",
+        "command": "U=\"$HOME/.config/systemd/user/hermes-dashboard.service\"\nmkdir -p \"$(dirname \"$U\")\"\nHERMES_BIN=$(command -v hermes 2>/dev/null || echo \"$HOME/.local/bin/hermes\")\ncat > \"$U\" <<UNIT\n[Unit]\nDescription=Hermes Dashboard (user service)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nEnvironment=HERMES_HOME=%h/.hermes\nEnvironmentFile=%h/.hermes/.env\nExecStart=$HERMES_BIN dashboard --no-open --host 0.0.0.0 --port 9119\nRestart=on-failure\nRestartSec=5\n\n[Install]\nWantedBy=default.target\nUNIT\nsystemctl --user daemon-reload\necho \"已创建 $U\"",
+        "timeoutSec": 60,
+        "risk": "write"
+      },
+      {
+        "name": "启动网关与 dashboard 服务并配置常驻",
+        "command": "export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"\nsystemctl --user reset-failed hermes-gateway.service hermes-dashboard.service 2>/dev/null || true\nsystemctl --user enable --now hermes-gateway.service || {\n  echo '--- hermes-gateway 最近日志 ---'\n  journalctl --user -u hermes-gateway -n 40 --no-pager 2>/dev/null || true\n  exit 1\n}\nsystemctl --user enable --now hermes-dashboard.service || {\n  echo '--- hermes-dashboard 最近日志 ---'\n  journalctl --user -u hermes-dashboard -n 40 --no-pager 2>/dev/null || true\n  exit 1\n}\nif sudo -n true 2>/dev/null; then\n  sudo -n loginctl enable-linger \"$(id -un)\" 2>/dev/null && echo '已开启 linger：服务在 SSH 退出后继续运行' || true\nelse\n  echo \"提示：如需 SSH 退出后服务常驻，请手动执行一次：sudo loginctl enable-linger $(id -un)\"\nfi",
+        "timeoutSec": 120,
+        "risk": "write"
+      }
+    ],
+    "verify": "export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"; sleep 5; systemctl --user is-active hermes-gateway hermes-dashboard >/dev/null 2>&1 && curl -sS -o /dev/null -m 8 http://127.0.0.1:9119/api/status && echo ok"
+  },
+  "ops": {
+    "start": "export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"\nsystemctl --user reset-failed hermes-gateway.service hermes-dashboard.service 2>/dev/null || true\nsystemctl --user start hermes-gateway.service hermes-dashboard.service",
+    "stop": "export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"\nsystemctl --user stop hermes-gateway.service hermes-dashboard.service",
+    "restart": "export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"\nsystemctl --user reset-failed hermes-gateway.service hermes-dashboard.service 2>/dev/null || true\nsystemctl --user restart hermes-gateway.service hermes-dashboard.service",
+    "status": "export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"\nraw=$(systemctl --user is-active hermes-gateway 2>/dev/null)\nif [ \"$raw\" = active ] || [ \"$raw\" = activating ]; then st=running\nelif [ \"$raw\" = failed ]; then st=failed\nelse st=stopped; fi\npid=$(systemctl --user show -p MainPID --value hermes-gateway 2>/dev/null)\n[ \"$pid\" = \"0\" ] && pid=\nup=0; mem=0\nif [ -n \"$pid\" ]; then\n  up=$(ps -o etimes= -p \"$pid\" 2>/dev/null | tr -d \" \")\n  mem=$(ps -o rss= -p \"$pid\" 2>/dev/null | tr -d \" \")\nfi\nhealth=fail\nif curl -sS -o /dev/null -m 5 http://127.0.0.1:9119/api/status 2>/dev/null; then health=ok; fi\nif ss -tln 2>/dev/null | grep -q ':9119 '; then listening=yes; else listening=no; fi\necho \"STATUS=$st\"\necho \"PID=${pid:-0}\"\necho \"PORT=9119\"\necho \"UPTIME_SEC=${up:-0}\"\necho \"MEM_KB=${mem:-0}\"\necho \"LISTENING=$listening\"\necho \"HEALTH=$health\"\necho \"VERSION=$(hermes --version 2>/dev/null | head -n1)\"",
+    "logs": "export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"\njournalctl --user -u hermes-gateway -u hermes-dashboard -n {{.lines}} --no-pager 2>/dev/null || tail -n {{.lines}} $HOME/.hermes/logs/*.log 2>/dev/null",
+    "openPort": "S=\"\"; sudo -n true 2>/dev/null && S=\"sudo -n\"\np={{.port}}; if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then $S firewall-cmd --permanent --add-port=$p/tcp >/dev/null && $S firewall-cmd --reload >/dev/null && echo \"firewalld: opened $p/tcp\"; elif command -v ufw >/dev/null 2>&1; then $S ufw allow $p/tcp && echo \"ufw: opened $p/tcp\"; elif command -v iptables >/dev/null 2>&1; then $S iptables -C INPUT -p tcp --dport $p -j ACCEPT 2>/dev/null || $S iptables -I INPUT -p tcp --dport $p -j ACCEPT; echo \"iptables: opened $p/tcp\"; else echo '未找到 firewalld/ufw/iptables，请在云安全组手动放行'; fi",
+    "version": "hermes --version 2>/dev/null | head -n1",
+    "update": "hermes update || exit 1\nexport XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"\nsystemctl --user reset-failed hermes-gateway.service hermes-dashboard.service 2>/dev/null || true\nsystemctl --user restart hermes-gateway.service hermes-dashboard.service",
+    "uninstall": [
+      {
+        "name": "停止并注销网关与 dashboard 用户态服务",
+        "command": "export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"\nsystemctl --user disable --now hermes-gateway.service 2>/dev/null || true\nsystemctl --user disable --now hermes-dashboard.service 2>/dev/null || true\nrm -f \"$HOME/.config/systemd/user/hermes-gateway.service\" \"$HOME/.config/systemd/user/hermes-dashboard.service\"\nsystemctl --user daemon-reload 2>/dev/null || true",
+        "timeoutSec": 120,
+        "risk": "high"
+      },
+      {
+        "name": "卸载程序（保留 ~/.hermes 数据与 .env 认证配置）",
+        "command": "p=$(command -v hermes 2>/dev/null); [ -n \"$p\" ] && rm -f \"$p\" || true",
+        "timeoutSec": 60,
+        "risk": "high"
+      }
+    ]
+  },
+  "panel": {
+    "url": "http://{{.host}}:9119",
+    "port": 9119,
+    "healthPath": "/api/status",
+    "credentials": [
+      {
+        "key": "username",
+        "label": "用户名",
+        "secret": false,
+        "default": "admin"
+      },
+      {
+        "key": "password",
+        "label": "密码",
+        "secret": true
+      }
+    ]
+  }
+}

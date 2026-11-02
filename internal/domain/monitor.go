@@ -24,14 +24,14 @@ type MonitorTCPState struct {
 // MonitorOverview is the host snapshot shown in the monitor panel's
 // Overview tab. Rates are computed from two samples taken ~1s apart.
 type MonitorOverview struct {
-	CPUPercent   float64 `json:"cpuPercent"`
-	CPUModel     string  `json:"cpuModel"`
-	CPUCores     int     `json:"cpuCores"`
-	Load1        float64 `json:"load1"`
-	Load5        float64 `json:"load5"`
-	Load15       float64 `json:"load15"`
+	CPUPercent    float64 `json:"cpuPercent"`
+	CPUModel      string  `json:"cpuModel"`
+	CPUCores      int     `json:"cpuCores"`
+	Load1         float64 `json:"load1"`
+	Load5         float64 `json:"load5"`
+	Load15        float64 `json:"load15"`
 	UptimeSeconds float64 `json:"uptimeSeconds"`
-	Kernel       string  `json:"kernel"`
+	Kernel        string  `json:"kernel"`
 
 	MemTotalKB     uint64  `json:"memTotalKb"`
 	MemUsedKB      uint64  `json:"memUsedKb"`
@@ -44,9 +44,9 @@ type MonitorOverview struct {
 	NetRxBytesPerSec float64 `json:"netRxBytesPerSec"`
 	NetTxBytesPerSec float64 `json:"netTxBytesPerSec"`
 
-	ProcessTotal   int                `json:"processTotal"`
-	ProcessRunning int                `json:"processRunning"`
-	TCPStates      []MonitorTCPState  `json:"tcpStates"`
+	ProcessTotal   int               `json:"processTotal"`
+	ProcessRunning int               `json:"processRunning"`
+	TCPStates      []MonitorTCPState `json:"tcpStates"`
 }
 
 // MonitorProcess is one remote process with a live (sampled) CPU usage.

@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "id": "openclaw",
+  "name": "OpenClaw",
+  "description": "开源个人 AI 助理运行时：跑在你自己的服务器上，通过 WhatsApp/Telegram/Discord/Slack 等渠道与你交互，内置 Web 控制台。",
+  "website": "https://github.com/openclaw/openclaw",
+  "icon": "icon.svg",
+  "tags": [
+    "ai-assistant",
+    "gateway",
+    "control-ui"
+  ],
+  "catalogVersion": 1,
+  "install": {
+    "detect": "command -v openclaw >/dev/null 2>&1 && echo yes || echo no",
+    "inputs": [
+      {
+        "key": "gatewayPassword",
+        "label": "网关访问密码",
+        "type": "secret",
+        "required": true,
+        "placeholder": "至少 8 位，强度自行保证",
+        "validate": "min=8",
+        "credentialKey": "password"
+      }
+    ],
+    "steps": [
+      {
+        "name": "下载并安装 OpenClaw（--no-prompt 全程免交互 + --verify 安装后自检）",
+        "command": "maj=$(node -v 2>/dev/null | sed -E \"s/^v([0-9]+).*/\\1/\")\nif [ -s \"$HOME/.nvm/nvm.sh\" ] && [ \"${maj:-0}\" -lt 24 ]; then\n  echo \"检测到默认 Node $(node -v 2>/dev/null) 不满足要求（>=24.22）：经 nvm 非交互安装 Node 26…\"\n  . \"$HOME/.nvm/nvm.sh\" >/dev/null 2>&1 || true\n  nvm install 26 >/dev/null 2>&1 || true\n  nvm use 26 >/dev/null 2>&1 || true\nfi\ncurl -fsSL --proto \"=https\" --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --no-prompt --no-onboard --verify",
+        "timeoutSec": 900,
+        "risk": "write"
+      },
+      {
+        "name": "初始化 + 安装守护进程（非交互 + 跳过风险提示）",
+        "command": "[ -s \"$HOME/.nvm/nvm.sh\" ] && { . \"$HOME/.nvm/nvm.sh\" >/dev/null 2>&1 || true; nvm use --silent 26 >/dev/null 2>&1 || true; }\nmkdir -p \"$HOME/.config/systemd/user\"\nchmod go-w \"$HOME/.config\" \"$HOME/.config/systemd\" \"$HOME/.config/systemd/user\" 2>/dev/null || true\nif ! command -v openclaw >/dev/null 2>&1; then export PATH=\"$HOME/.local/bin:$HOME/bin:$PATH\"; fi\nif ! command -v openclaw >/dev/null 2>&1; then echo \"错误：未找到 openclaw 命令（已尝试 PATH、~/.local/bin、~/bin）。请检查第 1 步安装日志。\"; exit 1; fi\n[ -s \"$HOME/.nvm/nvm.sh\" ] && { . \"$HOME/.nvm/nvm.sh\" >/dev/null 2>&1 || true; nvm use --silent 26 >/dev/null 2>&1 || true; }\nmkdir -p \"$HOME/.config/systemd/user\"\nchmod go-w \"$HOME/.config\" \"$HOME/.config/systemd\" \"$HOME/.config/systemd/user\" 2>/dev/null || true\nif ! command -v openclaw >/dev/null 2>&1; then export PATH=\"$HOME/.local/bin:$HOME/bin:$PATH\"; fi\nif ! command -v openclaw >/dev/null 2>&1; then echo \"错误：未找到 openclaw 命令（已尝试 PATH、~/.local/bin、~/bin）。请检查第 1 步安装日志。\"; exit 1; fi\n[ -s \"$HOME/.nvm/nvm.sh\" ] && { . \"$HOME/.nvm/nvm.sh\" >/dev/null 2>&1 || true; nvm use --silent 26 >/dev/null 2>&1 || true; }\nif ! command -v openclaw >/dev/null 2>&1; then export PATH=\"$HOME/.local/bin:$HOME/bin:$PATH\"; fi\nif ! command -v openclaw >/dev/null 2>&1; then echo \"错误：未找到 openclaw 命令（已尝试 PATH、~/.local/bin、~/bin）。请检查第 1 步安装日志。\"; exit 1; fi\nopenclaw onboard --non-interactive --accept-risk --gateway-auth password --gateway-password {{.gatewayPassword}} --install-daemon",
+        "timeoutSec": 600,
+        "risk": "write"
+      },
+      {
+        "name": "配置网关认证与 LAN 绑定（openclaw config 热加载）",
+        "command": "[ -s \"$HOME/.nvm/nvm.sh\" ] && { . \"$HOME/.nvm/nvm.sh\" >/dev/null 2>&1 || true; nvm use --silent 26 >/dev/null 2>&1 || true; }\nmkdir -p \"$HOME/.config/systemd/user\"\nchmod go-w \"$HOME/.config\" \"$HOME/.config/systemd\" \"$HOME/.config/systemd/user\" 2>/dev/null || true\nif ! command -v openclaw >/dev/null 2>&1; then export PATH=\"$HOME/.local/bin:$HOME/bin:$PATH\"; fi\nif ! command -v openclaw >/dev/null 2>&1; then echo \"错误：未找到 openclaw 命令（已尝试 PATH、~/.local/bin、~/bin）。请检查第 1 步安装日志。\"; exit 1; fi\nopenclaw config set gateway.auth.mode password\nopenclaw config set gateway.auth.password {{.gatewayPassword}}\nopenclaw config set gateway.bind lan\nopenclaw gateway install --force\nD=\"$HOME/.config/systemd/user/openclaw-gateway.service.d\"\nmkdir -p \"$D\"\nprintf \"[Service]\\nEnvironment=OPENCLAW_GATEWAY_PASSWORD=%s\\n\" {{.gatewayPassword}} > \"$D/10-auth.conf\"\nchmod 600 \"$D/10-auth.conf\"\nsystemctl --user daemon-reload\nopenclaw gateway restart",
+        "timeoutSec": 180,
+        "risk": "write"
+      }
+    ],
+    "verify": "sleep 3; ss -tln 2>/dev/null | grep -q ':18789 ' && echo ok",
+    "notice": "将以密码模式开放网关（bind=lan，监听 0.0.0.0:18789），浏览器可直接访问 Control UI，登录密码为安装时输入的值（强度自行保证）；配置经 openclaw config 热加载。"
+  },
+  "ops": {
+    "start": "openclaw gateway start 2>/dev/null || openclaw gateway restart",
+    "stop": "openclaw gateway stop",
+    "restart": "openclaw gateway restart",
+    "status": "pid=$(pgrep -f '[o]penclaw' | head -n1)\nif [ -n \"$pid\" ]; then echo STATUS=running; else echo STATUS=stopped; fi\necho \"PID=${pid:-0}\"\nup=0; mem=0\nif [ -n \"$pid\" ]; then\n  up=$(ps -o etimes= -p \"$pid\" 2>/dev/null | tr -d ' ')\n  mem=$(ps -o rss= -p \"$pid\" 2>/dev/null | tr -d ' ')\nfi\necho \"UPTIME_SEC=${up:-0}\"\necho \"MEM_KB=${mem:-0}\"\nif ss -tln 2>/dev/null | grep -q ':18789 '; then echo LISTENING=yes; else echo LISTENING=no; fi\nif curl -sS -o /dev/null -m 5 http://127.0.0.1:18789/; then echo HEALTH=ok; else echo HEALTH=fail; fi\necho \"VERSION=$(openclaw --version 2>/dev/null | head -n1)\"",
+    "logs": "journalctl --user -u openclaw-gateway -n {{.lines}} --no-pager 2>/dev/null || journalctl -u openclaw-gateway -n {{.lines}} --no-pager 2>/dev/null || openclaw logs 2>/dev/null | tail -n {{.lines}}",
+    "openPort": "p={{.port}}; if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then firewall-cmd --permanent --add-port=$p/tcp >/dev/null && firewall-cmd --reload >/dev/null && echo \"firewalld: opened $p/tcp\"; elif command -v ufw >/dev/null 2>&1; then ufw allow $p/tcp && echo \"ufw: opened $p/tcp\"; elif command -v iptables >/dev/null 2>&1; then iptables -C INPUT -p tcp --dport $p -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport $p -j ACCEPT; echo \"iptables: opened $p/tcp\"; else echo '未找到 firewalld/ufw/iptables，请在云安全组手动放行'; fi",
+    "version": "openclaw --version 2>/dev/null | head -n1",
+    "update": "openclaw update 2>/dev/null || npm install -g openclaw@latest; openclaw gateway restart",
+    "uninstall": [
+      {
+        "name": "停止并移除守护进程",
+        "command": "openclaw gateway stop 2>/dev/null || true; systemctl --user disable --now openclaw-gateway.service 2>/dev/null || true; sudo systemctl disable --now openclaw-gateway.service 2>/dev/null || true",
+        "timeoutSec": 120,
+        "risk": "high"
+      },
+      {
+        "name": "卸载程序（保留 ~/.openclaw 数据目录）",
+        "command": "npm uninstall -g openclaw 2>/dev/null || true",
+        "timeoutSec": 180,
+        "risk": "high"
+      }
+    ]
+  },
+  "panel": {
+    "url": "http://{{.host}}:18789",
+    "port": 18789,
+    "credentials": [
+      {
+        "key": "password",
+        "label": "访问密码",
+        "secret": true
+      }
+    ]
+  }
+}

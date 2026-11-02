@@ -1121,6 +1121,47 @@ frontend settings ExpertFormDialog   专家编辑（含 HEARTBEAT 文本域）
 
 ---
 
+# 16.9 应用部署（应用目录 · 一键部署 · 监控管理）
+
+独立一级菜单"应用"+ 会话右侧面板（写操作只在会话内发起）。应用以 **app.json
+操作手册**（权威执行源：每个 UI 操作一一映射到具体 shell 命令）+ guide.md
+指南（人读/agent 读）+ icon.svg 描述；规范与 schema 契约见 docs/APP_CATALOG.md。
+
+```
+内置目录随二进制分发（go:embed all:catalog，Octop/OpenClaw/Hermes），启动种子解压
+到 <数据目录>/apps/catalog（按整体 catalogVersion 比对覆盖，旧二进制不降级已更新的
+目录）；用户自建应用在 apps/custom/，种子与更新绝不触碰
+目录更新：GitHub release 资产 catalog.zip 或 main 分支 apps/catalog/ 路径，先全量
+下载+逐 app.json 结构校验，通过才覆盖落盘（仓库设置 apps.catalogRepo，可配）
+统一数据集：所有应用实现几乎相同的操作集（detect/inputs/steps/verify + start/stop/
+restart/status/logs/openPort/version/update/uninstall + panel 凭证）；ops.status 输出
+标准化 KEY=VALUE 契约（STATUS/PID/PORT/LISTENING/UPTIME_SEC/MEM_KB/HEALTH/VERSION），
+Go 统一解析为 HostAppStatus；模板 {{.key}} 渲染值一律单引号转义
+执行通道：写操作（安装/卸载/升级/控制/开放端口）只走会话通道 ExecInSessionCtx（面板
+发起，终端可见）；只读总览（状态/日志）支持按主机 OneShotRunner 一次性连接（一级页）
+安装任务：确认页列命令清单 → 单次确认后 goroutine 逐步执行，事件 "apps:task" 推送
+步骤进度/输出（16KB 截断+敏感行脱敏），任务与步骤落库，安装记录（主机+应用唯一）
+```
+
+落点：
+
+```
+domain/appdeploy.go                  AppSpec/Installation/DeployTask/HostAppStatus/CatalogMeta 模型
+application/appdeploy/builtin.go     内嵌目录 + 种子解压（版本比对覆盖，裁剪移除条目）
+application/appdeploy/catalog/       内置目录（catalog.json + 每应用 app.json/guide.md/icon.svg）
+application/appdeploy/spec.go        结构校验 + 输入校验 + 模板渲染（shell 引用转义）
+application/appdeploy/status.go      ops.status 契约解析（ParseHostAppStatus/FormatUptime）
+application/appdeploy/service.go     目录/部署任务/监控控制/凭证（会话+一次性双通道）
+application/appdeploy/update.go      GitHub release/main 目录更新（先校验后落盘）
+infrastructure/ssh/oneshot.go        按主机一次性拨号执行（只读总览通道，非零退出非错误）
+infrastructure/sqlite/app_deploy_repo.go  app_installations/app_deploy_tasks/app_catalog_meta 表
+interfaces/app_deploy_service.go     Wails AppDeployService（"apps:task" 事件桥接）
+frontend features/apps/              AppsView（一级页）/AppsPanel（会话面板+安装向导）/AppManagePanel（监控面板）
+frontend features/hosts/useActivateOrConnect.ts  连接/聚焦会话（一级页选主机跳转会话复用）
+```
+
+---
+
 # 17. Development Roadmap
 
 # Phase 1 - Desktop Foundation

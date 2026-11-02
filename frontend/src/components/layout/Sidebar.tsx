@@ -3,6 +3,7 @@ import {
   Settings,
   FolderTree,
   FileWarning,
+  Package,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -20,6 +21,7 @@ interface NavItem {
 // they live inside the terminal workspace (hosts sidebar / right panel).
 const NAV_ITEMS: NavItem[] = [
   { view: "terminal", labelKey: "nav.terminal", icon: TerminalSquare },
+  { view: "apps", labelKey: "nav.apps", icon: Package },
   { view: "faults", labelKey: "nav.faults", icon: FileWarning },
   { view: "settings", labelKey: "nav.settings", icon: Settings },
 ];

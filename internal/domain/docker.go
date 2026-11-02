@@ -12,9 +12,9 @@ type DockerContainer struct {
 	ID        string `json:"id"`
 	Names     string `json:"names"`
 	Image     string `json:"image"`
-	State     string `json:"state"`   // "running" | "exited" | "paused" | "created" | "restarting" | "dead"
-	Status    string `json:"status"`  // human status incl. health/uptime ("Up 2 hours (healthy)")
-	Ports     string `json:"ports"`   // "0.0.0.0:80->80/tcp, [::]:80->80/tcp"
+	State     string `json:"state"`  // "running" | "exited" | "paused" | "created" | "restarting" | "dead"
+	Status    string `json:"status"` // human status incl. health/uptime ("Up 2 hours (healthy)")
+	Ports     string `json:"ports"`  // "0.0.0.0:80->80/tcp, [::]:80->80/tcp"
 	CreatedAt string `json:"createdAt"`
 }
 
@@ -79,14 +79,14 @@ type DockerNetworkDetail struct {
 // DockerInfo is the panel overview: `docker version` server section merged
 // with the counters from `docker info`.
 type DockerInfo struct {
-	Version             string `json:"version"`
-	APIVersion          string `json:"apiVersion"`
-	OSType              string `json:"osType"`
-	Arch                string `json:"arch"`
-	KernelVersion       string `json:"kernelVersion"`
-	ContainersRunning   int    `json:"containersRunning"`
-	ContainersPaused    int    `json:"containersPaused"`
-	ContainersStopped   int    `json:"containersStopped"`
-	Images              int    `json:"images"`
-	DockerRootDir       string `json:"dockerRootDir"`
+	Version           string `json:"version"`
+	APIVersion        string `json:"apiVersion"`
+	OSType            string `json:"osType"`
+	Arch              string `json:"arch"`
+	KernelVersion     string `json:"kernelVersion"`
+	ContainersRunning int    `json:"containersRunning"`
+	ContainersPaused  int    `json:"containersPaused"`
+	ContainersStopped int    `json:"containersStopped"`
+	Images            int    `json:"images"`
+	DockerRootDir     string `json:"dockerRootDir"`
 }

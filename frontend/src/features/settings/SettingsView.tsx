@@ -96,6 +96,7 @@ const DEFAULT_CONFIG: AppConfig = {
   },
   mcp: { enabled: false, port: 8765, token: "" },
   llm: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o" },
+  apps: { catalogRepo: "" },
 };
 
 /** Common sans-serif font options. Terminal font/size live per-host (host
@@ -178,6 +179,7 @@ export function SettingsView() {
     { id: "models", label: t("settings.models.title"), icon: Bot },
     { id: "experts", label: t("settings.experts.title"), icon: UsersRound },
     { id: "agent", label: t("settings.agentTitle"), icon: BrainCircuit },
+    { id: "mcp", label: t("settings.mcp.title"), icon: PlugZap },
     { id: "shortcuts", label: t("settings.shortcuts"), icon: Keyboard },
     { id: "keys", label: t("keys.title"), icon: KeyRound },
     { id: "advanced", label: t("settings.advanced"), icon: Settings2 },
@@ -217,6 +219,7 @@ export function SettingsView() {
           {category === "models" && <ModelSettingsSection />}
           {category === "experts" && <ExpertsSection />}
           {category === "agent" && <AgentSettingsSection config={config} update={updateConfig} />}
+          {category === "mcp" && <MCPCard config={config} update={updateConfig} />}
           {category === "shortcuts" && <ShortcutSettingsSection config={config} update={updateConfig} />}
           {category === "keys" && <KeysSection />}
           {category === "advanced" && <AdvancedSection config={config} update={updateConfig} />}
@@ -679,7 +682,6 @@ function AdvancedSection({
           </Badge>
         </CardContent>
       </Card>
-      <MCPCard config={config} update={update} />
       <Card>
         <CardHeader>
           <CardTitle className="text-sm">{t("settings.runtime")}</CardTitle>
