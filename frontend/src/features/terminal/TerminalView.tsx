@@ -23,6 +23,8 @@ import {
   Ship,
   Zap,
   SquarePen,
+  Star,
+  StarOff,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -45,6 +47,7 @@ import { TunnelPanel } from "@/features/tunnel/TunnelPanel";
 import { AppsPanel } from "@/features/apps/AppsPanel";
 import { useOpenTerminal, useOpenLocalTerminal, useHosts } from "@/features/hosts/hooks";
 import { useHostsUIStore } from "@/features/hosts/store";
+import { useQuickLinksStore } from "@/features/hosts/quicklinks.store";
 import { HostsSidebar } from "@/features/hosts/HostsSidebar";
 import { osInfo } from "@/features/hosts/osIcons";
 import { ConfigService, SystemService, TerminalService } from "@/../bindings/github.com/ai-remote/workspace/internal/interfaces";
@@ -89,6 +92,8 @@ function loadSavedTabs(): SavedTab[] {
 export function TerminalView() {
   const { t } = useTranslation();
   const sessions = useTerminalStore((s) => s.sessions);
+  const quickLinkIds = useQuickLinksStore((s) => s.ids);
+  const toggleQuickLink = useQuickLinksStore((s) => s.toggle);
   const activeId = useTerminalStore((s) => s.activeId);
   const activePaneId = useTerminalStore((s) => s.activePaneId);
   const setActive = useTerminalStore((s) => s.setActive);
@@ -501,6 +506,7 @@ export function TerminalView() {
     const hasLeft = leftIds.length > 0;
     const hasRight = rightIds.length > 0;
     const isSingle = sessions.length <= 1;
+    const isLinked = !isLocalSession(sess) && quickLinkIds.includes(sess.hostID);
 
     return [
       {
@@ -519,6 +525,12 @@ export function TerminalView() {
         icon: Pencil,
         disabled: isLocalSession(sess),
         onClick: () => editHostFor(sess.hostID),
+      },
+      {
+        label: isLinked ? t("hosts.quickLinkRemove") : t("hosts.quickLinkAdd"),
+        icon: isLinked ? StarOff : Star,
+        disabled: isLocalSession(sess),
+        onClick: () => toggleQuickLink(sess.hostID),
       },
       { type: "separator" as const },
       {

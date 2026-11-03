@@ -38,6 +38,11 @@ const outputLimit = 64 << 10 // 64 KB
 // request timeouts, but a hung remote command must not pin a session forever.
 const execTimeout = 120 * time.Second
 
+// statsTimeout bounds one host_stats collection round (the scripts sleep 1s
+// between samples plus transfer overhead; same reasoning as the Wails
+// bindings' 20s, with more headroom for slow links).
+const statsTimeout = 30 * time.Second
+
 // HostSource resolves host records and their remembered credentials.
 // *application.HostService satisfies it.
 type HostSource interface {
@@ -48,12 +53,22 @@ type HostSource interface {
 
 // SessionManager is the subset of the SSH manager the MCP tools need.
 // *ssh.Manager satisfies it. ConnectedHosts backs the list_hosts status
-// filter (all sessions — terminal and MCP — share the manager).
+// filter and SessionForHost the host_stats tool (all sessions — terminal and
+// MCP — share the manager).
 type SessionManager interface {
 	OpenSession(ctx context.Context, host domain.Host, creds domain.Credentials, cols, rows int, events application.SessionEvents) (sessionID string, err error)
 	ExecInSessionCtx(ctx context.Context, sessionID, cmd string) (string, error)
 	Close(sessionID string) error
 	ConnectedHosts() map[string]bool
+	SessionForHost(hostID string) (string, bool)
+}
+
+// MonitorSource is the host-metrics subset of application.MonitorService the
+// host_stats tool reads (cached, shared with the app's monitor panel).
+type MonitorSource interface {
+	GetOverview(ctx context.Context, sessionID string) (domain.MonitorOverview, error)
+	GetProcesses(ctx context.Context, sessionID string) ([]domain.MonitorProcess, error)
+	GetPorts(ctx context.Context, sessionID string) ([]domain.MonitorPort, error)
 }
 
 // SftpFileOps is the remote-file subset of the SFTP manager (same shape the
@@ -67,7 +82,7 @@ type PermissionGate interface {
 }
 
 // Deps bundles the collaborators the MCP server needs. Everything except
-// Persist is required.
+// Persist and Monitor is required.
 type Deps struct {
 	AppName    string
 	AppVersion string
@@ -75,6 +90,9 @@ type Deps struct {
 	SSH        SessionManager
 	SFTP       SftpFileOps
 	Gate       PermissionGate
+	// Monitor backs the host_stats tool (application.MonitorService in the
+	// app; nil just disables that tool's data path).
+	Monitor MonitorSource
 	// Persist saves a regenerated/auto-generated token back to the app
 	// config. May be nil (tests); the token then survives only in memory.
 	Persist func(domain.MCPConfig) error

@@ -193,6 +193,14 @@ export const zh = {
     },
     deleteConfirm: '删除主机 "{{name}}"？同时会清除已记住的密码。',
     deleteTitle: "删除主机",
+    quickLinkAdd: "添加到快捷链接",
+    quickLinkRemove: "从快捷链接移除",
+    quickLinkLabel: "快捷",
+    quickLinkEmpty: "右键主机可添加到快捷链接，点击底部名称即可快速连接",
+    deleteGroupTitle: "删除分组主机",
+    deleteGroupConfirm:
+      '将删除分组 "{{name}}" 及其子分组下的 {{count}} 台主机（含已记住的密码），确定继续？',
+    deleteGroupPartial: "分组删除：{{total}} 台中有 {{failed}} 台删除失败，请重试。",
     import: {
       title: "导入主机",
       description:

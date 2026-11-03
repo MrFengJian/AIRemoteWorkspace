@@ -532,6 +532,25 @@ func (m *Manager) ConnectedHosts() map[string]bool {
 	return out
 }
 
+// SessionForHost returns one live session for hostID (the first by session
+// id, for determinism). Exec-only consumers that address hosts instead of
+// sessions — the MCP host_stats tool — use it to share whatever connection
+// the terminal or another MCP call already opened.
+func (m *Manager) SessionForHost(hostID string) (string, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	found := ""
+	for id, ms := range m.sessions {
+		if ms.host.ID != hostID {
+			continue
+		}
+		if found == "" || id < found {
+			found = id
+		}
+	}
+	return found, found != ""
+}
+
 // HostOfSession returns the domain.Host associated with a session.
 func (m *Manager) HostOfSession(sessionID string) (domain.Host, bool) {
 	ms, ok := m.session(sessionID)

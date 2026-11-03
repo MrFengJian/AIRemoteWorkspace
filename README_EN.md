@@ -18,7 +18,7 @@ It does not replace traditional SSH clients — it lets AI do real ops and diagn
 
 ## Core Features
 
-- 🔌 **SSH Workspace** — multi-host management with a rock-solid terminal (xterm.js + PTY): split panes with broadcast input, auto-reconnect on drop, session restore after restart, session logging, login scripts, terminal encoding switching (UTF-8 / GBK / Big5), jump hosts / proxies, system notifications on unfocused completion
+- 🔌 **SSH Workspace** — multi-host management with a rock-solid terminal (xterm.js + PTY): split panes with broadcast input, auto-reconnect on drop, session restore after restart, session logging, login scripts, terminal encoding switching (UTF-8 / GBK / Big5), jump hosts / proxies, system notifications on unfocused completion; the hosts sidebar supports one-click group batch deletion, and hosts can be pinned from the right-click menu to the bottom quick links for one-click reconnect
 - 📥 **Host Import** — migrate host settings from other SSH clients in one go: Xshell (auto-locates the sessions directory and imports every host in it; custom folders and single .xsh files work too, UTF-16/GBK auto-detected), MobaXterm (auto-locates MobaXterm.ini; .mxtsessions exports and directory walking supported), PuTTY (Windows registry) and SSH config (~/.ssh/config, wildcards skipped, `Host *` defaults inherited); Xshell/MobaXterm folder structures are preserved as a nested group tree in the hosts sidebar; preview, tick and import with host+port+username dedup — passwords and other credentials are never imported
 - 🖥️ **Local Terminal** — cross-platform local PTY (PowerShell / PowerShell 7 / CMD / Git Bash / WSL per-distro / bash / zsh, detected by availability) — no SSH involved
 - 📁 **SFTP File Manager** — browse, upload, download
@@ -196,6 +196,7 @@ The app ships a local MCP (Model Context Protocol) server so external AI agents 
 | `exec_command` | Run a command on a remote host (auto-connect) | tiered per command (dangerous ones need approval) |
 | `read_file` / `download` | SFTP read a remote file / download to local | auto |
 | `write_file` / `upload` | SFTP write a remote file / upload from local | in-app approval required |
+| `host_stats` | Query live performance stats of a connected host (CPU / memory / load / disks / network / processes / ports), sharing the cache with the app's monitor panel | auto |
 | `system_info` | App version / platform / host count / MCP status | auto |
 
 ### Client configuration
@@ -219,13 +220,15 @@ For stdio-only clients such as Codex CLI, bridge with `mcp-remote`:
 npx mcp-remote http://127.0.0.1:8765/mcp --header "Authorization: Bearer <your-token>"
 ```
 
+> **The transport field**: the server speaks Streamable HTTP only (`/mcp`), so no `transport` key is needed in client configs. Clients disagree on the explicit spelling (`streamableHttp` / `streamable-http` / `http`); if an explicit `"transport": "streamable_http"` errors out, just remove it — the transport is auto-detected from the URL.
+
 > **Security boundary**: loopback-only binding + Bearer token; every WRITE/DANGEROUS operation pops an in-app approval dialog (with the target host labeled) — deny or 5-minute timeout aborts it, exactly like the built-in agent's approval flow.
 
 ## Project Structure
 
 ```
 .
-├── main.go                 # App entry: layer assembly + Wails window + time events
+├── main.go                 # App entry: layer assembly + Wails window
 ├── internal/
 │   ├── domain/             # Business models (Host/Session/Tool/Agent/Config/Expert/FaultReport…)
 │   ├── application/        # Use cases + port interfaces (HostService/ConnectionManager/SkillService/ExpertService/FaultReportService…)
@@ -245,7 +248,7 @@ npx mcp-remote http://127.0.0.1:8765/mcp --header "Authorization: Bearer <your-t
 │   │   ├── features/       # Feature-based: hosts/ terminal/ agent/ sftp/ monitor/ docker/ k8s/ experts/ faults/ settings/
 │   │   ├── keybindings/    # Shortcut system (command table / matching / global dispatch)
 │   │   ├── i18n/           # i18next setup (zh / en strings in locales/)
-│   │   ├── components/     # ui/ (shadcn), layout/ (AppShell/Sidebar/StatusBar)
+│   │   ├── components/     # ui/ (shadcn), layout/ (AppShell/Sidebar/QuickLinksBar)
 │   │   ├── stores/         # Global state (Zustand)
 │   │   ├── lib/            # utils, queryClient, wails helpers
 │   │   └── styles/         # Design tokens (globals.css) + themes/

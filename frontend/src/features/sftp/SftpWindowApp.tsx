@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Sidebar, SFTP_NAV_ITEMS } from "@/components/layout/Sidebar";
-import { StatusBar } from "@/components/layout/StatusBar";
+import { QuickLinksBar } from "@/components/layout/QuickLinksBar";
 import { TitleBar } from "@/components/layout/TitleBar";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Toaster } from "@/components/ui/Toaster";
@@ -20,7 +20,7 @@ import { SftpWorkbench } from "@/features/sftp/SftpWorkbench";
  *
  * Chrome mirrors the main window: frameless title bar, the left navigation
  * rail (workbench ⇄ settings — transfer limits live in Settings →
- * Advanced), and the status bar. The zustand stores are per-webview, so
+ * Advanced), and the quick-links bar. The zustand stores are per-webview, so
  * this window's view state never touches the main window's.
  */
 export function SftpWindowApp({ hostID }: { hostID: string }) {
@@ -70,7 +70,9 @@ export function SftpWindowApp({ hostID }: { hostID: string }) {
           </View>
         </main>
       </div>
-      <StatusBar />
+      {/* Quick links: clicking a pinned host opens its SFTP window (this
+          window has no terminal workspace to jump into). */}
+      <QuickLinksBar onOpen={(h) => hostsApi.openSftpWindow(h.id)} />
       {/* Single confirmation/prompt + toast hosts (this window's DOM is
           separate from the main window's). */}
       <ConfirmDialog />

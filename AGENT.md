@@ -952,7 +952,13 @@ upload
 download
 
 system_info
+
+host_stats
 ```
+
+`host_stats` 查询**已连接主机**的性能统计（仅限已有活动会话的主机；`section` 可选 `overview`（默认）/ `processes` / `ports`）。数据与应用内性能面板（MonitorService）共用按主机的 TTL 缓存（`application.MonitorCacheTTL`，10s），面板与 MCP 对同一主机共享一份采集结果，未连接主机返回错误并提示先在应用内开会话或调用 `connect_host`。
+
+客户端配置：服务端只在 `http://127.0.0.1:<port>/mcp` 提供 Streamable HTTP（Bearer Token），**不要**在客户端配置里指定 `transport` 字段——各家客户端对显式拼写的校验不一（`streamableHttp`/`streamable-http`/`http`），出现过配置 `"transport": "streamable_http"` 报错、去掉后正常的案例；省略时客户端按 URL 自动探测。stdio-only 客户端走 `npx mcp-remote <url> --header "Authorization: Bearer <token>"`。
 
 ---
 

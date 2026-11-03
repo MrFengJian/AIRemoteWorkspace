@@ -51,7 +51,7 @@ internal/
 ### 前后端通信
 
 - **Service 绑定**：Go struct 经 `application.NewService` 注册 → Wails 自动生成 `frontend/bindings/` 下的 TS 调用函数。
-- **Events**：后端 `app.Event.Emit` ↔ 前端 `Events.On`（如 `time` 事件驱动 StatusBar 时钟）。
+- **Events**：后端 `app.Event.Emit` ↔ 前端 `Events.On`（如 `terminal:connect` 连接进度、`apps:task` 应用部署进度）。
 
 ---
 

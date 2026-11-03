@@ -18,7 +18,7 @@ Go 原生（Wails v3 + React）的跨平台桌面应用，把 **SSH / Terminal /
 
 ## 核心特性
 
-- 🔌 **SSH Workspace** — 多 Host 管理、稳定终端（xterm.js + PTY）：分屏与同步键入、断线自动重连、重启后会话恢复、会话日志落盘、登录脚本、终端编码切换（UTF-8 / GBK / Big5）、跳板/代理、窗口失焦系统通知
+- 🔌 **SSH Workspace** — 多 Host 管理、稳定终端（xterm.js + PTY）：分屏与同步键入、断线自动重连、重启后会话恢复、会话日志落盘、登录脚本、终端编码切换（UTF-8 / GBK / Big5）、跳板/代理、窗口失焦系统通知；主机侧栏支持分组一键批量删除，常用主机可右键加入底部快捷链接、一键回连
 - 📥 **主机导入** — 从其他 SSH 客户端一键迁移主机设置：Xshell（自动定位会话目录递归导入全部主机，也支持自定义目录/单个 .xsh，UTF-16/GBK 编码自适应）、MobaXterm（自动定位 MobaXterm.ini，也支持 .mxtsessions 导出与目录遍历）、PuTTY（Windows 注册表）与 SSH config（~/.ssh/config，通配符跳过、`Host *` 默认值继承）；Xshell/MobaXterm 的目录结构原样保留为主机侧栏的嵌套分组树；解析预览勾选导入，按 主机+端口+用户名 去重；密码等凭据一律不导入
 - 🖥️ **本地终端** — 跨平台本地 PTY（PowerShell / PowerShell 7 / CMD / Git Bash / WSL 按实例 / bash / zsh 按可用性检测），不走 SSH
 - 📁 **SFTP 文件管理** — 浏览、上传、下载
@@ -215,6 +215,7 @@ Linux 支持一次性生成主流的二进制安装包。
 | `exec_command` | 在远程主机执行命令（自动连接） | 按命令分级（危险命令需审批） |
 | `read_file` / `download` | SFTP 读取远程文件 / 下载到本机 | 自动 |
 | `write_file` / `upload` | SFTP 写入远程文件 / 从本机上传 | 需应用内审批 |
+| `host_stats` | 查询已连接主机的性能统计（CPU / 内存 / 负载 / 磁盘 / 网络 / 进程 / 端口），与界面性能面板共用缓存 | 自动 |
 | `system_info` | 应用版本 / 平台 / 主机数 / MCP 状态 | 自动 |
 
 ### 客户端配置
@@ -238,13 +239,15 @@ Codex CLI 等仅支持 stdio 的客户端，用 `mcp-remote` 桥接：
 npx mcp-remote http://127.0.0.1:8765/mcp --header "Authorization: Bearer <你的访问令牌>"
 ```
 
+> **transport 字段**：服务端只提供 Streamable HTTP（`/mcp`），无需在客户端配置里指定 `transport`。部分客户端对显式 `transport: "streamable_http"` 的拼写校验不一致（`streamableHttp` / `streamable-http` / `http` 各家不一），配置报错时去掉该字段即可——客户端会按 URL 自动探测。
+
 > **安全边界**：服务只监听回环地址 + Bearer Token 双重防护；所有 WRITE/DANGEROUS 操作会在应用内弹出审批框（标注目标主机），拒绝或超时（5 分钟）即中止，与内置 AI Agent 的审批流程完全一致。
 
 ## 项目结构
 
 ```
 .
-├── main.go                 # 应用入口：组装各层 + Wails 窗口 + time 事件
+├── main.go                 # 应用入口：组装各层 + Wails 窗口
 ├── internal/
 │   ├── domain/             # 业务模型（Host/Session/Tool/Agent/Config/Expert/FaultReport…）
 │   ├── application/        # 业务流程 + port 接口（HostService/ConnectionManager/SkillService/ExpertService/FaultReportService…）
@@ -264,7 +267,7 @@ npx mcp-remote http://127.0.0.1:8765/mcp --header "Authorization: Bearer <你的
 │   │   ├── features/       # Feature-Based：hosts/ terminal/ agent/ sftp/ monitor/ docker/ k8s/ experts/ faults/ settings/
 │   │   ├── keybindings/    # 快捷键系统（命令表 / 键位匹配 / 全局分发）
 │   │   ├── i18n/           # i18next 初始化（zh / en 文案见 locales/）
-│   │   ├── components/     # ui/ (shadcn), layout/ (AppShell/Sidebar/StatusBar)
+│   │   ├── components/     # ui/ (shadcn), layout/ (AppShell/Sidebar/QuickLinksBar)
 │   │   ├── stores/         # 全局状态（Zustand）
 │   │   ├── lib/            # utils, queryClient, wails helpers
 │   │   └── styles/         # Design Token (globals.css) + themes/

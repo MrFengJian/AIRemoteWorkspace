@@ -12,14 +12,15 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	cryptossh "golang.org/x/crypto/ssh"
 
+	"github.com/ai-remote/workspace/internal/application"
 	"github.com/ai-remote/workspace/internal/domain"
 	"github.com/ai-remote/workspace/internal/infrastructure/agent/tools"
 )
 
-// registerTools wires the eight MCP tools (ROADMAP Phase 6) to the shared
-// infrastructure. Permission mapping mirrors the built-in agent:
+// registerTools wires the nine MCP tools (ROADMAP Phase 6 + host_stats) to
+// the shared infrastructure. Permission mapping mirrors the built-in agent:
 //
-//	READ (auto)      list_hosts · connect_host · read_file · download · system_info
+//	READ (auto)      list_hosts · connect_host · read_file · download · system_info · host_stats
 //	command-derived  exec_command (tools.ClassifyCommand)
 //	WRITE (approval) write_file · upload
 //
@@ -234,6 +235,56 @@ func (s *Server) registerTools() {
 			st.Enabled, st.Running, st.URL,
 		)), nil, nil
 	})
+	// 9. host_stats — performance statistics of a connected host (READ).
+	// Data comes from the application MonitorService, so MCP reads the same
+	// cached snapshots the app's monitor panel shows.
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "host_stats",
+		Description: "Query live performance statistics of a host — the same data the app's monitor panel shows (shared cache; results refresh at most every " + application.MonitorCacheTTL.String() + "). Sections: \"overview\" (default) = CPU, memory, load, disks, network rates, process counts, TCP states; \"processes\" = top processes by CPU and memory; \"ports\" = listening TCP sockets. Only hosts with a live session answer — open one in the app or call connect_host first.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a hostStatsArgs) (*mcp.CallToolResult, any, error) {
+		host, _, err := s.resolveHost(a.HostID, a.Name)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := s.gateCheck(ctx, host, "host_stats", domain.PermissionRead, a); err != nil {
+			return nil, nil, err
+		}
+		if s.deps.Monitor == nil {
+			return nil, nil, errors.New("host_stats unavailable: monitor service not wired")
+		}
+		sid, ok := s.deps.SSH.SessionForHost(host.ID)
+		if !ok {
+			return nil, nil, fmt.Errorf("host %s is not connected — open a session in the app or call connect_host first", host.Name)
+		}
+		switch strings.ToLower(strings.TrimSpace(a.Section)) {
+		case "", "overview":
+			cctx, cancel := context.WithTimeout(ctx, statsTimeout)
+			defer cancel()
+			o, err := s.deps.Monitor.GetOverview(cctx, sid)
+			if err != nil {
+				return nil, nil, fmt.Errorf("collect overview of %s: %w", host.Name, err)
+			}
+			return textResult(formatOverview(host.Name, o)), nil, nil
+		case "processes":
+			cctx, cancel := context.WithTimeout(ctx, statsTimeout)
+			defer cancel()
+			procs, err := s.deps.Monitor.GetProcesses(cctx, sid)
+			if err != nil {
+				return nil, nil, fmt.Errorf("collect processes of %s: %w", host.Name, err)
+			}
+			return textResult(formatProcesses(host.Name, procs)), nil, nil
+		case "ports":
+			cctx, cancel := context.WithTimeout(ctx, statsTimeout)
+			defer cancel()
+			ports, err := s.deps.Monitor.GetPorts(cctx, sid)
+			if err != nil {
+				return nil, nil, fmt.Errorf("collect ports of %s: %w", host.Name, err)
+			}
+			return textResult(formatPorts(host.Name, ports)), nil, nil
+		default:
+			return nil, nil, fmt.Errorf("invalid section %q: use \"overview\", \"processes\" or \"ports\"", a.Section)
+		}
+	})
 }
 
 // --- argument structs (schemas inferred by the SDK; fields without
@@ -277,6 +328,13 @@ type transferArgs struct {
 	Name       string `json:"name,omitempty" jsonschema:"exact host name (alternative to hostId)"`
 	RemotePath string `json:"remotePath" jsonschema:"remote file path"`
 	LocalPath  string `json:"localPath" jsonschema:"local file path on the machine running AI Remote Workspace"`
+}
+
+// hostStatsArgs selects a host (id or name) and an optional stats section.
+type hostStatsArgs struct {
+	HostID  string `json:"hostId,omitempty" jsonschema:"host id from list_hosts"`
+	Name    string `json:"name,omitempty" jsonschema:"exact host name (alternative to hostId)"`
+	Section string `json:"section,omitempty" jsonschema:"which stats to return: \"overview\" (default), \"processes\", or \"ports\""`
 }
 
 // --- shared handler plumbing ---

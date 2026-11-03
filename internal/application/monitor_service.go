@@ -4,10 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ai-remote/workspace/internal/domain"
 )
+
+// MonitorCacheTTL is the minimum interval between two collections of the
+// same host + section. The monitor panel (Wails) and the MCP host_stats
+// tool read through the same cache, so both consumers — and every terminal
+// tab of one host — share one collection instead of each exec'ing its own.
+const MonitorCacheTTL = 10 * time.Second
 
 // MonitorService collects host metrics over an existing SSH session's exec
 // channel. Scripts read the remote /proc filesystem (plus df) — nothing to
@@ -15,13 +22,26 @@ import (
 // sleep, uname) ships with mainstream distros and busybox. CPU usage and
 // network rates come from two samples taken 1s apart; the measured exec wall
 // time is the rate denominator.
+//
+// Results are cached per host (all sessions of one host share a scope) for
+// MonitorCacheTTL; collection errors are never cached.
 type MonitorService struct {
 	connect ConnectionManager
+
+	mu       sync.Mutex
+	cache    map[string]monitorCacheEntry
+	cacheTTL time.Duration
+	now      func() time.Time // overridable in tests
 }
 
 // NewMonitorService wires a MonitorService to the connection manager.
 func NewMonitorService(connect ConnectionManager) *MonitorService {
-	return &MonitorService{connect: connect}
+	return &MonitorService{
+		connect:  connect,
+		cache:    map[string]monitorCacheEntry{},
+		cacheTTL: MonitorCacheTTL,
+		now:      time.Now,
+	}
 }
 
 // Scripts emit "=SECTION" marker lines; monitor_parse.go consumes them.
@@ -98,40 +118,76 @@ func (s *MonitorService) collect(ctx context.Context, sessionID, script string) 
 }
 
 // GetOverview collects the CPU / memory / disk / network / load / process /
-// TCP-state snapshot for the host behind sessionID.
+// TCP-state snapshot for the host behind sessionID (cached, see
+// MonitorCacheTTL).
 func (s *MonitorService) GetOverview(ctx context.Context, sessionID string) (domain.MonitorOverview, error) {
-	if isLocalSessionID(sessionID) {
-		return s.localOverview(ctx)
+	scope := s.scopeFor(sessionID)
+	if v, ok := monitorCacheGet[domain.MonitorOverview](s, scope, "overview"); ok {
+		return v, nil
 	}
-	out, elapsed, err := s.collect(ctx, sessionID, overviewScript)
+	var o domain.MonitorOverview
+	var err error
+	if isLocalSessionID(sessionID) {
+		o, err = s.localOverview(ctx)
+	} else {
+		var out string
+		var elapsed float64
+		if out, elapsed, err = s.collect(ctx, sessionID, overviewScript); err == nil {
+			o, err = buildOverview(out, elapsed)
+		}
+	}
 	if err != nil {
 		return domain.MonitorOverview{}, err
 	}
-	return buildOverview(out, elapsed)
+	monitorCachePut(s, scope, "overview", o)
+	return o, nil
 }
 
 // GetProcesses collects the live process list (sampled CPU%, RSS KB, name,
-// command line) for the host behind sessionID.
+// command line) for the host behind sessionID (cached).
 func (s *MonitorService) GetProcesses(ctx context.Context, sessionID string) ([]domain.MonitorProcess, error) {
-	if isLocalSessionID(sessionID) {
-		return s.localProcesses(ctx)
+	scope := s.scopeFor(sessionID)
+	if v, ok := monitorCacheGet[[]domain.MonitorProcess](s, scope, "processes"); ok {
+		return v, nil
 	}
-	out, elapsed, err := s.collect(ctx, sessionID, processScript)
+	var procs []domain.MonitorProcess
+	var err error
+	if isLocalSessionID(sessionID) {
+		procs, err = s.localProcesses(ctx)
+	} else {
+		var out string
+		var elapsed float64
+		if out, elapsed, err = s.collect(ctx, sessionID, processScript); err == nil {
+			procs = buildProcesses(out, elapsed)
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
-	return buildProcesses(out, elapsed), nil
+	monitorCachePut(s, scope, "processes", procs)
+	return procs, nil
 }
 
 // GetPorts collects the listening-socket list (TCP + TCP6, deduplicated per
-// identical bind) for the host behind sessionID.
+// identical bind) for the host behind sessionID (cached).
 func (s *MonitorService) GetPorts(ctx context.Context, sessionID string) ([]domain.MonitorPort, error) {
-	if isLocalSessionID(sessionID) {
-		return s.localPorts(ctx)
+	scope := s.scopeFor(sessionID)
+	if v, ok := monitorCacheGet[[]domain.MonitorPort](s, scope, "ports"); ok {
+		return v, nil
 	}
-	out, _, err := s.collect(ctx, sessionID, portScript)
+	var ports []domain.MonitorPort
+	var err error
+	if isLocalSessionID(sessionID) {
+		ports, err = s.localPorts(ctx)
+	} else {
+		var out string
+		if out, _, err = s.collect(ctx, sessionID, portScript); err == nil {
+			ports = buildPorts(out)
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
-	return buildPorts(out), nil
+	monitorCachePut(s, scope, "ports", ports)
+	return ports, nil
 }

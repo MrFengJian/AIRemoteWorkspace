@@ -11,7 +11,7 @@
 - [x] React 19 + TypeScript 前端脚手架（Vite + Tailwind v4 + shadcn/ui + Radix + Zustand + TanStack Query + Lucide）
 - [x] Wails 前后端事件通信打通（SystemService / ConfigService 绑定 + `time` 事件）
 - [x] SQLite 存储层（schema + 基础 CRUD + 迁移，纯 Go 驱动 modernc.org/sqlite）
-- [x] 基础 UI 框架（AppShell 布局、Sidebar 导航、StatusBar、Dark Developer Theme）
+- [x] 基础 UI 框架（AppShell 布局、Sidebar 导航、底部快捷链接栏（原 StatusBar）、Dark Developer Theme）
 - [x] 配置管理（ConfigService + 应用配置读写，持久化到 SQLite）
 
 ## Phase 2 — SSH Workspace（MVP 核心）
@@ -69,6 +69,7 @@
 - [x] `read_file` / `write_file`
 - [x] `upload` / `download`
 - [x] `system_info`
+- [x] `host_stats`（已连接主机的性能统计，与界面性能面板共用同一份按主机的 TTL 缓存）
 - [x] Tool 到 Permission 的映射（复用 PermissionGate：READ 自动；exec 按命令分级；WRITE 需应用内审批，弹窗标注目标主机 `mcp:<主机名>`）
 - [x] 外部 Agent 联调准备（设置页提供 Claude / Cursor 配置片段；stdio-only 客户端走 `mcp-remote`）
 

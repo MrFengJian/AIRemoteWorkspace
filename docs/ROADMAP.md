@@ -33,7 +33,7 @@ Phase 9  运维专家              角色化运维专家（人设 + 能力 + 安
 
 - Wails v3 + React 19 + TypeScript 前后端集成
 - SQLite 存储层（modernc.org/sqlite，无 CGO）
-- 基础 UI 框架（AppShell / Sidebar / StatusBar / Dark Developer Theme）
+- 基础 UI 框架（AppShell / Sidebar / 底部快捷链接栏（原 StatusBar，2026-11 替换）/ Dark Developer Theme）
 - 配置管理（ConfigService，持久化到 SQLite）
 - 后端分层骨架（domain / application / infrastructure / interfaces）
 
@@ -118,6 +118,7 @@ Phase 9  运维专家              角色化运维专家（人设 + 能力 + 安
 - `upload`
 - `download`
 - `system_info`
+- `host_stats`（已连接主机的性能统计：overview / processes / ports 三段；与应用性能面板共用按主机的 TTL 缓存）
 
 ### 支持的外部 Agent
 

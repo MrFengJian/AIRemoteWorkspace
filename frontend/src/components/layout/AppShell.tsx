@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { useUIStore } from "@/stores/ui.store";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { StatusBar } from "@/components/layout/StatusBar";
+import { QuickLinksBar } from "@/components/layout/QuickLinksBar";
 import { TitleBar } from "@/components/layout/TitleBar";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Toaster } from "@/components/ui/Toaster";
@@ -34,7 +34,7 @@ import {
  *   │ i │ (terminal hosts sidebar  │
  *   │ d │  + tabs live inside it)  │
  *   ├───┴──────────────────────────┤
- *   │ StatusBar                    │
+ *   │ QuickLinksBar                │
  *   └──────────────────────────────┘
  */
 export function AppShell() {
@@ -83,7 +83,7 @@ export function AppShell() {
           </View>
         </main>
       </div>
-      <StatusBar />
+      <QuickLinksBar />
       {/* Host add/edit dialog — store-driven, reachable from the hosts
           sidebar's context menu and action buttons. */}
       <HostFormDialog />

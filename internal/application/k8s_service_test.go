@@ -33,6 +33,9 @@ func (f *fakeK8sConn) ExecInSessionStdin(_ context.Context, _ string, cmd string
 	return f.outFor(cmd)
 }
 func (f *fakeK8sConn) CloseAll() error { return nil }
+func (f *fakeK8sConn) HostOfSession(string) (domain.Host, bool) {
+	return domain.Host{}, false
+}
 
 var _ ConnectionManager = (*fakeK8sConn)(nil)
 

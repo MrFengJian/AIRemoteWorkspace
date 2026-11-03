@@ -13,7 +13,6 @@ declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "apps:task": domain$0.DeployTaskEvent;
-            "time": string;
         }
     }
 }

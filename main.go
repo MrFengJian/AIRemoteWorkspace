@@ -6,7 +6,6 @@ import (
 	"log"
 	"path/filepath"
 	"runtime"
-	"time"
 
 	"github.com/adrg/xdg"
 	wailsapp "github.com/wailsapp/wails/v3/pkg/application"
@@ -41,9 +40,6 @@ const (
 var assets embed.FS
 
 func init() {
-	// Register the `time` event with a string payload so Wails generates a
-	// typed TS API for it. The StatusBar subscribes via Events.On("time").
-	wailsapp.RegisterEvent[string]("time")
 	// 应用部署任务进度（步骤状态/输出摘要）。
 	wailsapp.RegisterEvent[domain.DeployTaskEvent]("apps:task")
 }
@@ -232,6 +228,7 @@ func main() {
 		SSH:        connManager,
 		SFTP:       sftpMgr,
 		Gate:       permGate,
+		Monitor:    monitorSvc,
 		Persist: func(m domain.MCPConfig) error {
 			cfg, err := configSvc.GetAppConfig()
 			if err != nil {
@@ -343,15 +340,6 @@ func main() {
 		BackgroundColour: wailsapp.NewRGB(10, 10, 14),
 		URL:              "/",
 	})
-
-	// Heartbeat that proves the Wails event bus is live. The StatusBar clock
-	// renders each tick; later phases reuse this channel for session events.
-	go func() {
-		for {
-			app.Event.Emit("time", time.Now().Format(time.RFC1123))
-			time.Sleep(time.Second)
-		}
-	}()
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)

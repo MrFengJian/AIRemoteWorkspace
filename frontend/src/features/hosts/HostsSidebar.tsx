@@ -12,6 +12,8 @@ import {
   ChevronRight,
   Monitor,
   PanelLeftClose,
+  Star,
+  StarOff,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -21,6 +23,7 @@ import { useHosts, useOpenTerminal, useOpenLocalTerminal, useDeleteHost } from "
 import { hostsApi, type HostDTO } from "@/features/hosts/api";
 import { osInfo } from "@/features/hosts/osIcons";
 import { useHostsUIStore } from "@/features/hosts/store";
+import { useQuickLinksStore } from "@/features/hosts/quicklinks.store";
 import { ImportHostsDialog } from "@/features/hosts/ImportHostsDialog";
 import { useTerminalStore } from "@/features/terminal/terminal.store";
 import { TerminalTabMenu, type MenuItem } from "@/features/terminal/TerminalTabMenu";
@@ -78,6 +81,8 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
   const sessions = useTerminalStore((s) => s.sessions);
   const setActive = useTerminalStore((s) => s.setActive);
   const { askConfirm } = useConfirm();
+  const quickLinkIds = useQuickLinksStore((s) => s.ids);
+  const toggleQuickLink = useQuickLinksStore((s) => s.toggle);
 
   // Search: name, host IP, group, or tags.
   const filtered = useMemo(() => {
@@ -200,6 +205,30 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
     deleteHost.mutateAsync(host.id).catch(() => {});
   };
 
+  /**
+   * Batch-delete every host of a group (and its subgroups). Membership is
+   * computed from the full host list by group-path prefix — not from the
+   * (possibly search-filtered) tree that is on screen.
+   */
+  const handleDeleteGroup = async (node: GroupNode) => {
+    const members = (hosts ?? []).filter(
+      (h) => h.group === node.path || h.group.startsWith(node.path + "/"),
+    );
+    if (members.length === 0) return;
+    const ok = await askConfirm({
+      title: t("hosts.deleteGroupTitle"),
+      message: t("hosts.deleteGroupConfirm", { name: node.name, count: members.length }),
+      danger: true,
+      confirmLabel: t("common.delete"),
+    });
+    if (!ok) return;
+    const results = await Promise.allSettled(members.map((h) => deleteHost.mutateAsync(h.id)));
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed > 0) {
+      toast.error(t("hosts.deleteGroupPartial", { failed, total: members.length }));
+    }
+  };
+
   /** Open the standalone dual-pane SFTP window for the host. */
   const openSftp = (host: HostDTO) => {
     hostsApi.openSftpWindow(host.id).catch((e) => {
@@ -207,30 +236,38 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
     });
   };
 
-  const buildMenuItems = (host: HostDTO): MenuItem[] => [
-    {
-      label: t("hosts.newTab"),
-      icon: TerminalSquare,
-      onClick: () => forceConnect(host),
-    },
-    {
-      label: t("hosts.sftp"),
-      icon: FolderTree,
-      onClick: () => openSftp(host),
-    },
-    {
-      label: t("common.edit"),
-      icon: Pencil,
-      onClick: () => openEditor(host),
-    },
-    { type: "separator" },
-    {
-      label: t("common.delete"),
-      icon: Trash2,
-      danger: true,
-      onClick: () => handleDelete(host),
-    },
-  ];
+  const buildMenuItems = (host: HostDTO): MenuItem[] => {
+    const pinned = quickLinkIds.includes(host.id);
+    return [
+      {
+        label: t("hosts.newTab"),
+        icon: TerminalSquare,
+        onClick: () => forceConnect(host),
+      },
+      {
+        label: t("hosts.sftp"),
+        icon: FolderTree,
+        onClick: () => openSftp(host),
+      },
+      {
+        label: pinned ? t("hosts.quickLinkRemove") : t("hosts.quickLinkAdd"),
+        icon: pinned ? StarOff : Star,
+        onClick: () => toggleQuickLink(host.id),
+      },
+      {
+        label: t("common.edit"),
+        icon: Pencil,
+        onClick: () => openEditor(host),
+      },
+      { type: "separator" },
+      {
+        label: t("common.delete"),
+        icon: Trash2,
+        danger: true,
+        onClick: () => handleDelete(host),
+      },
+    ];
+  };
 
   return (
     <aside
@@ -319,6 +356,7 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
                 onOpenSftp={openSftp}
                 onEdit={openEditor}
                 onDelete={handleDelete}
+                onDeleteGroup={handleDeleteGroup}
                 onContextMenu={(host, e) => {
                   e.preventDefault();
                   setMenu({ host, x: e.clientX, y: e.clientY });
@@ -394,8 +432,9 @@ export function HostsSidebar({ onClose }: { onClose: () => void }) {
 
 /**
  * GroupSection renders one node of the group tree: a collapsible folder
- * header, its direct hosts, then child sections (indenting one level per
- * depth). expandAll forces the section open while a search filter is active.
+ * header (with a hover delete button that batch-deletes the group's hosts),
+ * its direct hosts, then child sections (indenting one level per depth).
+ * expandAll forces the section open while a search filter is active.
  */
 function GroupSection({
   node,
@@ -409,6 +448,7 @@ function GroupSection({
   onOpenSftp,
   onEdit,
   onDelete,
+  onDeleteGroup,
   onContextMenu,
 }: {
   node: GroupNode;
@@ -422,27 +462,48 @@ function GroupSection({
   onOpenSftp: (host: HostDTO) => void;
   onEdit: (host: HostDTO) => void;
   onDelete: (host: HostDTO) => void;
+  /** Absent for the ungrouped pseudo-node — there is no group to delete. */
+  onDeleteGroup?: (node: GroupNode) => void;
   onContextMenu: (host: HostDTO, e: React.MouseEvent) => void;
 }) {
+  const { t } = useTranslation();
   const isCollapsed = !expandAll && collapsed[node.path] === true;
   return (
     <div className="mb-0.5">
-      <button
-        type="button"
-        onClick={() => onToggleCollapse(node.path)}
-        aria-expanded={!isCollapsed}
+      <div
+        className="group flex w-full items-center rounded-[var(--radius)] pr-1 transition-colors hover:bg-accent/40"
         style={{ paddingLeft: 8 + depth * 12 }}
-        className="flex w-full items-center gap-1.5 rounded-[var(--radius)] py-1 pr-2 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
       >
-        <ChevronRight
-          className={cn("h-3 w-3 shrink-0 transition-transform", !isCollapsed && "rotate-90")}
-        />
-        <Folder className="h-3 w-3 shrink-0 text-primary" />
-        <span className="truncate" title={node.path || undefined}>
-          {node.name}
-        </span>
-        <span className="ml-auto text-[10px] opacity-60">{subtreeHostCount(node)}</span>
-      </button>
+        <button
+          type="button"
+          onClick={() => onToggleCollapse(node.path)}
+          aria-expanded={!isCollapsed}
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius)] py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ChevronRight
+            className={cn("h-3 w-3 shrink-0 transition-transform", !isCollapsed && "rotate-90")}
+          />
+          <Folder className="h-3 w-3 shrink-0 text-primary" />
+          <span className="truncate" title={node.path || undefined}>
+            {node.name}
+          </span>
+          <span className="ml-auto text-[10px] opacity-60">{subtreeHostCount(node)}</span>
+        </button>
+        {onDeleteGroup && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteGroup(node);
+            }}
+            title={t("hosts.deleteGroupTitle")}
+            aria-label={t("hosts.deleteGroupTitle")}
+            className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        )}
+      </div>
       {!isCollapsed && (
         <div style={{ paddingLeft: depth === 0 ? 0 : 12 }}>
           <ul className="mt-0.5 flex flex-col gap-0.5">
@@ -474,6 +535,7 @@ function GroupSection({
               onOpenSftp={onOpenSftp}
               onEdit={onEdit}
               onDelete={onDelete}
+              onDeleteGroup={onDeleteGroup}
               onContextMenu={onContextMenu}
             />
           ))}

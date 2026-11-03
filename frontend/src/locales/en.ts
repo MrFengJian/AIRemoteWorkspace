@@ -193,6 +193,14 @@ export const en = {
     },
     deleteConfirm: 'Delete host "{{name}}"? This also clears any remembered password.',
     deleteTitle: "Delete host",
+    quickLinkAdd: "Add to quick links",
+    quickLinkRemove: "Remove from quick links",
+    quickLinkLabel: "Quick",
+    quickLinkEmpty: "Right-click a host to pin it here for one-click connect",
+    deleteGroupTitle: "Delete group hosts",
+    deleteGroupConfirm:
+      'This deletes the {{count}} host(s) under group "{{name}}" and its subgroups (including remembered passwords). Continue?',
+    deleteGroupPartial: "Group delete: {{failed}} of {{total}} hosts failed, please retry.",
     import: {
       title: "Import Hosts",
       description:

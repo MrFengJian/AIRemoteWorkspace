@@ -100,6 +100,10 @@ type ConnectionManager interface {
 	// stdin (`kubectl apply -f -` and friends). Streaming — no argument-size
 	// ceiling, and the payload never lands on the remote disk.
 	ExecInSessionStdin(ctx context.Context, sessionID, cmd string, stdin []byte) (string, error)
+	// HostOfSession returns the host a live session belongs to (ok=false for
+	// host-less local sessions). Used to scope the shared monitor cache per
+	// host across terminal tabs and MCP calls.
+	HostOfSession(sessionID string) (domain.Host, bool)
 	// CloseAll tears down every active session (used on app shutdown).
 	CloseAll() error
 }
