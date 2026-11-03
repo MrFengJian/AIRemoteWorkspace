@@ -1,5 +1,7 @@
 .zcode/skills
 .zcode/plans
 *.exe
+bin/
+.task/
 frontend/dist
 frontend/node_modules
